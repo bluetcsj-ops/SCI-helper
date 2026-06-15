@@ -26,16 +26,22 @@ class ProjectRepository:
                 self._refresh_project_state(record)
             session.commit()
 
-    def list_projects(self) -> list[Project]:
+    def list_projects(self, project_ids: list[str] | None = None) -> list[Project]:
+        if project_ids is not None and not project_ids:
+            return []
+
         with SessionLocal() as session:
-            records = session.scalars(
+            statement = (
                 select(ProjectRecord)
                 .options(
                     selectinload(ProjectRecord.phases),
                     selectinload(ProjectRecord.tasks),
                 )
                 .order_by(ProjectRecord.id)
-            ).all()
+            )
+            if project_ids is not None:
+                statement = statement.where(ProjectRecord.id.in_(project_ids))
+            records = session.scalars(statement).all()
             return [self._to_project(record) for record in records]
 
     def get_project(self, project_id: str) -> Project | None:
@@ -113,8 +119,8 @@ class ProjectRepository:
             session.commit()
             return self._to_project(record)
 
-    def get_dashboard_summary(self) -> DashboardSummary:
-        projects = self.list_projects()
+    def get_dashboard_summary(self, project_ids: list[str] | None = None) -> DashboardSummary:
+        projects = self.list_projects(project_ids=project_ids)
         if not projects:
             return DashboardSummary(
                 overall_completion_percent=0,

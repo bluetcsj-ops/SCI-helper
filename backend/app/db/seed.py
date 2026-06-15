@@ -3,16 +3,21 @@ from sqlalchemy.orm import Session
 
 from app.db.models import (
     ChatMessageRecord,
+    DataAnalysisRecordRecord,
+    DataAuditLogRecord,
     PhaseRecord,
+    ProjectAccessRecord,
     ProjectPlanDraftRecord,
     ProjectProtocolRecord,
     ProjectRecord,
     TaskRecord,
     TaskReminderRecord,
+    UserRecord,
 )
 from app.db.session import Base, SessionLocal, engine
 from app.projects.models import Project
 from app.projects.seed_data import build_seed_projects
+from app.users.repository import user_repository
 
 
 def initialize_database() -> None:
@@ -23,6 +28,8 @@ def initialize_database() -> None:
         if project_count == 0:
             _seed_projects(session, build_seed_projects())
             session.commit()
+        user_repository.seed_default_users_and_access(session)
+        session.commit()
 
     from app.projects.repository import project_repository
 
@@ -71,11 +78,15 @@ def _seed_projects(session: Session, projects: list[Project]) -> None:
 
 __all__ = [
     "ChatMessageRecord",
+    "DataAnalysisRecordRecord",
+    "DataAuditLogRecord",
     "PhaseRecord",
+    "ProjectAccessRecord",
     "ProjectPlanDraftRecord",
     "ProjectProtocolRecord",
     "ProjectRecord",
     "TaskRecord",
     "TaskReminderRecord",
+    "UserRecord",
     "initialize_database",
 ]
