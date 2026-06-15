@@ -1,0 +1,12 @@
+from fastapi import APIRouter
+
+from app.api.routes import agents, chat, dashboard, health, projects, reminders
+
+
+api_router = APIRouter()
+api_router.include_router(health.router, tags=["health"])
+api_router.include_router(agents.router, prefix="/api/agents", tags=["agents"])
+api_router.include_router(projects.router, prefix="/api/projects", tags=["projects"])
+api_router.include_router(dashboard.router, prefix="/api/dashboard", tags=["dashboard"])
+api_router.include_router(chat.router, prefix="/api/chat", tags=["chat"])
+api_router.include_router(reminders.router, tags=["reminders"])
