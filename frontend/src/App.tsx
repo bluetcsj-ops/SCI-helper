@@ -32,6 +32,7 @@ import {
   getDataAuditLogs,
   getDataRequirements,
   getDashboard,
+  getMentorEvidenceReviews,
   getMentorRecommendations,
   getMentorTrendSnapshot,
   getProjectAccess,
@@ -41,6 +42,7 @@ import {
   getProjects,
   refreshProjectReminders,
   saveDataAnalysisRecord,
+  saveMentorEvidenceReview,
   saveProjectProtocol,
   sendChat,
   updateTaskStatus,
@@ -62,6 +64,9 @@ import type {
   FormalTestConfirmation,
   FormalTestResult,
   ItemStatus,
+  MentorEvidenceItem,
+  MentorEvidenceReview,
+  MentorRecommendationCard,
   MentorRecommendationResponse,
   MentorTrendSnapshot,
   PairwiseComparisonResult,
@@ -493,6 +498,94 @@ function hasProtocolContent(protocol: ProjectProtocol | null): boolean {
   return protocolFields.some(({ key }) => protocol[key].trim().length > 0);
 }
 
+function mentorCardToProtocolUpdate(card: MentorRecommendationCard): ProjectProtocolUpdate {
+  return {
+    research_question: card.research_question,
+    hypothesis: `围绕“${card.title}”，假设该研究路线能够识别有临床或流程意义的放疗物理差异，并形成可复核的剂量学、效率或质量控制证据。`,
+    study_type: "单中心回顾性放疗物理研究；首轮以脱敏结构化数据和可复现分析流程为主，后续可扩展为多中心或前瞻性验证。",
+    primary_endpoint: "主要终点应从推荐卡的数据路径中选择一个最能回答研究问题的指标，例如计划质量、OAR 保护、QA 结果、流程耗时或模型性能。",
+    secondary_endpoints: "次要终点可包括靶区覆盖、剂量梯度、适形指数、均匀性指数、计划复杂度、处理时间、返工率、亚组稳定性和敏感性分析。",
+    inclusion_criteria: "纳入已完成标准治疗或质控流程、关键计划/剂量/结构数据完整、可追溯计划系统版本、并已完成脱敏的数据记录。",
+    exclusion_criteria: "排除关键字段缺失、计划或影像质量不可复核、治疗流程中断、数据来源不一致、以及存在直接身份标识或脱敏不充分风险的记录。",
+    data_requirements: card.data_pathway,
+    experiment_workflow: [card.methods_route, ...card.first_milestones].join("\n"),
+    statistical_plan: card.statistical_plan,
+    target_journals: card.target_journals.join("、"),
+    rhea_milestones: card.first_milestones.join("\n"),
+  };
+}
+
+function formatMentorEvidenceStatus(status: string): string {
+  const labels: Record<string, string> = {
+    local_template: "本地证据模板",
+    pubmed: "PubMed 检索结果",
+    crossref: "Crossref 检索结果",
+    external_pending: "待真实检索复核",
+  };
+  return labels[status] ?? status;
+}
+
+function formatMentorReviewStatus(status: string): string {
+  const labels: Record<string, string> = {
+    unreviewed: "未人工复核",
+    reviewed: "已人工复核",
+    rejected: "已排除",
+  };
+  return labels[status] ?? status;
+}
+
+function mentorEvidenceKey(
+  cardTitle: string,
+  evidenceIndex: number,
+  evidence?: MentorEvidenceItem,
+): string {
+  if (evidence?.pmid?.trim()) {
+    return `pmid:${evidence.pmid.trim()}`;
+  }
+  if (evidence?.doi?.trim()) {
+    return `doi:${evidence.doi.trim().toLowerCase()}`;
+  }
+
+  const fallbackKey = `${cardTitle}::${evidenceIndex}::${evidence?.search_query ?? ""}`
+    .trim()
+    .replace(/\s+/g, " ");
+  return fallbackKey.slice(0, 240);
+}
+
+function applyMentorEvidenceReviews(
+  report: MentorRecommendationResponse,
+  reviewMap: Record<string, MentorEvidenceReview>,
+): MentorRecommendationResponse {
+  return {
+    ...report,
+    recommendations: report.recommendations.map((card) => ({
+      ...card,
+      evidence_items: card.evidence_items.map((evidence, evidenceIndex) => {
+        const savedReview = reviewMap[mentorEvidenceKey(card.title, evidenceIndex, evidence)];
+        return savedReview ? { ...evidence, review_status: savedReview.review_status } : evidence;
+      }),
+    })),
+  };
+}
+
+function mentorEvidenceReviewPayload(
+  cardTitle: string,
+  evidenceIndex: number,
+  evidence: MentorEvidenceItem,
+  reviewStatus: string,
+) {
+  return {
+    evidence_key: mentorEvidenceKey(cardTitle, evidenceIndex, evidence),
+    card_title: cardTitle,
+    evidence_index: evidenceIndex,
+    pmid: evidence.pmid ?? null,
+    doi: evidence.doi ?? null,
+    title: evidence.title ?? null,
+    search_query: evidence.search_query,
+    review_status: reviewStatus,
+  };
+}
+
 function createMentorFormState() {
   return {
     equipmentSummary: "",
@@ -516,6 +609,9 @@ function App() {
   const [mentorTrendSnapshot, setMentorTrendSnapshot] = useState<MentorTrendSnapshot | null>(null);
   const [mentorRecommendationReport, setMentorRecommendationReport] =
     useState<MentorRecommendationResponse | null>(null);
+  const [mentorEvidenceReviews, setMentorEvidenceReviews] = useState<
+    Record<string, MentorEvidenceReview>
+  >({});
   const [mentorForm, setMentorForm] = useState(createMentorFormState);
   const [protocol, setProtocol] = useState<ProjectProtocol | null>(null);
   const [planDrafts, setPlanDrafts] = useState<ProjectPlanDraft[]>([]);
@@ -558,6 +654,9 @@ function App() {
   const [isDataAuditLogLoading, setIsDataAuditLogLoading] = useState(false);
   const [isMentorLoading, setIsMentorLoading] = useState(false);
   const [isMentorSubmitting, setIsMentorSubmitting] = useState(false);
+  const [applyingMentorCardTitle, setApplyingMentorCardTitle] = useState<string | null>(null);
+  const [pendingMentorProtocolCard, setPendingMentorProtocolCard] =
+    useState<MentorRecommendationCard | null>(null);
   const [isCsvUploading, setIsCsvUploading] = useState(false);
   const [isStatisticsLoading, setIsStatisticsLoading] = useState(false);
   const [isFormalTestLoading, setIsFormalTestLoading] = useState(false);
@@ -592,8 +691,16 @@ function App() {
   const shouldShowMentorWorkspace = selectedAgentId === "mentor";
   const shouldShowProtocolWorkspace = selectedAgentId === "study_planner";
   const shouldShowDataWorkspace = selectedAgentId === "data_analyst";
+  const shouldShowWriterWorkspace = selectedAgentId === "writer";
 
   const protocolHasContent = useMemo(() => hasProtocolContent(protocol), [protocol]);
+  const pendingMentorProtocolUpdate = useMemo(
+    () =>
+      pendingMentorProtocolCard
+        ? mentorCardToProtocolUpdate(pendingMentorProtocolCard)
+        : null,
+    [pendingMentorProtocolCard],
+  );
 
   const selectedPlanDraft = useMemo(
     () => planDrafts.find((draft) => draft.id === selectedPlanDraftId) ?? null,
@@ -639,6 +746,51 @@ function App() {
       })
       .slice(0, 4);
   }, [mentorTrendSnapshot]);
+
+  const mentorCandidateReferences = useMemo(() => {
+    return (
+      mentorRecommendationReport?.recommendations.flatMap((card) =>
+        card.evidence_items
+          .filter((evidence) => evidence.review_status === "reviewed")
+          .map((evidence) => ({
+            cardTitle: card.title,
+            evidence,
+          })),
+      ) ?? []
+    );
+  }, [mentorRecommendationReport]);
+
+  const writerOutlineDraft = useMemo(() => {
+    if (!mentorCandidateReferences.length) {
+      return null;
+    }
+
+    const referenceTitles = mentorCandidateReferences
+      .map(({ evidence }) => evidence.title ?? evidence.evidence_summary)
+      .slice(0, 4);
+    const introPoints = [
+      "说明研究主题在放疗物理流程、计划质量或临床执行中的现实意义。",
+      "概括当前方向已有工作，突出已确认候选引用所支持的关键背景。",
+      protocol?.research_question
+        ? `收束到本研究问题：${protocol.research_question}`
+        : "收束到本项目的具体研究问题，并明确主要物理终点。",
+    ];
+    const discussionPoints = [
+      "先解释主要发现可能对应的物理机制或流程意义，避免超出数据范围。",
+      "将结果与候选引用中的相近主题进行对照，区分一致、补充和差异点。",
+      "明确单中心、回顾性、样本量、数据完整性和统计复核限制。",
+    ];
+    return {
+      introPoints,
+      discussionPoints,
+      referenceTitles,
+      remainingChecks: [
+        "阅读全文确认候选文献是否真正支持拟写观点。",
+        "补充近 5-7 年同主题研究，确认是否存在更高质量证据。",
+        "在正式写作前核对 PMID、DOI、期刊名和引用格式。",
+      ],
+    };
+  }, [mentorCandidateReferences, protocol]);
 
   const numericColumnOptions = useMemo(() => {
     return qualityReport?.columns.filter((column) => column.inferred_type === "numeric") ?? [];
@@ -762,6 +914,41 @@ function App() {
     }
 
     loadProjectAccess();
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [selectedProjectId]);
+
+  useEffect(() => {
+    let isCurrent = true;
+
+    async function loadMentorEvidenceReviews() {
+      if (!selectedProjectId) {
+        setMentorEvidenceReviews({});
+        return;
+      }
+
+      try {
+        const reviews = await getMentorEvidenceReviews(selectedProjectId);
+        if (isCurrent) {
+          const reviewMap = Object.fromEntries(
+            reviews.map((review) => [review.evidence_key, review]),
+          );
+          setMentorEvidenceReviews(reviewMap);
+          setMentorRecommendationReport((current) =>
+            current ? applyMentorEvidenceReviews(current, reviewMap) : current,
+          );
+        }
+      } catch (caughtError) {
+        if (isCurrent) {
+          setError(caughtError instanceof Error ? caughtError.message : "Mentor 文献复核记录读取失败。");
+          setMentorEvidenceReviews({});
+        }
+      }
+    }
+
+    loadMentorEvidenceReviews();
 
     return () => {
       isCurrent = false;
@@ -1058,7 +1245,7 @@ function App() {
         publication_experience: mentorForm.publicationExperience,
         interest_topics: mentorForm.interestTopics,
       });
-      setMentorRecommendationReport(report);
+      setMentorRecommendationReport(applyMentorEvidenceReviews(report, mentorEvidenceReviews));
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "虚拟导师推荐生成失败。");
     } finally {
@@ -1073,6 +1260,55 @@ function App() {
         ? current.interestTopics.filter((item) => item !== topicId)
         : [...current.interestTopics, topicId],
     }));
+  }
+
+  async function handleMentorEvidenceReview(
+    cardTitle: string,
+    evidenceIndex: number,
+    evidence: MentorEvidenceItem,
+    reviewStatus: string,
+  ) {
+    const reviewPayload = mentorEvidenceReviewPayload(
+      cardTitle,
+      evidenceIndex,
+      evidence,
+      reviewStatus,
+    );
+
+    setMentorRecommendationReport((current) => {
+      if (!current) {
+        return current;
+      }
+
+      return {
+        ...current,
+        recommendations: current.recommendations.map((card) => {
+          if (card.title !== cardTitle) {
+            return card;
+          }
+          return {
+            ...card,
+            evidence_items: card.evidence_items.map((evidence, index) =>
+              index === evidenceIndex ? { ...evidence, review_status: reviewStatus } : evidence,
+            ),
+          };
+        }),
+      };
+    });
+
+    if (!selectedProjectId) {
+      return;
+    }
+
+    try {
+      const savedReview = await saveMentorEvidenceReview(selectedProjectId, reviewPayload);
+      setMentorEvidenceReviews((current) => ({
+        ...current,
+        [savedReview.evidence_key]: savedReview,
+      }));
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Mentor 文献复核状态保存失败。");
+    }
   }
 
   function handleDownloadMentorBrief() {
@@ -1092,6 +1328,9 @@ function App() {
       "## 画像摘要",
       mentorRecommendationReport.profile_summary,
       "",
+      "## 资源诊断",
+      ...mentorRecommendationReport.resource_diagnosis.map((item) => `- ${item}`),
+      "",
       "## 匹配优势",
       ...mentorRecommendationReport.matched_strengths.map((item) => `- ${item}`),
       "",
@@ -1101,12 +1340,54 @@ function App() {
       "## 课题推荐卡",
       ...mentorRecommendationReport.recommendations.flatMap((item) => [
         `### ${item.title}`,
+        `- 研究问题：${item.research_question}`,
         `- 为什么适合：${item.why_fit}`,
+        `- 数据路径：${item.data_pathway}`,
+        `- 方法路线：${item.methods_route}`,
+        `- 统计建议：${item.statistical_plan}`,
         `- 创新点：${item.innovation_point}`,
         `- 可行性：${item.feasibility_note}`,
+        "- 风险提示：",
+        ...item.risk_flags.map((risk) => `  - ${risk}`),
+        "- 推荐依据：",
+        ...item.evidence_items.flatMap((evidence) => [
+          `  - 状态：${formatMentorEvidenceStatus(evidence.evidence_status)}`,
+          evidence.retrieved_at ? `    - 检索时间：${evidence.retrieved_at}` : "    - 检索时间：未进行真实外部检索",
+          evidence.external_url ? `    - 外部链接：${evidence.external_url}` : "    - 外部链接：待真实检索后补充",
+          `    - 复核状态：${formatMentorReviewStatus(evidence.review_status)}`,
+          evidence.pmid ? `    - PMID：${evidence.pmid}` : "    - PMID：待真实检索后补充",
+          evidence.title ? `    - 题名：${evidence.title}` : "    - 题名：待真实检索后补充",
+          evidence.journal ? `    - 期刊：${evidence.journal}` : "    - 期刊：待真实检索后补充",
+          evidence.publication_year ? `    - 年份：${evidence.publication_year}` : "    - 年份：待真实检索后补充",
+          evidence.doi ? `    - DOI：${evidence.doi}` : "    - DOI：待真实检索后补充",
+          evidence.publication_types.length
+            ? `    - 文献类型：${evidence.publication_types.join(" / ")}`
+            : "    - 文献类型：待真实检索后补充",
+          `  - 检索式：${evidence.search_query}`,
+          `    - 摘要：${evidence.evidence_summary}`,
+          `    - 信号：${evidence.recommendation_signal}`,
+          `    - 局限：${evidence.limitation}`,
+        ]),
+        "- 首轮里程碑：",
+        ...item.first_milestones.map((milestone) => `  - ${milestone}`),
         `- 建议期刊：${item.target_journals.join(" / ")}`,
         "",
       ]),
+      "## 候选引用清单",
+      ...(mentorCandidateReferences.length
+        ? mentorCandidateReferences.flatMap(({ cardTitle, evidence }, index) => [
+            `${index + 1}. ${evidence.title ?? evidence.evidence_summary}`,
+            `   - 来源课题：${cardTitle}`,
+            evidence.journal ? `   - 期刊：${evidence.journal}` : "   - 期刊：待补充",
+            evidence.publication_year ? `   - 年份：${evidence.publication_year}` : "   - 年份：待补充",
+            evidence.pmid ? `   - PMID：${evidence.pmid}` : "   - PMID：待补充",
+            evidence.doi ? `   - DOI：${evidence.doi}` : "   - DOI：待补充",
+            evidence.external_url ? `   - 链接：${evidence.external_url}` : "   - 链接：待补充",
+            `   - 复核状态：${formatMentorReviewStatus(evidence.review_status)}`,
+            "",
+          ])
+        : ["- 暂无确认可用的候选引用。"]),
+      "",
       "## 下一步行动",
       ...mentorRecommendationReport.next_steps.map((item) => `- ${item}`),
       "",
@@ -1118,6 +1399,55 @@ function App() {
     try {
       link.href = url;
       link.download = "research-direction-brief.md";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  function handleDownloadWriterOutline() {
+    if (!writerOutlineDraft) {
+      return;
+    }
+
+    const content = [
+      "# Alex Writer 写作提纲",
+      "",
+      `生成时间：${new Date().toLocaleString("zh-CN")}`,
+      selectedProject ? `关联项目：${selectedProject.name} / ${selectedProject.title}` : "关联项目：未指定",
+      protocol?.research_question ? `研究问题：${protocol.research_question}` : "研究问题：待补充",
+      protocol?.primary_endpoint ? `主要终点：${protocol.primary_endpoint}` : "主要终点：待补充",
+      "",
+      "## Introduction 提纲",
+      ...writerOutlineDraft.introPoints.map((point) => `- ${point}`),
+      "",
+      "## Discussion 提纲",
+      ...writerOutlineDraft.discussionPoints.map((point) => `- ${point}`),
+      "",
+      "## 候选引用清单",
+      ...mentorCandidateReferences.flatMap(({ cardTitle, evidence }, index) => [
+        `${index + 1}. ${evidence.title ?? evidence.evidence_summary}`,
+        `   - 来源课题：${cardTitle}`,
+        evidence.journal ? `   - 期刊：${evidence.journal}` : "   - 期刊：待补充",
+        evidence.publication_year ? `   - 年份：${evidence.publication_year}` : "   - 年份：待补充",
+        evidence.pmid ? `   - PMID：${evidence.pmid}` : "   - PMID：待补充",
+        evidence.doi ? `   - DOI：${evidence.doi}` : "   - DOI：待补充",
+        evidence.external_url ? `   - 链接：${evidence.external_url}` : "   - 链接：待补充",
+        "",
+      ]),
+      "## 写作前检查清单",
+      ...writerOutlineDraft.remainingChecks.map((item) => `- ${item}`),
+      "",
+    ].join("\n");
+
+    const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    try {
+      link.href = url;
+      link.download = "alex-writer-outline.md";
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -1293,6 +1623,42 @@ function App() {
       setError(caughtError instanceof Error ? caughtError.message : "研究方案写入失败。");
     } finally {
       setExtractingMessageId(null);
+    }
+  }
+
+  async function handleConfirmMentorRecommendationToProtocol() {
+    if (
+      !selectedProjectId ||
+      !pendingMentorProtocolCard ||
+      applyingMentorCardTitle ||
+      !canEditSelectedProject
+    ) {
+      return;
+    }
+
+    const card = pendingMentorProtocolCard;
+    setApplyingMentorCardTitle(card.title);
+    setError(null);
+
+    try {
+      const savedProtocol = await saveProjectProtocol(
+        selectedProjectId,
+        mentorCardToProtocolUpdate(card),
+      );
+      setProtocol(savedProtocol);
+      setSelectedAgentId("study_planner");
+      setOpenProtocolSections({
+        core: true,
+        criteria: true,
+        analysis: true,
+        submission: true,
+      });
+      setPendingMentorProtocolCard(null);
+      await refreshDataRequirements(selectedProjectId);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "推荐课题写入研究方案失败。");
+    } finally {
+      setApplyingMentorCardTitle(null);
     }
   }
 
@@ -1640,6 +2006,92 @@ function App() {
       "",
       "请输出：1）Results 段落草稿；2）需要回到数据表补充或正式检验的项目清单。",
     ].join("\n");
+  }
+
+  function buildReferenceHandoffMessage(): string {
+    if (!selectedProject || !mentorCandidateReferences.length) {
+      return "";
+    }
+
+    const referenceText = mentorCandidateReferences
+      .map(({ cardTitle, evidence }, index) =>
+        [
+          `${index + 1}. ${evidence.title ?? evidence.evidence_summary}`,
+          `   - 来源课题：${cardTitle}`,
+          `   - 期刊：${evidence.journal ?? "待补充"}`,
+          `   - 年份：${evidence.publication_year ?? "待补充"}`,
+          `   - PMID：${evidence.pmid ?? "待补充"}`,
+          `   - DOI：${evidence.doi ?? "待补充"}`,
+          `   - 文献类型：${evidence.publication_types.join(" / ") || "待补充"}`,
+          `   - 推荐信号：${evidence.recommendation_signal}`,
+          `   - 局限：${evidence.limitation}`,
+        ].join("\n"),
+      )
+      .join("\n");
+
+    return [
+      "请基于以下已经人工标记为“确认可用”的候选引用，生成 SCI 论文 Introduction 和 Discussion 的写作提纲。",
+      "要求：使用简体中文；不要编造未列出的文献、PMID、DOI、作者、样本量或结论；候选引用只能作为写作线索，不能当成已完成系统综述。",
+      "",
+      `项目：${selectedProject.name} - ${selectedProject.title}`,
+      `研究主题：${selectedProject.topic}`,
+      protocol?.research_question ? `研究问题：${protocol.research_question}` : "",
+      protocol?.primary_endpoint ? `主要终点：${protocol.primary_endpoint}` : "",
+      "",
+      "候选引用：",
+      referenceText,
+      "",
+      "请输出：1）Introduction 逻辑提纲；2）Discussion 逻辑提纲；3）每个段落建议引用哪些候选文献；4）仍需补充检索或人工阅读全文确认的项目。",
+    ]
+      .filter(Boolean)
+      .join("\n");
+  }
+
+  async function handleSendReferencesToWriter() {
+    if (!selectedProjectId || !mentorCandidateReferences.length || isWriterDrafting) {
+      return;
+    }
+
+    const handoffMessage = buildReferenceHandoffMessage();
+    if (!handoffMessage) {
+      return;
+    }
+
+    const userMessage: ChatMessage = {
+      id: crypto.randomUUID(),
+      speaker: "user",
+      agentId: "writer",
+      projectId: selectedProjectId,
+      content: "请根据 Mentor 已确认可用的候选引用生成 Introduction / Discussion 写作提纲。",
+    };
+
+    setSelectedAgentId("writer");
+    setMessages((current) => [...current, userMessage]);
+    setIsWriterDrafting(true);
+    setError(null);
+
+    try {
+      const response = await sendChat({
+        agent_id: "writer",
+        project_id: selectedProjectId,
+        message: handoffMessage,
+      });
+
+      const agentMessage: ChatMessage = {
+        id: crypto.randomUUID(),
+        speaker: "agent",
+        agentId: response.agent_id,
+        projectId: response.project_id,
+        agentName: response.agent_name,
+        content: response.reply,
+        suggestedNextActions: response.suggested_next_actions,
+      };
+      setMessages((current) => [...current, agentMessage]);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "引用写作提纲生成失败。");
+    } finally {
+      setIsWriterDrafting(false);
+    }
   }
 
   async function handleSendAnalysisToWriter() {
@@ -3520,6 +3972,19 @@ function App() {
                         </div>
                         <section className="mentor-brief-section">
                           <div className="mentor-section-head">
+                            <strong>资源诊断</strong>
+                            <span>设备、数据和时间边界</span>
+                          </div>
+                        <div className="mentor-strength-list">
+                          {mentorRecommendationReport.resource_diagnosis.map((item) => (
+                            <article className="mentor-strength-item" key={item}>
+                              <p>{item}</p>
+                            </article>
+                          ))}
+                        </div>
+                        </section>
+                        <section className="mentor-brief-section">
+                          <div className="mentor-section-head">
                             <strong>匹配优势</strong>
                             <span>为什么这些方向更现实</span>
                           </div>
@@ -3540,13 +4005,210 @@ function App() {
                           {mentorRecommendationReport.recommendations.map((item) => (
                             <article className="mentor-recommendation-card" key={item.title}>
                               <h4>{item.title}</h4>
+                              <p>{item.research_question}</p>
                               <p>{item.why_fit}</p>
+                              <small>{item.data_pathway}</small>
+                              <small>{item.methods_route}</small>
+                              <small>{item.statistical_plan}</small>
                               <small>{item.innovation_point}</small>
                               <small>{item.feasibility_note}</small>
+                              <div className="mentor-card-list">
+                                <strong>风险提示</strong>
+                                {item.risk_flags.map((risk) => (
+                                  <small key={risk}>{risk}</small>
+                                ))}
+                              </div>
+                              <div className="mentor-evidence-list">
+                                <strong>推荐依据</strong>
+                                {item.evidence_items.map((evidence, evidenceIndex) => (
+                                  <article key={mentorEvidenceKey(item.title, evidenceIndex, evidence)}>
+                                    <div className="mentor-evidence-meta">
+                                      <span>{formatMentorEvidenceStatus(evidence.evidence_status)}</span>
+                                      <small>
+                                        {formatMentorReviewStatus(evidence.review_status)}
+                                      </small>
+                                    </div>
+                                    {evidence.title ? (
+                                      <div className="mentor-evidence-citation">
+                                        <strong>{evidence.title}</strong>
+                                        <small>
+                                          {[evidence.journal, evidence.publication_year, evidence.pmid ? `PMID ${evidence.pmid}` : null]
+                                            .filter(Boolean)
+                                            .join(" · ")}
+                                        </small>
+                                        {evidence.doi ? <small>DOI {evidence.doi}</small> : null}
+                                        {evidence.publication_types.length ? (
+                                          <small>{evidence.publication_types.join(" / ")}</small>
+                                        ) : null}
+                                        {evidence.external_url ? (
+                                          <a href={evidence.external_url} target="_blank" rel="noreferrer">
+                                            查看 PubMed
+                                          </a>
+                                        ) : null}
+                                      </div>
+                                    ) : null}
+                                    <small>{evidence.evidence_summary}</small>
+                                    <code>{evidence.search_query}</code>
+                                    <small>{evidence.recommendation_signal}</small>
+                                    <em>{evidence.limitation}</em>
+                                    <div className="mentor-evidence-review-actions">
+                                      {[
+                                        { value: "unreviewed", label: "待复核" },
+                                        { value: "reviewed", label: "确认可用" },
+                                        { value: "rejected", label: "排除" },
+                                      ].map((option) => (
+                                        <button
+                                          className={
+                                            evidence.review_status === option.value ? "is-active" : undefined
+                                          }
+                                          type="button"
+                                          key={option.value}
+                                          onClick={() =>
+                                            handleMentorEvidenceReview(
+                                              item.title,
+                                              evidenceIndex,
+                                              evidence,
+                                              option.value,
+                                            )
+                                          }
+                                        >
+                                          {option.label}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </article>
+                                ))}
+                              </div>
+                              <div className="mentor-card-list">
+                                <strong>首轮里程碑</strong>
+                                {item.first_milestones.map((milestone) => (
+                                  <small key={milestone}>{milestone}</small>
+                                ))}
+                              </div>
                               <span>{item.target_journals.join(" / ")}</span>
+                              <button
+                                className="mentor-card-action"
+                                type="button"
+                                onClick={() => setPendingMentorProtocolCard(item)}
+                                disabled={
+                                  applyingMentorCardTitle !== null ||
+                                  isProtocolSaving ||
+                                  !canEditSelectedProject
+                                }
+                                title="写入研究方案"
+                              >
+                                {applyingMentorCardTitle === item.title ? (
+                                  <Loader2 aria-hidden="true" className="spin" size={15} />
+                                ) : (
+                                  <ClipboardCheck aria-hidden="true" size={15} />
+                                )}
+                                <span>预览写入</span>
+                              </button>
                             </article>
                           ))}
                         </div>
+                        </section>
+                        {pendingMentorProtocolCard && pendingMentorProtocolUpdate ? (
+                          <section className="mentor-protocol-preview" aria-label="写入研究方案预览">
+                            <div className="mentor-section-head">
+                              <strong>写入研究方案预览</strong>
+                              <span>{protocolHasContent ? "将覆盖当前方案" : "当前方案为空"}</span>
+                            </div>
+                            <div className="mentor-preview-warning">
+                              {protocolHasContent
+                                ? "确认后会用该推荐卡生成的新方案覆盖当前 Project Protocol。"
+                                : "确认后会把该推荐卡写入当前项目的 Project Protocol。"}
+                            </div>
+                            <div className="mentor-preview-grid">
+                              <article>
+                                <strong>研究问题</strong>
+                                <p>{pendingMentorProtocolUpdate.research_question}</p>
+                              </article>
+                              <article>
+                                <strong>数据需求</strong>
+                                <p>{pendingMentorProtocolUpdate.data_requirements}</p>
+                              </article>
+                              <article>
+                                <strong>统计路线</strong>
+                                <p>{pendingMentorProtocolUpdate.statistical_plan}</p>
+                              </article>
+                              <article>
+                                <strong>Rhea 里程碑</strong>
+                                <p>{pendingMentorProtocolUpdate.rhea_milestones}</p>
+                              </article>
+                            </div>
+                            <div className="mentor-preview-actions">
+                              <button
+                                type="button"
+                                onClick={() => setPendingMentorProtocolCard(null)}
+                                disabled={applyingMentorCardTitle !== null}
+                              >
+                                取消
+                              </button>
+                              <button
+                                type="button"
+                                onClick={handleConfirmMentorRecommendationToProtocol}
+                                disabled={applyingMentorCardTitle !== null || !canEditSelectedProject}
+                              >
+                                {applyingMentorCardTitle === pendingMentorProtocolCard.title ? (
+                                  <Loader2 aria-hidden="true" className="spin" size={15} />
+                                ) : (
+                                  <ClipboardCheck aria-hidden="true" size={15} />
+                                )}
+                                <span>确认写入</span>
+                              </button>
+                            </div>
+                          </section>
+                        ) : null}
+                        <section className="mentor-brief-section mentor-reference-panel">
+                          <div className="mentor-section-head">
+                            <strong>候选引用清单</strong>
+                            <span>{mentorCandidateReferences.length} 条确认可用</span>
+                          </div>
+                          {mentorCandidateReferences.length ? (
+                            <div className="mentor-reference-list">
+                              {mentorCandidateReferences.map(({ cardTitle, evidence }, index) => (
+                                <article
+                                  className="mentor-reference-item"
+                                  key={`${cardTitle}-${evidence.pmid ?? evidence.search_query}-${index}`}
+                                >
+                                  <span>{index + 1}</span>
+                                  <div>
+                                    <strong>{evidence.title ?? evidence.evidence_summary}</strong>
+                                    <small>
+                                      {[evidence.journal, evidence.publication_year, evidence.pmid ? `PMID ${evidence.pmid}` : null]
+                                        .filter(Boolean)
+                                        .join(" · ") || "来源信息待补充"}
+                                    </small>
+                                    {evidence.doi ? <small>DOI {evidence.doi}</small> : null}
+                                    <small>来源课题：{cardTitle}</small>
+                                  </div>
+                                  {evidence.external_url ? (
+                                    <a href={evidence.external_url} target="_blank" rel="noreferrer">
+                                      PubMed
+                                    </a>
+                                  ) : null}
+                                </article>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="mentor-reference-empty">
+                              将推荐依据标记为“确认可用”后，会在这里汇总为候选引用。
+                            </p>
+                          )}
+                          <button
+                            className="mentor-reference-handoff"
+                            type="button"
+                            onClick={handleSendReferencesToWriter}
+                            disabled={!mentorCandidateReferences.length || isWriterDrafting}
+                          >
+                            {isWriterDrafting ? (
+                              <Loader2 aria-hidden="true" className="spin" size={16} />
+                            ) : (
+                              <FileText aria-hidden="true" size={16} />
+                            )}
+                            <span>交给 Alex Writer</span>
+                          </button>
                         </section>
                         <section className="mentor-brief-section mentor-next-steps">
                           <div className="mentor-section-head">
@@ -3564,7 +4226,120 @@ function App() {
                   </section>
                 ) : null}
 
-                {!shouldShowMentorWorkspace && !shouldShowProtocolWorkspace && !shouldShowDataWorkspace ? (
+                {shouldShowWriterWorkspace ? (
+                  <section className="writer-panel" aria-label="Alex Writer 写作工作区">
+                    <div className="writer-head">
+                      <div>
+                        <p className="eyebrow">Alex Writer</p>
+                        <h3>写作工作区</h3>
+                      </div>
+                      <div className="writer-head-actions">
+                        <button type="button" onClick={handleDownloadWriterOutline} disabled={!writerOutlineDraft}>
+                          <Download aria-hidden="true" size={15} />
+                          <span>导出提纲</span>
+                        </button>
+                        <FileText aria-hidden="true" size={20} />
+                      </div>
+                    </div>
+
+                    <div className="writer-outline-grid">
+                      <section className="writer-outline-card">
+                        <div className="mentor-section-head">
+                          <strong>Introduction 提纲</strong>
+                          <span>{writerOutlineDraft ? "来自候选引用" : "等待候选引用"}</span>
+                        </div>
+                        {writerOutlineDraft ? (
+                          <div className="writer-outline-list">
+                            {writerOutlineDraft.introPoints.map((point) => (
+                              <p key={point}>{point}</p>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="writer-empty">
+                            先在 Mentor 中将候选文献标记为“确认可用”，这里会生成 Introduction 提纲。
+                          </p>
+                        )}
+                      </section>
+
+                      <section className="writer-outline-card">
+                        <div className="mentor-section-head">
+                          <strong>Discussion 提纲</strong>
+                          <span>{writerOutlineDraft ? "待人工扩写" : "等待候选引用"}</span>
+                        </div>
+                        {writerOutlineDraft ? (
+                          <div className="writer-outline-list">
+                            {writerOutlineDraft.discussionPoints.map((point) => (
+                              <p key={point}>{point}</p>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="writer-empty">
+                            确认可用文献后，系统会整理 Discussion 的比较、解释和局限主线。
+                          </p>
+                        )}
+                      </section>
+                    </div>
+
+                    <section className="writer-reference-card">
+                      <div className="mentor-section-head">
+                        <strong>候选引用</strong>
+                        <span>{mentorCandidateReferences.length} 条确认可用</span>
+                      </div>
+                      {mentorCandidateReferences.length ? (
+                        <div className="writer-reference-list">
+                          {mentorCandidateReferences.map(({ cardTitle, evidence }, index) => (
+                            <article key={`${cardTitle}-${evidence.pmid ?? evidence.search_query}-${index}`}>
+                              <strong>{evidence.title ?? evidence.evidence_summary}</strong>
+                              <small>
+                                {[evidence.journal, evidence.publication_year, evidence.pmid ? `PMID ${evidence.pmid}` : null]
+                                  .filter(Boolean)
+                                  .join(" · ") || "来源信息待补充"}
+                              </small>
+                              <small>用于：{cardTitle}</small>
+                            </article>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="writer-empty">暂无确认可用的候选引用。</p>
+                      )}
+                    </section>
+
+                    <section className="writer-reference-card">
+                      <div className="mentor-section-head">
+                        <strong>仍需补充</strong>
+                        <span>写作前检查</span>
+                      </div>
+                      {writerOutlineDraft ? (
+                        <div className="writer-outline-list">
+                          {writerOutlineDraft.remainingChecks.map((item) => (
+                            <p key={item}>{item}</p>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="writer-empty">确认候选引用后会生成检查清单。</p>
+                      )}
+                    </section>
+
+                    <button
+                      className="writer-handoff-button"
+                      type="button"
+                      onClick={handleSendReferencesToWriter}
+                      disabled={!mentorCandidateReferences.length || isWriterDrafting}
+                    >
+                      {isWriterDrafting ? (
+                        <Loader2 aria-hidden="true" className="spin" size={16} />
+                      ) : (
+                        <FileText aria-hidden="true" size={16} />
+                      )}
+                      <span>生成聊天草稿</span>
+                    </button>
+                  </section>
+                ) : null}
+
+                {!shouldShowMentorWorkspace &&
+                !shouldShowProtocolWorkspace &&
+                !shouldShowDataWorkspace &&
+                !shouldShowWriterWorkspace ? (
                   <section className="expert-placeholder-panel" aria-label="专家功能提示">
                     <div>
                       <p className="eyebrow">{selectedAgent?.role_name ?? "专家功能"}</p>

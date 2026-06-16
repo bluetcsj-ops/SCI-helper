@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+from app.agents.mentor_evidence_service import mentor_evidence_service
 from app.agents.mentor_models import (
     MentorQuestionnaireRequest,
     MentorRecommendationCard,
@@ -166,6 +167,7 @@ class MentorService:
         recommendations = [self._build_card(topic, payload) for topic in selected_topics]
         return MentorRecommendationResponse(
             profile_summary=self._build_profile_summary(payload, strengths),
+            resource_diagnosis=self._build_resource_diagnosis(payload),
             matched_strengths=strengths,
             recommendations=recommendations,
             next_steps=[
@@ -189,7 +191,31 @@ class MentorService:
             strengths.append(f"当前已明确可用数据：{', '.join(payload.data_types[:4])}。")
         else:
             strengths.append("当前可用数据类型还不够明确，先做数据摸底会更稳。")
+        if payload.publication_experience.strip():
+            strengths.append("已有发文或投稿经验可作为写作节奏基础，建议从可快速形成 Methods/Results 的题目切入。")
+        else:
+            strengths.append("发文经验尚未明确，建议优先选择结构清楚、统计边界简单的首篇 SCI 题目。")
         return strengths
+
+    def _build_resource_diagnosis(self, payload: MentorQuestionnaireRequest) -> list[str]:
+        diagnosis: list[str] = []
+        equipment = payload.equipment_summary.strip()
+        systems = payload.planning_systems.strip()
+        if equipment:
+            diagnosis.append(f"设备资源：已提供“{equipment}”，推荐题目会优先贴合现有治疗平台。")
+        else:
+            diagnosis.append("设备资源：尚未填写具体设备，推荐题目会先按通用放疗物理流程保守匹配。")
+        if systems:
+            diagnosis.append(f"计划系统：已提供“{systems}”，可围绕计划导出、剂量学指标和流程效率设计研究。")
+        else:
+            diagnosis.append("计划系统：尚未填写，后续需要补充 TPS、QA 和影像系统名称以缩小选题。")
+        if payload.weekly_hours >= 8:
+            diagnosis.append("时间投入：每周时间较充足，可承担数据清洗、统计复核和多轮改稿。")
+        elif payload.weekly_hours >= 3:
+            diagnosis.append("时间投入：适合 3-6 个月内完成单中心回顾性或流程评估型课题。")
+        else:
+            diagnosis.append("时间投入：偏紧，应优先选择数据已导出、终点单一、图表数量少的题目。")
+        return diagnosis
 
     def _build_profile_summary(
         self,
@@ -217,16 +243,91 @@ class MentorService:
             if payload.programming_level in {"intermediate", "advanced"}
             else "建议把方法学控制在剂量学对比或流程评估范围内。"
         )
+        topic_plan = self._topic_plan(topic.topic_id, payload)
         return MentorRecommendationCard(
             title=self._build_title(topic.topic_id),
+            research_question=topic_plan["research_question"],
             why_fit=(
                 f"该方向与“{payload.equipment_summary.strip() or '当前设备条件'}”和"
                 f"“{payload.planning_systems.strip() or '当前计划系统'}”更容易对接，同时可以直接利用 {data_text}。"
             ),
+            data_pathway=topic_plan["data_pathway"],
+            methods_route=topic_plan["methods_route"],
+            statistical_plan=topic_plan["statistical_plan"],
             innovation_point=f"{topic.summary} {programming_note}",
             feasibility_note=f"按每周 {payload.weekly_hours} 小时估计，先做单中心回顾性首轮分析通常更可控。",
+            risk_flags=self._risk_flags(topic.topic_id, payload),
+            first_milestones=[
+                "第 1 周：锁定病例范围、主要终点和最小字段清单。",
+                "第 2-3 周：导出 10-20 例脱敏样例数据并完成字段质控。",
+                "第 4-6 周：完成首轮描述统计、图表草案和 Methods/Results 骨架。",
+            ],
+            evidence_items=mentor_evidence_service.get_topic_evidence(topic.topic_id),
             target_journals=TOPIC_JOURNALS.get(topic.topic_id, ["JACMP", "Medical Physics"]),
         )
+
+    def _topic_plan(self, topic_id: str, payload: MentorQuestionnaireRequest) -> dict[str, str]:
+        systems = payload.planning_systems.strip() or "现有计划系统"
+        data_text = ", ".join(payload.data_types[:4]) if payload.data_types else "计划、剂量和病例结局数据"
+        default_plan = {
+            "research_question": "现有放疗流程中的关键物理指标是否可以解释计划质量、效率或临床执行差异？",
+            "data_pathway": f"从 {systems} 导出 {data_text}，先建立病例级脱敏 CSV 与剂量学指标表。",
+            "methods_route": "采用单中心回顾性队列，定义主要终点、纳入排除标准和可复现的数据处理脚本。",
+            "statistical_plan": "先做描述统计和分组比较；正式检验前由 Dr. Data Lin 完成隐私、缺失值和统计假设确认。",
+        }
+        plans = {
+            "mr_linac": {
+                "research_question": "在线自适应放疗是否能在特定病种中改善靶区覆盖、OAR 保护或计划通过效率？",
+                "data_pathway": f"从 {systems} 汇总原计划、自适应计划、累积剂量、分次数量、治疗部位和 OAR 指标。",
+                "methods_route": "按病种建立自适应前后配对队列，比较计划质量、在线调整幅度和流程耗时。",
+                "statistical_plan": "优先考虑配对设计；连续剂量学指标可用配对 t 或 Wilcoxon，三次及以上时间点需外部复核重复测量模型。",
+            },
+            "ai_planning_qa": {
+                "research_question": "计划参数、QA 指标或 log files 能否提前识别高风险计划或异常质控结果？",
+                "data_pathway": f"整合 {data_text}，形成计划级特征表、QA 结果标签和设备/部位分层变量。",
+                "methods_route": "先做规则型风险分层和可解释特征筛选，再评估轻量模型或阈值策略。",
+                "statistical_plan": "先报告描述统计、组间差异和效应量；预测类结果需补充交叉验证、校准和外部复核。",
+            },
+            "radiomics": {
+                "research_question": "放疗前影像或剂量分布特征是否与毒性、局控或计划复杂度存在可解释关联？",
+                "data_pathway": f"准备脱敏影像派生特征、剂量指标、治疗部位和结局字段，原始影像暂不进入当前原型。",
+                "methods_route": "从少量临床问题出发，限制特征数量，优先做可解释特征和临床变量联合分析。",
+                "statistical_plan": "需要控制多重比较和过拟合；当前原型只给候选检验，正式建模应在外部统计环境复核。",
+            },
+            "automation": {
+                "research_question": "自动化计划或知识库优化是否能稳定提升计划一致性、减少人工计划时间或降低返工率？",
+                "data_pathway": f"从 {systems} 导出人工计划和自动化计划的剂量学指标、计划时间、返工记录和部位信息。",
+                "methods_route": "采用前后对照或配对计划对比，定义计划质量评分、效率指标和人工复核标准。",
+                "statistical_plan": "配对计划可用配对检验；多个部位或多个计划策略需预先定义分层并控制多重比较。",
+            },
+            "sbrt": {
+                "research_question": "SRS/SBRT 计划中靶区覆盖、剂量梯度和 OAR 保护之间是否存在可优化的剂量学平衡？",
+                "data_pathway": f"汇总靶区体积、处方剂量、剂量梯度、适形指数、OAR Dmax/Dmean 和治疗部位。",
+                "methods_route": "按部位或计划策略分层，比较关键剂量学指标并寻找异常计划模式。",
+                "statistical_plan": "多组剂量指标可先做 ANOVA/Welch ANOVA/Kruskal-Wallis 候选判断，正式结果需人工确认假设。",
+            },
+            "motion": {
+                "research_question": "运动管理策略是否降低靶区边界不确定性、剂量偏差或治疗执行时间？",
+                "data_pathway": f"整理 4DCT/CBCT、门控或 tracking 相关指标、计划剂量参数和治疗执行记录。",
+                "methods_route": "围绕肺部或腹部 SBRT 建立流程评估队列，比较不同运动管理策略下的剂量学与效率指标。",
+                "statistical_plan": "按策略分组做描述统计和组间比较；若同一患者多次测量，应优先标记为重复测量设计。",
+            },
+        }
+        return plans.get(topic_id, default_plan)
+
+    def _risk_flags(self, topic_id: str, payload: MentorQuestionnaireRequest) -> list[str]:
+        risks: list[str] = []
+        if not payload.data_types:
+            risks.append("数据类型未明确，可能导致题目范围过大。")
+        if payload.weekly_hours < 3:
+            risks.append("每周可投入时间较少，建议压缩为单终点、单图表主线。")
+        if topic_id in {"flash", "particle"}:
+            risks.append("该方向对专门设备或中心资源依赖较强，需先确认真实可用数据。")
+        if topic_id == "radiomics" and payload.programming_level in {"none", "basic"}:
+            risks.append("影像组学对编程和建模要求较高，建议先找合作统计或改为剂量学问题。")
+        if not payload.publication_experience.strip():
+            risks.append("缺少既往发文经验信息，首轮目标期刊应保持务实。")
+        return risks or ["主要风险可控，关键是尽快用脱敏样例数据验证字段是否齐全。"]
 
     def _build_title(self, topic_id: str) -> str:
         titles = {

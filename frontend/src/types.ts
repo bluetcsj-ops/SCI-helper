@@ -51,17 +51,68 @@ export interface MentorTrendSnapshot {
 
 export interface MentorRecommendationCard {
   title: string;
+  research_question: string;
   why_fit: string;
+  data_pathway: string;
+  methods_route: string;
+  statistical_plan: string;
   innovation_point: string;
   feasibility_note: string;
+  risk_flags: string[];
+  first_milestones: string[];
+  evidence_items: MentorEvidenceItem[];
   target_journals: string[];
+}
+
+export interface MentorEvidenceItem {
+  source_type: string;
+  evidence_status: string;
+  retrieved_at?: string | null;
+  external_url?: string | null;
+  pmid?: string | null;
+  title?: string | null;
+  journal?: string | null;
+  publication_year?: string | null;
+  doi?: string | null;
+  publication_types: string[];
+  review_status: string;
+  search_query: string;
+  evidence_summary: string;
+  recommendation_signal: string;
+  limitation: string;
 }
 
 export interface MentorRecommendationResponse {
   profile_summary: string;
+  resource_diagnosis: string[];
   matched_strengths: string[];
   recommendations: MentorRecommendationCard[];
   next_steps: string[];
+}
+
+export interface MentorEvidenceReview {
+  id: number;
+  project_id: string;
+  evidence_key: string;
+  card_title: string;
+  evidence_index: number;
+  pmid?: string | null;
+  doi?: string | null;
+  title?: string | null;
+  search_query: string;
+  review_status: string;
+  updated_at: string;
+}
+
+export interface MentorEvidenceReviewUpdate {
+  evidence_key: string;
+  card_title: string;
+  evidence_index: number;
+  pmid?: string | null;
+  doi?: string | null;
+  title?: string | null;
+  search_query: string;
+  review_status: string;
 }
 
 export interface UserProfile {

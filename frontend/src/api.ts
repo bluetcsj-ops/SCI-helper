@@ -12,6 +12,8 @@ import type {
   FormalTestReport,
   DashboardSummary,
   ItemStatus,
+  MentorEvidenceReview,
+  MentorEvidenceReviewUpdate,
   MentorRecommendationResponse,
   MentorTrendSnapshot,
   Project,
@@ -74,6 +76,20 @@ export function getMentorRecommendations(payload: {
 }): Promise<MentorRecommendationResponse> {
   return request<MentorRecommendationResponse>("/api/mentor/recommendations", {
     method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function getMentorEvidenceReviews(projectId: string): Promise<MentorEvidenceReview[]> {
+  return request<MentorEvidenceReview[]>(`/api/projects/${projectId}/mentor/evidence-reviews`);
+}
+
+export function saveMentorEvidenceReview(
+  projectId: string,
+  payload: MentorEvidenceReviewUpdate,
+): Promise<MentorEvidenceReview> {
+  return request<MentorEvidenceReview>(`/api/projects/${projectId}/mentor/evidence-reviews`, {
+    method: "PUT",
     body: JSON.stringify(payload),
   });
 }

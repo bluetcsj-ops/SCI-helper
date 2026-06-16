@@ -1,6 +1,6 @@
 # 项目交接记录
 
-更新时间：2026-06-15
+更新时间：2026-06-17
 
 ## 项目定位
 
@@ -13,6 +13,24 @@
 - 新增独立进度总表：`docs/PROGRESS_STATUS.md`
   - 汇总 Prof. RadOnc Mentor、Rhea、Dr. Data Lin、Alex Writer、审稿官和平台基础设施的已完成/未完成状态
   - 明确说明 Dr. Data Lin 仍有高阶统计缺口，但不构成当前全局主阻塞
+- Prof. RadOnc Mentor 继续增强为本地可用闭环：
+  - 推荐响应新增资源诊断
+  - 课题推荐卡新增研究问题、数据路径、方法路线、统计建议、风险提示和首轮里程碑
+  - 前端虚拟导师工作区展示完整推荐卡
+  - Markdown《研究方向建议书》同步导出完整路线
+  - 推荐卡新增“写入研究方案”按钮，可将选题路线保存为当前项目的 Project Protocol，并刷新 Dr. Data Lin 数据需求
+  - 写入前新增关键字段预览和覆盖确认，避免误覆盖已有 Project Protocol
+  - 新增本地文献证据模板：推荐卡展示检索式、证据摘要、推荐信号和局限性，并同步导出到 Markdown 建议书
+  - 新增独立 `mentor_evidence_service.py`，证据项已标注 `local_template` 状态、检索时间和外部链接预留字段，后续可替换为 PubMed / Crossref 实现
+  - 新增 PubMed provider 和环境开关 `MENTOR_EVIDENCE_PROVIDER`；`pubmed` 模式会调用 NCBI ESearch / ESummary 解析 PMID、题名、期刊、年份和 DOI，失败时返回 `external_pending` 与 PubMed 搜索链接
+  - PubMed provider 增加质量保护：过滤无 PMID/无题名结果，优先近 7 年候选文献，保留文献类型和 `unreviewed` 人工复核状态
+  - 前端新增候选文献复核按钮：待复核、确认可用、排除；状态可导出到 Markdown，并已持久化到项目级 SQLite 记录
+  - Mentor 候选文献复核状态已新增项目级 SQLite 持久化；重新生成推荐卡后，可按 PMID / DOI / 本地证据键恢复“待复核 / 确认可用 / 排除”
+  - 前端新增候选引用清单：自动汇总“确认可用”的推荐依据，展示题名、期刊、年份、PMID、DOI、来源课题和 PubMed 链接，并同步导出到 Markdown
+  - 候选引用清单可交给 Alex Writer，生成 Introduction / Discussion 写作提纲、段落引用建议和仍需补充检索/阅读全文确认的项目
+  - Alex Writer 新增写作工作区，基于“确认可用”的候选引用展示 Introduction / Discussion 本地提纲、候选引用和写作前检查清单
+  - Alex Writer 写作工作区可导出 `alex-writer-outline.md`，包含项目研究问题、主要终点、Introduction / Discussion 提纲、候选引用和写作前检查清单
+  - 当前仍未完成联网环境下的真实 PubMed 实测、速率限制策略、人工质量复核流程和 Crossref 自动证据检索；工具沙箱内真实请求会触发 WinError 10013，联网审批未返回
 - Prof. RadOnc Mentor 已补齐最小可用版本（MVP）：
   - 后端新增 `GET /api/mentor/trends`
   - 后端新增 `POST /api/mentor/recommendations`

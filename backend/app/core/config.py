@@ -23,6 +23,17 @@ class Settings:
     deepseek_model: str = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-pro")
     openai_api_key: str | None = os.getenv("OPENAI_API_KEY")
     openai_model: str = os.getenv("OPENAI_MODEL", "gpt-4o")
+    mentor_evidence_provider: str = os.getenv("MENTOR_EVIDENCE_PROVIDER", "local")
+    pubmed_base_url: str = os.getenv(
+        "PUBMED_BASE_URL",
+        "https://eutils.ncbi.nlm.nih.gov/entrez/eutils",
+    )
+    pubmed_api_key: str | None = os.getenv("PUBMED_API_KEY")
+    pubmed_email: str | None = os.getenv("PUBMED_EMAIL")
+    mentor_pubmed_retmax: int = int(os.getenv("MENTOR_PUBMED_RETMAX", "3"))
+    mentor_evidence_timeout_seconds: float = float(
+        os.getenv("MENTOR_EVIDENCE_TIMEOUT_SECONDS", "6"),
+    )
     cors_origins: list[str] = None
 
     def __post_init__(self) -> None:

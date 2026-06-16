@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
@@ -180,3 +180,27 @@ class DataAuditLogRecord(Base):
     summary: Mapped[str] = mapped_column(Text, nullable=False)
     raw_data_saved: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class MentorEvidenceReviewRecord(Base):
+    __tablename__ = "mentor_evidence_reviews"
+    __table_args__ = (
+        UniqueConstraint("project_id", "evidence_key", name="uq_mentor_evidence_review_project_key"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), nullable=False)
+    evidence_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    card_title: Mapped[str] = mapped_column(Text, nullable=False)
+    evidence_index: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    pmid: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    doi: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    title: Mapped[str | None] = mapped_column(Text, nullable=True)
+    search_query: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    review_status: Mapped[str] = mapped_column(String(24), nullable=False, default="unreviewed")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False,
+    )

@@ -31,16 +31,67 @@ class MentorQuestionnaireRequest(BaseModel):
     interest_topics: list[str] = Field(default_factory=list)
 
 
+class MentorEvidenceItem(BaseModel):
+    source_type: str
+    evidence_status: str = "local_template"
+    retrieved_at: str | None = None
+    external_url: str | None = None
+    pmid: str | None = None
+    title: str | None = None
+    journal: str | None = None
+    publication_year: str | None = None
+    doi: str | None = None
+    publication_types: list[str] = Field(default_factory=list)
+    review_status: str = "unreviewed"
+    search_query: str
+    evidence_summary: str
+    recommendation_signal: str
+    limitation: str
+
+
 class MentorRecommendationCard(BaseModel):
     title: str
+    research_question: str
     why_fit: str
+    data_pathway: str
+    methods_route: str
+    statistical_plan: str
     innovation_point: str
     feasibility_note: str
+    risk_flags: list[str] = Field(default_factory=list)
+    first_milestones: list[str] = Field(default_factory=list)
+    evidence_items: list[MentorEvidenceItem] = Field(default_factory=list)
     target_journals: list[str] = Field(default_factory=list)
 
 
 class MentorRecommendationResponse(BaseModel):
     profile_summary: str
+    resource_diagnosis: list[str] = Field(default_factory=list)
     matched_strengths: list[str] = Field(default_factory=list)
     recommendations: list[MentorRecommendationCard] = Field(default_factory=list)
     next_steps: list[str] = Field(default_factory=list)
+
+
+class MentorEvidenceReviewUpdate(BaseModel):
+    evidence_key: str
+    card_title: str
+    evidence_index: int = 0
+    pmid: str | None = None
+    doi: str | None = None
+    title: str | None = None
+    search_query: str = ""
+    review_status: str
+
+
+class MentorEvidenceReview(BaseModel):
+    id: int
+    project_id: str
+    evidence_key: str
+    card_title: str
+    evidence_index: int
+    pmid: str | None = None
+    doi: str | None = None
+    title: str | None = None
+    search_query: str
+    review_status: str
+    updated_at: str

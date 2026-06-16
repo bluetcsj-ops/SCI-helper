@@ -1,5 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 
+from app.agents.mentor_models import MentorEvidenceReview, MentorEvidenceReviewUpdate
+from app.agents.mentor_reviews import mentor_evidence_review_repository
 from app.projects.models import (
     Project,
     ProjectPlanDraft,
@@ -125,6 +127,35 @@ def extract_project_protocol(
         raise HTTPException(status_code=400, detail="Source text is required")
 
     return protocol_extractor.extract_and_save(project=project, source_text=request.source_text)
+
+
+@router.get("/{project_id}/mentor/evidence-reviews", response_model=list[MentorEvidenceReview])
+def list_mentor_evidence_reviews(
+    project_id: str,
+    current_user: UserProfile = Depends(get_current_user),
+) -> list[MentorEvidenceReview]:
+    project = project_repository.get_project(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    ensure_project_access(project_id, current_user, ProjectAccessLevel.viewer)
+    return mentor_evidence_review_repository.list_reviews(project_id)
+
+
+@router.put("/{project_id}/mentor/evidence-reviews", response_model=MentorEvidenceReview)
+def save_mentor_evidence_review(
+    project_id: str,
+    request: MentorEvidenceReviewUpdate,
+    current_user: UserProfile = Depends(get_current_user),
+) -> MentorEvidenceReview:
+    project = project_repository.get_project(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    ensure_project_access(project_id, current_user, ProjectAccessLevel.editor)
+
+    try:
+        return mentor_evidence_review_repository.upsert_review(project_id=project_id, payload=request)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/{project_id}/plan/drafts", response_model=list[ProjectPlanDraft])
