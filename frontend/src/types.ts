@@ -29,6 +29,41 @@ export interface AgentProfile {
   is_consultant: boolean;
 }
 
+export interface MentorTrendPoint {
+  year: number;
+  publication_count: number;
+}
+
+export interface MentorTrendItem {
+  topic_id: string;
+  title: string;
+  heat_label: string;
+  summary: string;
+  recent_counts: MentorTrendPoint[];
+  forecast_note: string;
+}
+
+export interface MentorTrendSnapshot {
+  generated_at: string;
+  trends: MentorTrendItem[];
+  recommended_focus: string;
+}
+
+export interface MentorRecommendationCard {
+  title: string;
+  why_fit: string;
+  innovation_point: string;
+  feasibility_note: string;
+  target_journals: string[];
+}
+
+export interface MentorRecommendationResponse {
+  profile_summary: string;
+  matched_strengths: string[];
+  recommendations: MentorRecommendationCard[];
+  next_steps: string[];
+}
+
 export interface UserProfile {
   id: string;
   display_name: string;
@@ -278,6 +313,21 @@ export interface FormalTestConfirmation {
   notes: string;
 }
 
+export interface PairwiseComparisonResult {
+  group_a: string;
+  group_b: string;
+  test_name: string;
+  status: string;
+  statistic?: number | null;
+  degrees_of_freedom?: number | null;
+  p_value?: number | null;
+  adjusted_p_value?: number | null;
+  correction_method: string;
+  effect_size?: number | null;
+  interpretation: string;
+  warnings: string[];
+}
+
 export interface FormalTestResult {
   outcome_column: string;
   group_column?: string | null;
@@ -285,12 +335,14 @@ export interface FormalTestResult {
   status: string;
   statistic?: number | null;
   degrees_of_freedom?: number | null;
+  denominator_degrees_of_freedom?: number | null;
   p_value?: number | null;
   effect_size?: number | null;
   group_count: number;
   group_labels: string[];
   interpretation: string;
   warnings: string[];
+  pairwise_results?: PairwiseComparisonResult[];
 }
 
 export interface FormalTestReport {

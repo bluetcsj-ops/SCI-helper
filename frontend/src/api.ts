@@ -12,6 +12,8 @@ import type {
   FormalTestReport,
   DashboardSummary,
   ItemStatus,
+  MentorRecommendationResponse,
+  MentorTrendSnapshot,
   Project,
   ProjectAccessPolicy,
   ProjectPlanDraft,
@@ -23,6 +25,18 @@ import type {
 
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, "") || "http://localhost:8000";
+
+export interface FormalTestOptions {
+  pairedTest?: boolean;
+  pairedDataLayout?: "wide" | "long";
+  pairedAnalysis?: "paired_t" | "friedman" | "rm_anova";
+  pairedSubjectColumn?: string;
+  pairedConditionColumn?: string;
+  pairedConditionA?: string;
+  pairedConditionB?: string;
+  pairedConditions?: string[];
+  multiplicityCorrection?: "holm" | "fdr";
+}
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
@@ -43,6 +57,25 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
 export function getDashboard(): Promise<DashboardSummary> {
   return request<DashboardSummary>("/api/dashboard/");
+}
+
+export function getMentorTrendSnapshot(): Promise<MentorTrendSnapshot> {
+  return request<MentorTrendSnapshot>("/api/mentor/trends");
+}
+
+export function getMentorRecommendations(payload: {
+  equipment_summary: string;
+  planning_systems: string;
+  programming_level: string;
+  data_types: string[];
+  weekly_hours: number;
+  publication_experience: string;
+  interest_topics: string[];
+}): Promise<MentorRecommendationResponse> {
+  return request<MentorRecommendationResponse>("/api/mentor/recommendations", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
 export function getCurrentUser(): Promise<UserProfile> {
@@ -193,10 +226,15 @@ export async function uploadFormalTestReport(
   groupColumn: string,
   outcomeColumns: string[],
   confirmation: FormalTestConfirmation,
+  options: FormalTestOptions = {},
 ): Promise<FormalTestReport> {
   const params = new URLSearchParams({
     file_name: file.name,
     outcome_columns: outcomeColumns.join(","),
+    paired_test: String(options.pairedTest ?? false),
+    paired_data_layout: options.pairedDataLayout ?? "wide",
+    paired_analysis: options.pairedAnalysis ?? "paired_t",
+    multiplicity_correction: options.multiplicityCorrection ?? "holm",
     confirmed_by: confirmation.confirmed_by,
     design_confirmed: String(confirmation.design_confirmed),
     endpoints_confirmed: String(confirmation.endpoints_confirmed),
@@ -208,6 +246,21 @@ export async function uploadFormalTestReport(
   });
   if (groupColumn) {
     params.set("group_column", groupColumn);
+  }
+  if (options.pairedSubjectColumn) {
+    params.set("paired_subject_column", options.pairedSubjectColumn);
+  }
+  if (options.pairedConditionColumn) {
+    params.set("paired_condition_column", options.pairedConditionColumn);
+  }
+  if (options.pairedConditionA) {
+    params.set("paired_condition_a", options.pairedConditionA);
+  }
+  if (options.pairedConditionB) {
+    params.set("paired_condition_b", options.pairedConditionB);
+  }
+  if (options.pairedConditions?.length) {
+    params.set("paired_conditions", options.pairedConditions.join(","));
   }
 
   const response = await fetch(

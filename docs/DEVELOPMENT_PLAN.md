@@ -67,10 +67,10 @@
 - 后端增加演示用户、项目访问授权和 `viewer/editor/owner` 权限边界。
 - 前端显示当前用户和当前项目权限；只读项目会禁用修改、上传和保存类操作。
 - 增加正式假设检验执行前的人工确认流程；确认项缺失、隐私风险或复杂设计会阻止执行并写入审计日志。
-- 当前正式检验原型支持两组数值结局的 Welch t 检验，结果可随分析记录保存并交给 Alex Writer。
+- 当前正式检验原型支持两组独立样本数值结局的 Welch t 检验、宽表两列配对测量和长表 `subject_id + condition + outcome` 两条件配对 t 检验、长表三条件及以上重复测量 Friedman 检验，以及多组独立样本数值结局的单因素 ANOVA / Welch ANOVA / Kruskal-Wallis 检验；事后比较分别提供 Tukey HSD、Games-Howell、Dunn 和配对秩和风格结果，并支持 Holm-Bonferroni 或 Benjamini-Hochberg FDR 校正；安装 SciPy 后会优先使用 SciPy 的 t/F/卡方/正态分布、studentized range、Friedman 和 Wilcoxon 计算路径，未安装时保留原型兜底近似。
 - 已确认当前使用场景为单用户本地工具，因此不启用登录、SSO 和成员管理页面。
 
 ### 下一步
 
-- 扩展更多正式检验类型，例如多组 ANOVA、非参数检验、配对设计和多重比较校正。
+- 继续增强正式统计可信度，例如重复测量 ANOVA、混合效应模型，以及 Dunn 检验的专用库复核。
 - 优化单用户体验：本地配置、项目归档、数据导入模板和一键导出。

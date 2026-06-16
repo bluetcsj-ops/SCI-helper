@@ -147,6 +147,21 @@ class FormalTestConfirmation(BaseModel):
     notes: str = ""
 
 
+class PairwiseComparisonResult(BaseModel):
+    group_a: str
+    group_b: str
+    test_name: str
+    status: str
+    statistic: float | None = None
+    degrees_of_freedom: float | None = None
+    p_value: float | None = None
+    adjusted_p_value: float | None = None
+    correction_method: str = "Holm-Bonferroni"
+    effect_size: float | None = None
+    interpretation: str
+    warnings: list[str] = Field(default_factory=list)
+
+
 class FormalTestResult(BaseModel):
     outcome_column: str
     group_column: str | None = None
@@ -154,12 +169,14 @@ class FormalTestResult(BaseModel):
     status: str
     statistic: float | None = None
     degrees_of_freedom: float | None = None
+    denominator_degrees_of_freedom: float | None = None
     p_value: float | None = None
     effect_size: float | None = None
     group_count: int
     group_labels: list[str] = Field(default_factory=list)
     interpretation: str
     warnings: list[str] = Field(default_factory=list)
+    pairwise_results: list[PairwiseComparisonResult] = Field(default_factory=list)
 
 
 class FormalTestReport(BaseModel):
@@ -170,7 +187,7 @@ class FormalTestReport(BaseModel):
     outcome_columns: list[str] = Field(default_factory=list)
     confirmation: FormalTestConfirmation
     results: list[FormalTestResult]
-    method_version: str = "formal-tests-v1"
+    method_version: str = "formal-tests-v11"
     raw_csv_saved: bool = False
     audit_summary: str
     next_step: str

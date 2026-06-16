@@ -32,6 +32,8 @@ import {
   getDataAuditLogs,
   getDataRequirements,
   getDashboard,
+  getMentorRecommendations,
+  getMentorTrendSnapshot,
   getProjectAccess,
   getProjectPlanDrafts,
   getProjectProtocol,
@@ -58,7 +60,11 @@ import type {
   DataStatisticsReport,
   DashboardSummary,
   FormalTestConfirmation,
+  FormalTestResult,
   ItemStatus,
+  MentorRecommendationResponse,
+  MentorTrendSnapshot,
+  PairwiseComparisonResult,
   Project,
   ProjectAccessLevel,
   ProjectAccessPolicy,
@@ -195,6 +201,7 @@ const protocolFields: Array<{
 ];
 
 type ProtocolSectionId = "core" | "criteria" | "analysis" | "submission";
+type MentorProgrammingLevel = "none" | "basic" | "intermediate" | "advanced";
 
 const protocolFieldMap = Object.fromEntries(
   protocolFields.map((field) => [field.key, field]),
@@ -234,6 +241,9 @@ const protocolSections: Array<{
 ];
 
 type ChartStyleId = "journalBlue" | "mono" | "highContrast";
+type PairedDataLayout = "wide" | "long";
+type PairedAnalysis = "paired_t" | "friedman" | "rm_anova";
+type MultiplicityCorrection = "holm" | "fdr";
 
 const chartStyles: Record<
   ChartStyleId,
@@ -310,6 +320,83 @@ function formatPValue(value?: number | null): string {
     return "<0.001";
   }
   return value.toFixed(4);
+}
+
+function formatFormalStatistic(result: FormalTestResult): string {
+  if (result.statistic === undefined || result.statistic === null) {
+    return "统计量=NA";
+  }
+  let label = "统计量";
+  if (result.test_name.includes("ANOVA")) {
+    label = "F";
+  } else if (result.test_name.includes("Friedman")) {
+    label = "Q";
+  } else if (result.test_name.includes("Kruskal")) {
+    label = "H";
+  } else if (result.test_name.includes("t")) {
+    label = "t";
+  }
+  return `${label}=${result.statistic.toFixed(2)}`;
+}
+
+function formatFormalDegreesOfFreedom(result: FormalTestResult): string {
+  if (result.degrees_of_freedom === undefined || result.degrees_of_freedom === null) {
+    return "df=NA";
+  }
+  const numeratorDf = result.degrees_of_freedom.toFixed(
+    Number.isInteger(result.degrees_of_freedom) ? 0 : 2,
+  );
+  if (
+    result.denominator_degrees_of_freedom !== undefined &&
+    result.denominator_degrees_of_freedom !== null
+  ) {
+    const denominatorDf = result.denominator_degrees_of_freedom.toFixed(
+      Number.isInteger(result.denominator_degrees_of_freedom) ? 0 : 2,
+    );
+    return `df=${numeratorDf}, ${denominatorDf}`;
+  }
+  return `df=${numeratorDf}`;
+}
+
+function formatFormalEffectSize(result: FormalTestResult): string {
+  let label = "d";
+  if (result.test_name.includes("ANOVA")) {
+    label = "η²";
+  } else if (result.test_name.includes("Friedman")) {
+    label = "W";
+  } else if (result.test_name.includes("Kruskal")) {
+    label = "ε²";
+  } else if (result.test_name.includes("配对")) {
+    label = "dz";
+  }
+  if (result.effect_size === undefined || result.effect_size === null) {
+    return `${label}=NA`;
+  }
+  return `${label}=${result.effect_size.toFixed(2)}`;
+}
+
+function formatPairwiseStatistic(result: PairwiseComparisonResult): string {
+  if (result.statistic === undefined || result.statistic === null) {
+    return "统计量=NA";
+  }
+  const label = result.test_name.includes("Tukey") || result.test_name.includes("Games-Howell")
+    ? "q"
+    : result.test_name.includes("秩和") || result.test_name.includes("Dunn")
+      ? "Z"
+      : "t";
+  return `${label}=${result.statistic.toFixed(2)}`;
+}
+
+function formatPairwiseEffectSize(result: PairwiseComparisonResult): string {
+  if (result.effect_size === undefined || result.effect_size === null) {
+    return "效应量=NA";
+  }
+  const label = result.test_name.includes("秩和") || result.test_name.includes("Dunn") ? "r" : "d";
+  return `${label}=${result.effect_size.toFixed(2)}`;
+}
+
+function formatPairwiseCorrectionLabel(result: PairwiseComparisonResult): string {
+  return result.correction_method === "Benjamini-Hochberg FDR" ? "FDR P" : "Holm P";
 }
 
 function escapeSvgText(value: string): string {
@@ -406,6 +493,18 @@ function hasProtocolContent(protocol: ProjectProtocol | null): boolean {
   return protocolFields.some(({ key }) => protocol[key].trim().length > 0);
 }
 
+function createMentorFormState() {
+  return {
+    equipmentSummary: "",
+    planningSystems: "",
+    programmingLevel: "basic" as MentorProgrammingLevel,
+    dataTypesText: "DICOM RTDose, RTStruct, RTPlan",
+    weeklyHours: 4,
+    publicationExperience: "",
+    interestTopics: [] as string[],
+  };
+}
+
 function App() {
   const [dashboard, setDashboard] = useState<DashboardSummary | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -414,6 +513,10 @@ function App() {
   const [projectAccess, setProjectAccess] = useState<ProjectAccessPolicy | null>(null);
   const [selectedAgentId, setSelectedAgentId] = useState<AgentId>("study_planner");
   const [selectedProjectId, setSelectedProjectId] = useState<string>("project-a");
+  const [mentorTrendSnapshot, setMentorTrendSnapshot] = useState<MentorTrendSnapshot | null>(null);
+  const [mentorRecommendationReport, setMentorRecommendationReport] =
+    useState<MentorRecommendationResponse | null>(null);
+  const [mentorForm, setMentorForm] = useState(createMentorFormState);
   const [protocol, setProtocol] = useState<ProjectProtocol | null>(null);
   const [planDrafts, setPlanDrafts] = useState<ProjectPlanDraft[]>([]);
   const [selectedPlanDraftId, setSelectedPlanDraftId] = useState<number | null>(null);
@@ -427,6 +530,16 @@ function App() {
   const [selectedGroupColumn, setSelectedGroupColumn] = useState("");
   const [selectedOutcomeColumns, setSelectedOutcomeColumns] = useState<string[]>([]);
   const [selectedChartStyle, setSelectedChartStyle] = useState<ChartStyleId>("journalBlue");
+  const [isPairedFormalTest, setIsPairedFormalTest] = useState(false);
+  const [pairedDataLayout, setPairedDataLayout] = useState<PairedDataLayout>("wide");
+  const [pairedAnalysis, setPairedAnalysis] = useState<PairedAnalysis>("paired_t");
+  const [pairedSubjectColumn, setPairedSubjectColumn] = useState("");
+  const [pairedConditionColumn, setPairedConditionColumn] = useState("");
+  const [pairedConditionA, setPairedConditionA] = useState("");
+  const [pairedConditionB, setPairedConditionB] = useState("");
+  const [pairedConditionList, setPairedConditionList] = useState("");
+  const [multiplicityCorrection, setMultiplicityCorrection] =
+    useState<MultiplicityCorrection>("holm");
   const [formalTestConfirmation, setFormalTestConfirmation] = useState<FormalTestConfirmation>(
     createFormalTestConfirmation(),
   );
@@ -443,6 +556,8 @@ function App() {
   const [isAnalysisRecordLoading, setIsAnalysisRecordLoading] = useState(false);
   const [isAnalysisRecordSaving, setIsAnalysisRecordSaving] = useState(false);
   const [isDataAuditLogLoading, setIsDataAuditLogLoading] = useState(false);
+  const [isMentorLoading, setIsMentorLoading] = useState(false);
+  const [isMentorSubmitting, setIsMentorSubmitting] = useState(false);
   const [isCsvUploading, setIsCsvUploading] = useState(false);
   const [isStatisticsLoading, setIsStatisticsLoading] = useState(false);
   const [isFormalTestLoading, setIsFormalTestLoading] = useState(false);
@@ -474,6 +589,7 @@ function App() {
     [projects, selectedProjectId],
   );
 
+  const shouldShowMentorWorkspace = selectedAgentId === "mentor";
   const shouldShowProtocolWorkspace = selectedAgentId === "study_planner";
   const shouldShowDataWorkspace = selectedAgentId === "data_analyst";
 
@@ -514,6 +630,16 @@ function App() {
       : dataRequirementSpec.items.slice(0, 6);
   }, [dataRequirementSpec, showAllDataRequirements]);
 
+  const mentorTrendHighlights = useMemo(() => {
+    return [...(mentorTrendSnapshot?.trends ?? [])]
+      .sort((left, right) => {
+        const leftValue = left.recent_counts[left.recent_counts.length - 1]?.publication_count ?? 0;
+        const rightValue = right.recent_counts[right.recent_counts.length - 1]?.publication_count ?? 0;
+        return rightValue - leftValue;
+      })
+      .slice(0, 4);
+  }, [mentorTrendSnapshot]);
+
   const numericColumnOptions = useMemo(() => {
     return qualityReport?.columns.filter((column) => column.inferred_type === "numeric") ?? [];
   }, [qualityReport]);
@@ -530,6 +656,10 @@ function App() {
     );
   }, [qualityReport]);
 
+  const pairedColumnOptions = useMemo(() => {
+    return qualityReport?.columns.filter((column) => column.inferred_type !== "empty") ?? [];
+  }, [qualityReport]);
+
   const privacyReport = qualityReport?.privacy_report ?? null;
   const hasBlockingPrivacyRisk = privacyReport?.risk_level === "red";
   const canEditSelectedProject = projectAccess?.can_edit ?? true;
@@ -540,6 +670,40 @@ function App() {
       formalTestConfirmationItems.every((item) => formalTestConfirmation[item.key])
     );
   }, [formalTestConfirmation]);
+  const parsedPairedConditions = useMemo(
+    () =>
+      pairedConditionList
+        .split(",")
+        .map((condition) => condition.trim())
+        .filter(Boolean),
+    [pairedConditionList],
+  );
+  const hasDuplicatePairedConditions =
+    parsedPairedConditions.length !== new Set(parsedPairedConditions).size;
+  const isPairedFormalTestInvalid =
+    isPairedFormalTest &&
+    (pairedDataLayout === "wide"
+      ? selectedOutcomeColumns.length !== 2 || pairedAnalysis !== "paired_t"
+      : selectedOutcomeColumns.length !== 1 ||
+        !pairedSubjectColumn ||
+        !pairedConditionColumn ||
+        (pairedAnalysis === "friedman" || pairedAnalysis === "rm_anova"
+          ? parsedPairedConditions.length < 3 || hasDuplicatePairedConditions
+          : !pairedConditionA.trim() ||
+            !pairedConditionB.trim() ||
+            pairedConditionA.trim() === pairedConditionB.trim()));
+
+  function resetPairedFormalTestSettings() {
+    setIsPairedFormalTest(false);
+    setPairedDataLayout("wide");
+    setPairedAnalysis("paired_t");
+    setPairedSubjectColumn("");
+    setPairedConditionColumn("");
+    setPairedConditionA("");
+    setPairedConditionB("");
+    setPairedConditionList("");
+    setMultiplicityCorrection("holm");
+  }
 
   useEffect(() => {
     loadWorkspace();
@@ -556,6 +720,7 @@ function App() {
     setUploadedCsvFile(null);
     setSelectedGroupColumn("");
     setSelectedOutcomeColumns([]);
+    resetPairedFormalTestSettings();
     setFormalTestConfirmation(createFormalTestConfirmation(currentUser?.display_name ?? ""));
     setOpenProtocolSections({
       core: true,
@@ -823,19 +988,22 @@ function App() {
 
   async function loadWorkspace() {
     setIsLoading(true);
+    setIsMentorLoading(true);
     setError(null);
 
     try {
-      const [dashboardData, projectData, agentData, userData] = await Promise.all([
+      const [dashboardData, projectData, agentData, userData, mentorTrendData] = await Promise.all([
         getDashboard(),
         getProjects(),
         getAgents(),
         getCurrentUser(),
+        getMentorTrendSnapshot(),
       ]);
       setDashboard(dashboardData);
       setProjects(projectData);
       setAgents(agentData);
       setCurrentUser(userData);
+      setMentorTrendSnapshot(mentorTrendData);
       if (projectData.length && !projectData.some((project) => project.id === selectedProjectId)) {
         setSelectedProjectId(projectData[0].id);
       }
@@ -846,6 +1014,7 @@ function App() {
       setError(caughtError instanceof Error ? caughtError.message : "前端无法连接后端服务。");
     } finally {
       setIsLoading(false);
+      setIsMentorLoading(false);
     }
   }
 
@@ -864,6 +1033,96 @@ function App() {
       setDataAuditLogs(logs);
     } catch {
       // Audit refresh should not interrupt the main data workflow.
+    }
+  }
+
+  async function handleMentorSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (isMentorSubmitting) {
+      return;
+    }
+
+    setIsMentorSubmitting(true);
+    setError(null);
+
+    try {
+      const report = await getMentorRecommendations({
+        equipment_summary: mentorForm.equipmentSummary,
+        planning_systems: mentorForm.planningSystems,
+        programming_level: mentorForm.programmingLevel,
+        data_types: mentorForm.dataTypesText
+          .split(",")
+          .map((item) => item.trim())
+          .filter(Boolean),
+        weekly_hours: mentorForm.weeklyHours,
+        publication_experience: mentorForm.publicationExperience,
+        interest_topics: mentorForm.interestTopics,
+      });
+      setMentorRecommendationReport(report);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "虚拟导师推荐生成失败。");
+    } finally {
+      setIsMentorSubmitting(false);
+    }
+  }
+
+  function handleMentorInterestToggle(topicId: string) {
+    setMentorForm((current) => ({
+      ...current,
+      interestTopics: current.interestTopics.includes(topicId)
+        ? current.interestTopics.filter((item) => item !== topicId)
+        : [...current.interestTopics, topicId],
+    }));
+  }
+
+  function handleDownloadMentorBrief() {
+    if (!mentorRecommendationReport) {
+      return;
+    }
+
+    const trendLines = mentorTrendSnapshot?.trends.map(
+      (trend) => `- ${trend.title}：${trend.summary} ${trend.forecast_note}`,
+    ) ?? [];
+    const content = [
+      "# 研究方向建议书",
+      "",
+      `生成时间：${new Date().toLocaleString("zh-CN")}`,
+      selectedProject ? `关联项目：${selectedProject.name} / ${selectedProject.title}` : "关联项目：未指定",
+      "",
+      "## 画像摘要",
+      mentorRecommendationReport.profile_summary,
+      "",
+      "## 匹配优势",
+      ...mentorRecommendationReport.matched_strengths.map((item) => `- ${item}`),
+      "",
+      "## 趋势摘要",
+      ...(trendLines.length ? trendLines.slice(0, 6) : ["- 当前建议结合虚拟导师面板中的趋势卡片一并查看。"]),
+      "",
+      "## 课题推荐卡",
+      ...mentorRecommendationReport.recommendations.flatMap((item) => [
+        `### ${item.title}`,
+        `- 为什么适合：${item.why_fit}`,
+        `- 创新点：${item.innovation_point}`,
+        `- 可行性：${item.feasibility_note}`,
+        `- 建议期刊：${item.target_journals.join(" / ")}`,
+        "",
+      ]),
+      "## 下一步行动",
+      ...mentorRecommendationReport.next_steps.map((item) => `- ${item}`),
+      "",
+    ].join("\n");
+
+    const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    try {
+      link.href = url;
+      link.download = "research-direction-brief.md";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } finally {
+      URL.revokeObjectURL(url);
     }
   }
 
@@ -1153,6 +1412,7 @@ function App() {
       setStatisticsReport(null);
       setSelectedOutcomeColumns(numericDefaults);
       setSelectedGroupColumn(groupDefault);
+      resetPairedFormalTestSettings();
       setFormalTestConfirmation(createFormalTestConfirmation(currentUser?.display_name ?? ""));
       setSelectedAgentId("data_analyst");
       await refreshDataAuditLogs(selectedProjectId);
@@ -1168,7 +1428,11 @@ function App() {
       if (current.includes(columnName)) {
         return current.filter((name) => name !== columnName);
       }
-      return [...current, columnName].slice(0, 6);
+      if (isPairedFormalTest && pairedDataLayout === "long") {
+        return [columnName];
+      }
+      const maxOutcomeCount = isPairedFormalTest ? 2 : 6;
+      return [...current, columnName].slice(0, maxOutcomeCount);
     });
     setStatisticsReport(null);
     setFormalTestConfirmation(createFormalTestConfirmation(currentUser?.display_name ?? ""));
@@ -1219,9 +1483,45 @@ function App() {
     }
 
     const formalGroupColumn = statisticsReport.group_column;
-    if (!formalGroupColumn) {
+    if (!isPairedFormalTest && !formalGroupColumn) {
       setError("正式检验前请先选择分组列，并重新生成统计草案。");
       return;
+    }
+
+    if (isPairedFormalTest) {
+      if (pairedDataLayout === "wide" && selectedOutcomeColumns.length !== 2) {
+        setError("宽表配对 t 检验需要且只能选择两个数值结局列。");
+        return;
+      }
+      if (pairedDataLayout === "long") {
+        if (selectedOutcomeColumns.length !== 1) {
+          setError("长表配对检验需要且只能选择一个数值结局列。");
+          return;
+        }
+        if (!pairedSubjectColumn || !pairedConditionColumn) {
+          setError("长表配对检验需要选择对象 ID 列和条件列。");
+          return;
+        }
+        if (pairedAnalysis === "friedman" || pairedAnalysis === "rm_anova") {
+          if (parsedPairedConditions.length < 3) {
+            setError("Friedman 重复测量检验至少需要填写 3 个条件/时间点取值。");
+            return;
+          }
+          if (hasDuplicatePairedConditions) {
+            setError("Friedman 条件/时间点取值不能重复。");
+            return;
+          }
+        } else {
+          if (!pairedConditionA.trim() || !pairedConditionB.trim()) {
+            setError("长表配对 t 检验需要填写两个条件取值。");
+            return;
+          }
+          if (pairedConditionA.trim() === pairedConditionB.trim()) {
+            setError("长表配对 t 检验的两个条件取值不能相同。");
+            return;
+          }
+        }
+      }
     }
 
     if (!isFormalTestReady) {
@@ -1236,9 +1536,25 @@ function App() {
       const report = await uploadFormalTestReport(
         selectedProjectId,
         uploadedCsvFile,
-        formalGroupColumn,
-        statisticsReport.numeric_summaries.map((summary) => summary.column),
+        formalGroupColumn ?? "",
+        isPairedFormalTest
+          ? selectedOutcomeColumns
+          : statisticsReport.numeric_summaries.map((summary) => summary.column),
         formalTestConfirmation,
+        {
+          pairedTest: isPairedFormalTest,
+          pairedDataLayout,
+          pairedAnalysis,
+          pairedSubjectColumn,
+          pairedConditionColumn,
+          pairedConditionA: pairedConditionA.trim(),
+          pairedConditionB: pairedConditionB.trim(),
+          pairedConditions:
+            pairedAnalysis === "friedman" || pairedAnalysis === "rm_anova"
+              ? parsedPairedConditions
+              : undefined,
+          multiplicityCorrection,
+        },
       );
       setStatisticsReport((current) =>
         current
@@ -1278,7 +1594,15 @@ function App() {
       .map((chart) => `- ${chart.title}: ${chart.narrative}`)
       .join("\n");
     const formalTestText = statisticsReport.formal_test_report?.results
-      .map((result) => `- ${result.outcome_column}: ${result.interpretation}`)
+      .map((result) => {
+        const pairwiseText =
+          result.pairwise_results
+            ?.map((pairwise) => `  - ${pairwise.group_a} vs ${pairwise.group_b}: ${pairwise.interpretation}`)
+            .join("\n") ?? "";
+        return [`- ${result.outcome_column}: ${result.interpretation}`, pairwiseText]
+          .filter(Boolean)
+          .join("\n");
+      })
       .join("\n");
 
     return [
@@ -1400,6 +1724,7 @@ function App() {
     setSelectedOutcomeColumns(
       record.statistics_report?.numeric_summaries.map((summary) => summary.column).slice(0, 6) ?? [],
     );
+    resetPairedFormalTestSettings();
     setFormalTestConfirmation(
       record.statistics_report?.formal_test_report?.confirmation ??
         createFormalTestConfirmation(currentUser?.display_name ?? ""),
@@ -2355,6 +2680,164 @@ function App() {
                                 <span>{formalTestReport ? formalTestReport.method_version : "待确认"}</span>
                               </div>
 
+                              <label className="formal-test-mode-toggle">
+                                <input
+                                  type="checkbox"
+                                  checked={isPairedFormalTest}
+                                  disabled={!canEditSelectedProject}
+                                  onChange={(event) => {
+                                    setIsPairedFormalTest(event.target.checked);
+                                    setPairedDataLayout("wide");
+                                    setPairedSubjectColumn("");
+                                    setPairedConditionColumn("");
+                                    setPairedConditionA("");
+                                    setPairedConditionB("");
+                                    setSelectedOutcomeColumns((current) =>
+                                      event.target.checked ? current.slice(0, 2) : current,
+                                    );
+                                    setStatisticsReport((current) =>
+                                      current ? { ...current, formal_test_report: null } : current,
+                                    );
+                                    setFormalTestConfirmation(
+                                      createFormalTestConfirmation(currentUser?.display_name ?? ""),
+                                    );
+                                  }}
+                                />
+                                <span>
+                                  <strong>配对检验模式</strong>
+                                  <small>支持宽表两列配对，或长表对象 ID + 条件列配对。</small>
+                                </span>
+                              </label>
+
+                              {isPairedFormalTest ? (
+                                <div className="paired-test-config">
+                                  <label>
+                                    <span>配对数据格式</span>
+                                    <select
+                                      value={pairedDataLayout}
+                                      disabled={!canEditSelectedProject}
+                                      onChange={(event) => {
+                                        const nextLayout = event.target.value as PairedDataLayout;
+                                        setPairedDataLayout(nextLayout);
+                                        if (nextLayout === "wide") {
+                                          setPairedAnalysis("paired_t");
+                                        }
+                                        setSelectedOutcomeColumns((current) =>
+                                          nextLayout === "long" ? current.slice(0, 1) : current.slice(0, 2),
+                                        );
+                                        setStatisticsReport((current) =>
+                                          current ? { ...current, formal_test_report: null } : current,
+                                        );
+                                      }}
+                                    >
+                                      <option value="wide">宽表：同一行两个数值列</option>
+                                      <option value="long">长表：对象 ID + 条件列 + 一个结局列</option>
+                                    </select>
+                                  </label>
+
+                                  {pairedDataLayout === "long" ? (
+                                    <div className="paired-long-grid">
+                                      <label>
+                                        <span>配对检验类型</span>
+                                        <select
+                                          value={pairedAnalysis}
+                                          disabled={!canEditSelectedProject}
+                                          onChange={(event) =>
+                                            setPairedAnalysis(event.target.value as PairedAnalysis)
+                                          }
+                                        >
+                                          <option value="paired_t">两条件配对 t</option>
+                                          <option value="friedman">三条件及以上 Friedman</option>
+                                          <option value="rm_anova">重复测量 ANOVA（待复核）</option>
+                                        </select>
+                                      </label>
+                                      <label>
+                                        <span>对象 ID 列</span>
+                                        <select
+                                          value={pairedSubjectColumn}
+                                          disabled={!canEditSelectedProject}
+                                          onChange={(event) => setPairedSubjectColumn(event.target.value)}
+                                        >
+                                          <option value="">选择对象列</option>
+                                          {pairedColumnOptions.map((column) => (
+                                            <option key={column.name} value={column.name}>
+                                              {column.name}
+                                            </option>
+                                          ))}
+                                        </select>
+                                      </label>
+                                      <label>
+                                        <span>条件/时间点列</span>
+                                        <select
+                                          value={pairedConditionColumn}
+                                          disabled={!canEditSelectedProject}
+                                          onChange={(event) => setPairedConditionColumn(event.target.value)}
+                                        >
+                                          <option value="">选择条件列</option>
+                                          {pairedColumnOptions.map((column) => (
+                                            <option key={column.name} value={column.name}>
+                                              {column.name}
+                                            </option>
+                                          ))}
+                                        </select>
+                                      </label>
+                                      {pairedAnalysis === "friedman" || pairedAnalysis === "rm_anova" ? (
+                                        <label className="paired-long-wide">
+                                          <span>条件/时间点列表</span>
+                                          <textarea
+                                            rows={2}
+                                            value={pairedConditionList}
+                                            disabled={!canEditSelectedProject}
+                                            onChange={(event) => setPairedConditionList(event.target.value)}
+                                            placeholder="例如 before, mid, after"
+                                          />
+                                        </label>
+                                      ) : (
+                                        <>
+                                          <label>
+                                            <span>条件 A</span>
+                                            <input
+                                              type="text"
+                                              value={pairedConditionA}
+                                              disabled={!canEditSelectedProject}
+                                              onChange={(event) => setPairedConditionA(event.target.value)}
+                                              placeholder="例如 before"
+                                            />
+                                          </label>
+                                          <label>
+                                            <span>条件 B</span>
+                                            <input
+                                              type="text"
+                                              value={pairedConditionB}
+                                              disabled={!canEditSelectedProject}
+                                              onChange={(event) => setPairedConditionB(event.target.value)}
+                                              placeholder="例如 after"
+                                            />
+                                          </label>
+                                        </>
+                                      )}
+                                    </div>
+                                  ) : null}
+                                </div>
+                              ) : null}
+
+                              <label className="formal-test-correction">
+                                <span>多重比较校正</span>
+                                <select
+                                  value={multiplicityCorrection}
+                                  disabled={!canEditSelectedProject}
+                                  onChange={(event) => {
+                                    setMultiplicityCorrection(event.target.value as MultiplicityCorrection);
+                                    setStatisticsReport((current) =>
+                                      current ? { ...current, formal_test_report: null } : current,
+                                    );
+                                  }}
+                                >
+                                  <option value="holm">Holm-Bonferroni</option>
+                                  <option value="fdr">Benjamini-Hochberg FDR</option>
+                                </select>
+                              </label>
+
                               <label className="formal-test-confirmed-by">
                                 <span>确认人</span>
                                 <input
@@ -2411,7 +2894,8 @@ function App() {
                                 disabled={
                                   isFormalTestLoading ||
                                   !uploadedCsvFile ||
-                                  !statisticsReport.group_column ||
+                                  (!isPairedFormalTest && !statisticsReport.group_column) ||
+                                  isPairedFormalTestInvalid ||
                                   !isFormalTestReady ||
                                   hasBlockingPrivacyRisk ||
                                   !canEditSelectedProject
@@ -2430,9 +2914,23 @@ function App() {
                                   恢复历史分析记录后，如需重新执行正式检验，需要重新上传同一份脱敏 CSV。
                                 </p>
                               ) : null}
-                              {!statisticsReport.group_column ? (
+                              {!isPairedFormalTest && !statisticsReport.group_column ? (
                                 <p className="formal-test-note">
                                   正式检验需要先选择分组列，并重新生成统计草案。
+                                </p>
+                              ) : null}
+                              {isPairedFormalTest &&
+                              pairedDataLayout === "wide" &&
+                              selectedOutcomeColumns.length !== 2 ? (
+                                <p className="formal-test-note">
+                                  宽表配对 t 检验需要在上方结局列中选择且只选择两个数值列。
+                                </p>
+                              ) : null}
+                              {isPairedFormalTest && pairedDataLayout === "long" && isPairedFormalTestInvalid ? (
+                                <p className="formal-test-note">
+                                  {pairedAnalysis === "friedman" || pairedAnalysis === "rm_anova"
+                                    ? "长表 Friedman 检验需要选择一个数值结局列、对象 ID 列、条件列，并填写至少 3 个唯一条件取值。"
+                                    : "长表配对 t 检验需要选择一个数值结局列、对象 ID 列、条件列，并填写两个不同条件取值。"}
                                 </p>
                               ) : null}
 
@@ -2457,13 +2955,45 @@ function App() {
                                       </div>
                                       <p>{result.interpretation}</p>
                                       <div className="formal-test-metrics">
+                                        <span>{formatFormalStatistic(result)}</span>
                                         <span>P={formatPValue(result.p_value)}</span>
-                                        <span>df={result.degrees_of_freedom?.toFixed(2) ?? "NA"}</span>
-                                        <span>d={result.effect_size?.toFixed(2) ?? "NA"}</span>
+                                        <span>{formatFormalDegreesOfFreedom(result)}</span>
+                                        <span>{formatFormalEffectSize(result)}</span>
                                         <span>{result.group_labels.join(" / ")}</span>
                                       </div>
                                       {result.warnings.length ? (
                                         <small>{result.warnings.join("；")}</small>
+                                      ) : null}
+                                      {result.pairwise_results?.length ? (
+                                        <div className="pairwise-results">
+                                          <strong>事后两两比较</strong>
+                                          {result.pairwise_results.map((pairwise) => (
+                                            <div
+                                              className={`pairwise-result status-${pairwise.status}`}
+                                              key={`${pairwise.group_a}-${pairwise.group_b}-${pairwise.test_name}`}
+                                            >
+                                              <div>
+                                                <span>
+                                                  {pairwise.group_a} vs {pairwise.group_b}
+                                                </span>
+                                                <small>{pairwise.test_name}</small>
+                                              </div>
+                                              <p>{pairwise.interpretation}</p>
+                                              <div className="formal-test-metrics">
+                                                <span>{formatPairwiseStatistic(pairwise)}</span>
+                                                <span>P={formatPValue(pairwise.p_value)}</span>
+                                                <span>
+                                                  {formatPairwiseCorrectionLabel(pairwise)}=
+                                                  {formatPValue(pairwise.adjusted_p_value)}
+                                                </span>
+                                                <span>{formatPairwiseEffectSize(pairwise)}</span>
+                                              </div>
+                                              {pairwise.warnings.length ? (
+                                                <small>{pairwise.warnings.join("；")}</small>
+                                              ) : null}
+                                            </div>
+                                          ))}
+                                        </div>
                                       ) : null}
                                     </article>
                                   ))}
@@ -2780,7 +3310,261 @@ function App() {
                 </section>
                 ) : null}
 
-                {!shouldShowProtocolWorkspace && !shouldShowDataWorkspace ? (
+                {shouldShowMentorWorkspace ? (
+                  <section className="mentor-panel" aria-label="虚拟导师工作区">
+                    <div className="mentor-head">
+                      <div>
+                        <p className="eyebrow">Prof. RadOnc Mentor</p>
+                        <h3>趋势判断与课题推荐</h3>
+                        <small>
+                          {mentorTrendSnapshot?.recommended_focus ?? "正在读取趋势快照。"}
+                        </small>
+                      </div>
+                      <BookOpenCheck aria-hidden="true" size={20} />
+                    </div>
+
+                    {isMentorLoading ? (
+                      <div className="protocol-loading compact">
+                        <Loader2 aria-hidden="true" className="spin" size={18} />
+                        <span>正在读取虚拟导师趋势数据...</span>
+                      </div>
+                    ) : null}
+
+                    {mentorTrendSnapshot ? (
+                      <div className="mentor-brief-layout">
+                        <section className="mentor-brief-section">
+                          <div className="mentor-section-head">
+                            <strong>趋势概览</strong>
+                            <span>2019-2024 快照</span>
+                          </div>
+                          <div className="mentor-trend-grid">
+                            {mentorTrendSnapshot.trends.slice(0, 6).map((trend) => (
+                              <article className="mentor-trend-card" key={trend.topic_id}>
+                                <div className="mentor-trend-title">
+                                  <strong>{trend.title}</strong>
+                                  <span>{trend.heat_label}</span>
+                                </div>
+                                <p>{trend.summary}</p>
+                                <small>{trend.forecast_note}</small>
+                              </article>
+                            ))}
+                          </div>
+                        </section>
+
+                        <section className="mentor-brief-section mentor-heatmap-section">
+                          <div className="mentor-section-head">
+                            <strong>热点方向</strong>
+                            <span>按 2024 发文量排序</span>
+                          </div>
+                          <div className="mentor-heatmap-list">
+                            {mentorTrendHighlights.map((trend) => {
+                              const latestCount =
+                                trend.recent_counts[trend.recent_counts.length - 1]?.publication_count ?? 0;
+                              const maxCount =
+                                mentorTrendHighlights[0]?.recent_counts[
+                                  mentorTrendHighlights[0].recent_counts.length - 1
+                                ]?.publication_count ?? 1;
+                              return (
+                                <article className="mentor-heatmap-item" key={trend.topic_id}>
+                                  <div className="mentor-heatmap-copy">
+                                    <strong>{trend.title}</strong>
+                                    <small>{trend.heat_label}</small>
+                                  </div>
+                                  <div className="mentor-heatmap-bar">
+                                    <span
+                                      className="mentor-heatmap-fill"
+                                      style={{ width: `${Math.max((latestCount / maxCount) * 100, 8)}%` }}
+                                    />
+                                  </div>
+                                  <span className="mentor-heatmap-value">{latestCount}</span>
+                                </article>
+                              );
+                            })}
+                          </div>
+                        </section>
+                      </div>
+                    ) : null}
+
+                    <form className="mentor-form" onSubmit={handleMentorSubmit}>
+                      <div className="mentor-form-grid">
+                        <label>
+                          <span>设备与治疗平台</span>
+                          <input
+                            type="text"
+                            value={mentorForm.equipmentSummary}
+                            onChange={(event) =>
+                              setMentorForm((current) => ({
+                                ...current,
+                                equipmentSummary: event.target.value,
+                              }))
+                            }
+                            placeholder="例如 Elekta Unity / TrueBeam / Halcyon"
+                          />
+                        </label>
+                        <label>
+                          <span>计划系统</span>
+                          <input
+                            type="text"
+                            value={mentorForm.planningSystems}
+                            onChange={(event) =>
+                              setMentorForm((current) => ({
+                                ...current,
+                                planningSystems: event.target.value,
+                              }))
+                            }
+                            placeholder="例如 Monaco / Eclipse / RayStation"
+                          />
+                        </label>
+                        <label>
+                          <span>编程水平</span>
+                          <select
+                            value={mentorForm.programmingLevel}
+                            onChange={(event) =>
+                              setMentorForm((current) => ({
+                                ...current,
+                                programmingLevel: event.target.value as MentorProgrammingLevel,
+                              }))
+                            }
+                          >
+                            <option value="none">无</option>
+                            <option value="basic">基础</option>
+                            <option value="intermediate">中等</option>
+                            <option value="advanced">熟练</option>
+                          </select>
+                        </label>
+                        <label>
+                          <span>每周科研时间（小时）</span>
+                          <input
+                            type="number"
+                            min={0}
+                            max={40}
+                            value={mentorForm.weeklyHours}
+                            onChange={(event) =>
+                              setMentorForm((current) => ({
+                                ...current,
+                                weeklyHours: Number(event.target.value) || 0,
+                              }))
+                            }
+                          />
+                        </label>
+                        <label className="mentor-form-wide">
+                          <span>可用数据类型</span>
+                          <textarea
+                            rows={2}
+                            value={mentorForm.dataTypesText}
+                            onChange={(event) =>
+                              setMentorForm((current) => ({
+                                ...current,
+                                dataTypesText: event.target.value,
+                              }))
+                            }
+                            placeholder="用逗号分隔，例如 DICOM RTDose, RTStruct, log files, CBCT"
+                          />
+                        </label>
+                        <label className="mentor-form-wide">
+                          <span>既往发文经验</span>
+                          <textarea
+                            rows={2}
+                            value={mentorForm.publicationExperience}
+                            onChange={(event) =>
+                              setMentorForm((current) => ({
+                                ...current,
+                                publicationExperience: event.target.value,
+                              }))
+                            }
+                            placeholder="例如 已发表 1 篇 JACMP，无第一作者 SCI"
+                          />
+                        </label>
+                      </div>
+
+                      <div className="mentor-interest-block">
+                        <strong>感兴趣的方向</strong>
+                        <div className="mentor-interest-list">
+                          {mentorTrendSnapshot?.trends.map((trend) => (
+                            <label className="mentor-interest-item" key={trend.topic_id}>
+                              <input
+                                type="checkbox"
+                                checked={mentorForm.interestTopics.includes(trend.topic_id)}
+                                onChange={() => handleMentorInterestToggle(trend.topic_id)}
+                              />
+                              <span>{trend.title}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+
+                      <button className="mentor-submit-button" type="submit" disabled={isMentorSubmitting}>
+                        {isMentorSubmitting ? (
+                          <Loader2 aria-hidden="true" className="spin" size={16} />
+                        ) : (
+                          <Sparkles aria-hidden="true" size={16} />
+                        )}
+                        <span>生成课题推荐</span>
+                      </button>
+                    </form>
+
+                    {mentorRecommendationReport ? (
+                      <div className="mentor-report">
+                        <div className="mentor-report-toolbar">
+                          <button type="button" onClick={handleDownloadMentorBrief}>
+                            <Download aria-hidden="true" size={15} />
+                            <span>导出建议书</span>
+                          </button>
+                        </div>
+                        <div className="mentor-report-summary">
+                          <div className="mentor-section-head">
+                            <strong>画像摘要</strong>
+                            <span>个体能力与资源匹配</span>
+                          </div>
+                          <p>{mentorRecommendationReport.profile_summary}</p>
+                        </div>
+                        <section className="mentor-brief-section">
+                          <div className="mentor-section-head">
+                            <strong>匹配优势</strong>
+                            <span>为什么这些方向更现实</span>
+                          </div>
+                        <div className="mentor-strength-list">
+                          {mentorRecommendationReport.matched_strengths.map((strength) => (
+                            <article className="mentor-strength-item" key={strength}>
+                              <p>{strength}</p>
+                            </article>
+                          ))}
+                        </div>
+                        </section>
+                        <section className="mentor-brief-section">
+                          <div className="mentor-section-head">
+                            <strong>课题推荐卡</strong>
+                            <span>优先考虑 2-3 个最可落地题目</span>
+                          </div>
+                        <div className="mentor-recommendation-list">
+                          {mentorRecommendationReport.recommendations.map((item) => (
+                            <article className="mentor-recommendation-card" key={item.title}>
+                              <h4>{item.title}</h4>
+                              <p>{item.why_fit}</p>
+                              <small>{item.innovation_point}</small>
+                              <small>{item.feasibility_note}</small>
+                              <span>{item.target_journals.join(" / ")}</span>
+                            </article>
+                          ))}
+                        </div>
+                        </section>
+                        <section className="mentor-brief-section mentor-next-steps">
+                          <div className="mentor-section-head">
+                            <strong>下一步行动</strong>
+                            <span>把建议转成方案和数据准备</span>
+                          </div>
+                        <div className="mentor-next-steps-list">
+                          {mentorRecommendationReport.next_steps.map((step) => (
+                            <p key={step}>{step}</p>
+                          ))}
+                        </div>
+                        </section>
+                      </div>
+                    ) : null}
+                  </section>
+                ) : null}
+
+                {!shouldShowMentorWorkspace && !shouldShowProtocolWorkspace && !shouldShowDataWorkspace ? (
                   <section className="expert-placeholder-panel" aria-label="专家功能提示">
                     <div>
                       <p className="eyebrow">{selectedAgent?.role_name ?? "专家功能"}</p>

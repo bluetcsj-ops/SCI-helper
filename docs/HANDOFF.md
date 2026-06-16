@@ -8,6 +8,22 @@
 
 ## 当前完成进度
 
+### 2026-06-16 补充更新
+
+- 新增独立进度总表：`docs/PROGRESS_STATUS.md`
+  - 汇总 Prof. RadOnc Mentor、Rhea、Dr. Data Lin、Alex Writer、审稿官和平台基础设施的已完成/未完成状态
+  - 明确说明 Dr. Data Lin 仍有高阶统计缺口，但不构成当前全局主阻塞
+- Prof. RadOnc Mentor 已补齐最小可用版本（MVP）：
+  - 后端新增 `GET /api/mentor/trends`
+  - 后端新增 `POST /api/mentor/recommendations`
+  - 前端新增虚拟导师工作区：趋势快照、能力问卷、兴趣方向勾选、课题推荐卡
+  - 支持导出本地 Markdown《研究方向建议书》
+  - 当前趋势数据仍为本地静态快照，不是联网真实趋势数据库
+- Dr. Data Lin 新增：
+  - 长表 `rm_anova` 重复测量 ANOVA 设计识别与边界判断
+  - 平衡重复测量设计返回 `needs_external_review`
+  - 不完整重复测量设计返回阻断或明确警告，提示 mixed-effects model 更合适
+
 ### 已完成
 
 - 完整工程骨架：`backend/`、`frontend/`、`docs/`、`shared/`、`infra/`。
@@ -70,7 +86,7 @@
   - 图表样式模板：期刊蓝、单色、高对比；支持 SVG、PNG 和打印另存 PDF
   - 变量分布检查、候选检验建议和 P 值计算边界提示；统计草案阶段不自动计算 P 值
   - 正式假设检验人工确认：确认人、研究设计、终点、脱敏、缺失值、统计假设和多重比较
-  - 正式检验结果审计：确认项缺失、隐私风险或复杂设计会阻止执行并写日志；两组数值结局当前可执行 Welch t 检验
+  - 正式检验结果审计：确认项缺失、隐私风险或复杂设计会阻止执行并写日志；两组独立样本数值结局可执行 Welch t 检验，宽表两列配对测量和长表 `subject_id + condition + outcome` 两条件配对测量可执行配对 t 检验，长表三条件及以上重复测量可执行 Friedman 检验，多组独立样本数值结局可根据样本量、偏态信号、方差差异和样本量不均衡执行单因素 ANOVA、Welch ANOVA 或 Kruskal-Wallis 检验，并附带 Tukey HSD、Games-Howell、Dunn 或配对秩和风格事后比较，支持 Holm-Bonferroni 或 Benjamini-Hochberg FDR 校正；安装 SciPy 后会优先使用 SciPy 的分布与秩检验路径，未安装时保留原型近似兜底
   - 脱敏与隐私检查：识别直接身份标识、编码标识符、日期标识符和高唯一文本列
   - 数据操作审计日志：记录质控、统计、隐私阻止和保存分析记录事件；不保存原始 CSV
   - 红色隐私风险会阻止统计草案生成
@@ -161,7 +177,16 @@ npm.cmd run build
 - 将任务设为 `blocked` 后会生成红色 Rhea 提醒。
 - 归档提醒后，该提醒会从活跃列表移除。
 
-本次新增的 Dr. Data Lin 数据工作区已通过不落盘语法检查和前端 TypeScript `--noEmit` 检查。正式检验接口已用临时 SQLite 验证：未完成人工确认时返回 400，全部确认后返回 Welch t 检验结果，并写入 `formal_test_blocked` 与 `formal_test_executed` 审计日志。当前按单用户本地工具使用，不启用登录、SSO 和成员管理；`/api/users/me` 默认返回 `user-primary`。用户本机已验证前端 `npm.cmd run build` 可通过；工具沙箱内完整 Vite build 会因临时文件写入权限报 `EPERM`。
+本次新增的 Dr. Data Lin 数据工作区已通过不落盘语法检查和前端 TypeScript `--noEmit` 检查。正式检验接口既有临时 SQLite 验证覆盖人工确认与 Welch t 检验；新增的宽表两列配对 t 检验、长表对象 ID + 条件列两条件配对 t 检验、长表三条件及以上 Friedman 检验、单因素 ANOVA、Welch ANOVA、Kruskal-Wallis 检验，以及 Tukey HSD、Games-Howell、Dunn、配对秩和风格事后比较，已通过服务层临时 CSV 验证；事后比较支持 Holm-Bonferroni 和 Benjamini-Hochberg FDR 两种校正。`backend/requirements.txt` 已新增 `scipy>=1.13.0`；安装 SciPy 后，P 值会优先使用 SciPy 的 t/F/卡方/正态分布、studentized range、Friedman 和 Wilcoxon 计算路径，当前沙箱网络未放行安装，因此本轮本地烟测覆盖的是无 SciPy 兜底路径。正式检验会写入 `formal_test_blocked` 与 `formal_test_executed` 审计日志。配对检验当前覆盖同一行两列数值测量，以及长表中一个对象 ID、一个条件列和一个数值结局列的两条件或三条件及以上重复测量；多组检验当前只覆盖独立样本数值结局。当前按单用户本地工具使用，不启用登录、SSO 和成员管理；`/api/users/me` 默认返回 `user-primary`。用户本机已验证前端 `npm.cmd run build` 可通过；工具沙箱内完整 Vite build 会因临时文件写入权限报 `EPERM`。
+
+虚拟导师本轮新增验证：
+
+- 后端：`python -m py_compile app/agents/mentor_models.py app/agents/mentor_service.py app/api/routes/mentor.py`
+- 前端：`.\node_modules\.bin\tsc.cmd --noEmit`
+- 服务层烟测：
+  - 趋势快照可返回至少 6 个方向
+  - 问卷提交后可返回 2-3 个推荐卡
+  - 可导出本地 Markdown 建议书
 
 ## Git 上传安全规则
 
@@ -182,7 +207,7 @@ npm.cmd run build
 
 建议下一阶段继续深化科研功能薄切片：
 
-1. 扩展更多正式检验类型，例如多组 ANOVA、非参数检验、配对设计和多重比较校正。
+1. 继续增强正式统计可信度，例如重复测量 ANOVA、混合效应模型，以及 Dunn 检验的专用库复核。
 2. 优化单用户体验：本地配置、项目归档、数据导入模板和一键导出。
 
 如果继续做项目管理侧，则下一步是：

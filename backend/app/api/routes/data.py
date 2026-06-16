@@ -138,6 +138,15 @@ async def create_data_formal_test_report(
     file_name: str = Query(default="uploaded.csv"),
     group_column: str | None = Query(default=None),
     outcome_columns: str = Query(default=""),
+    paired_test: bool = Query(default=False),
+    paired_data_layout: str = Query(default="wide"),
+    paired_analysis: str = Query(default="paired_t"),
+    paired_subject_column: str | None = Query(default=None),
+    paired_condition_column: str | None = Query(default=None),
+    paired_conditions: str = Query(default=""),
+    paired_condition_a: str = Query(default=""),
+    paired_condition_b: str = Query(default=""),
+    multiplicity_correction: str = Query(default="holm"),
     confirmed_by: str = Query(default=""),
     design_confirmed: bool = Query(default=False),
     endpoints_confirmed: bool = Query(default=False),
@@ -183,6 +192,19 @@ async def create_data_formal_test_report(
             confirmation=confirmation,
             group_column=group_column,
             outcome_columns=selected_outcomes,
+            paired_test=paired_test,
+            paired_data_layout=paired_data_layout,
+            paired_analysis=paired_analysis,
+            paired_subject_column=paired_subject_column,
+            paired_condition_column=paired_condition_column,
+            paired_conditions=[
+                value.strip()
+                for value in paired_conditions.split(",")
+                if value.strip()
+            ],
+            paired_condition_a=paired_condition_a,
+            paired_condition_b=paired_condition_b,
+            multiplicity_correction=multiplicity_correction,
         )
         risk_level = (
             RiskLevel.orange

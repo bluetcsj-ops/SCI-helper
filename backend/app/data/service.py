@@ -4,9 +4,15 @@ import csv
 import json
 import re
 from collections import Counter, defaultdict
+from itertools import combinations
 from io import StringIO
-from math import exp, lgamma, log, pi, sqrt
+from math import erf, exp, lgamma, log, pi, sqrt
 from statistics import fmean, median, stdev
+
+try:
+    from scipy import stats as scipy_stats
+except ImportError:  # pragma: no cover - optional precision dependency
+    scipy_stats = None
 
 from app.data.models import (
     CategoricalLevel,
@@ -30,6 +36,7 @@ from app.data.models import (
     GroupComparisonDraft,
     GroupStatistic,
     NumericSummary,
+    PairwiseComparisonResult,
     ReproducibleAnalysisScript,
     StatisticalTestRecommendation,
 )
@@ -355,6 +362,15 @@ class DataWorkspaceService:
         confirmation: FormalTestConfirmation,
         group_column: str | None = None,
         outcome_columns: list[str] | None = None,
+        paired_test: bool = False,
+        paired_data_layout: str = "wide",
+        paired_analysis: str = "paired_t",
+        paired_subject_column: str | None = None,
+        paired_condition_column: str | None = None,
+        paired_conditions: list[str] | None = None,
+        paired_condition_a: str = "",
+        paired_condition_b: str = "",
+        multiplicity_correction: str = "holm",
     ) -> FormalTestReport:
         missing_confirmations = self._missing_formal_test_confirmations(confirmation)
         if missing_confirmations:
@@ -372,6 +388,152 @@ class DataWorkspaceService:
         numeric_columns = [column.name for column in columns if column.inferred_type == "numeric"]
         if not numeric_columns:
             raise ValueError("CSV 文件中没有可用于正式检验的数值结局列。")
+        normalized_multiplicity_correction = self._normalize_multiplicity_correction(
+            multiplicity_correction,
+        )
+
+        if paired_test:
+            normalized_layout = paired_data_layout.strip().lower() or "wide"
+            normalized_paired_analysis = paired_analysis.strip().lower() or "paired_t"
+            selected_outcomes = self._select_outcome_columns(
+                numeric_columns=numeric_columns,
+                requested_columns=outcome_columns or [],
+            )
+            if normalized_layout == "long":
+                if len(selected_outcomes) != 1:
+                    raise ValueError("长表配对 t 检验需要且只能选择一个数值结局列。")
+                valid_subject_column = self._resolve_group_column(paired_subject_column, headers)
+                valid_condition_column = self._resolve_group_column(paired_condition_column, headers)
+                first_condition = paired_condition_a.strip()
+                second_condition = paired_condition_b.strip()
+                if not valid_subject_column:
+                    raise ValueError("长表配对 t 检验需要选择对象 ID 列。")
+                if not valid_condition_column:
+                    raise ValueError("长表配对 t 检验需要选择条件/时间点列。")
+
+                if normalized_paired_analysis in {"friedman", "rm_anova"}:
+                    condition_values = self._normalize_condition_values(
+                        paired_conditions or [first_condition, second_condition],
+                    )
+                    if len(condition_values) < 3:
+                        raise ValueError("Friedman 重复测量检验至少需要填写 3 个条件/时间点取值。")
+
+                    if normalized_paired_analysis == "friedman":
+                        result = self._build_friedman_test_result(
+                            outcome_column=selected_outcomes[0],
+                            subject_column=valid_subject_column,
+                            condition_column=valid_condition_column,
+                            condition_values=condition_values,
+                            rows=rows,
+                            multiplicity_correction=normalized_multiplicity_correction,
+                        )
+                    else:
+                        result = self._build_repeated_measures_anova_design_result(
+                            outcome_column=selected_outcomes[0],
+                            subject_column=valid_subject_column,
+                            condition_column=valid_condition_column,
+                            condition_values=condition_values,
+                            rows=rows,
+                        )
+                    completed_count = 1 if result.status == "completed" else 0
+                    blocked_count = 1 if result.status == "blocked" else 0
+                    review_count = 0 if result.status in {"completed", "blocked"} else 1
+                    audit_summary = (
+                        f"已在人工确认后执行长表重复测量正式检验：{completed_count} 项完成，"
+                        f"{review_count} 项需外部统计环境复核，{blocked_count} 项阻止；未保存原始 CSV。"
+                    )
+                    next_step = (
+                        "将 Friedman 检验和事后比较结果与对象 ID、条件列和研究设计逐项核对，再交给 Alex Writer 写入 Methods/Results。"
+                        if protocol.statistical_plan.strip()
+                        else "建议先把本次 Friedman 重复测量检验方法补入研究方案的统计路线，再进入论文结果写作。"
+                    )
+                    return FormalTestReport(
+                        project_id=project.id,
+                        file_name=file_name,
+                        row_count=len(rows),
+                        group_column=valid_condition_column,
+                        outcome_columns=selected_outcomes,
+                        confirmation=confirmation,
+                        results=[result],
+                        raw_csv_saved=False,
+                        audit_summary=audit_summary,
+                        next_step=next_step,
+                    )
+
+                if normalized_paired_analysis != "paired_t":
+                    raise ValueError("长表配对检验类型只能是 paired_t 或 friedman。")
+                if not first_condition or not second_condition:
+                    raise ValueError("长表配对 t 检验需要填写两个条件/时间点取值。")
+                if first_condition == second_condition:
+                    raise ValueError("两个条件/时间点取值不能相同。")
+
+                result = self._build_long_paired_t_test_result(
+                    outcome_column=selected_outcomes[0],
+                    subject_column=valid_subject_column,
+                    condition_column=valid_condition_column,
+                    first_condition=first_condition,
+                    second_condition=second_condition,
+                    rows=rows,
+                )
+                completed_count = 1 if result.status == "completed" else 0
+                blocked_count = 1 if result.status == "blocked" else 0
+                review_count = 0 if result.status in {"completed", "blocked"} else 1
+                audit_summary = (
+                    f"已在人工确认后执行长表配对正式检验：{completed_count} 项完成，"
+                    f"{review_count} 项需外部统计环境复核，{blocked_count} 项阻止；未保存原始 CSV。"
+                )
+                next_step = (
+                    "将长表配对 t 检验结果与对象 ID、条件列和研究设计逐项核对，再交给 Alex Writer 写入 Methods/Results。"
+                    if protocol.statistical_plan.strip()
+                    else "建议先把本次长表配对检验方法补入研究方案的统计路线，再进入论文结果写作。"
+                )
+                return FormalTestReport(
+                    project_id=project.id,
+                    file_name=file_name,
+                    row_count=len(rows),
+                    group_column=valid_condition_column,
+                    outcome_columns=selected_outcomes,
+                    confirmation=confirmation,
+                    results=[result],
+                    raw_csv_saved=False,
+                    audit_summary=audit_summary,
+                    next_step=next_step,
+                )
+
+            if normalized_layout != "wide":
+                raise ValueError("配对 t 检验的数据格式只能是 wide 或 long。")
+            if len(selected_outcomes) != 2:
+                raise ValueError("配对 t 检验需要且只能选择两个数值结局列。")
+
+            result = self._build_paired_t_test_result(
+                first_outcome_column=selected_outcomes[0],
+                second_outcome_column=selected_outcomes[1],
+                rows=rows,
+            )
+            completed_count = 1 if result.status == "completed" else 0
+            blocked_count = 1 if result.status == "blocked" else 0
+            review_count = 0 if result.status in {"completed", "blocked"} else 1
+            audit_summary = (
+                f"已在人工确认后执行配对正式检验：{completed_count} 项完成，"
+                f"{review_count} 项需外部统计环境复核，{blocked_count} 项阻止；未保存原始 CSV。"
+            )
+            next_step = (
+                "将配对 t 检验结果与研究设计逐项核对，再交给 Alex Writer 写入 Methods/Results。"
+                if protocol.statistical_plan.strip()
+                else "建议先把本次配对检验方法补入研究方案的统计路线，再进入论文结果写作。"
+            )
+            return FormalTestReport(
+                project_id=project.id,
+                file_name=file_name,
+                row_count=len(rows),
+                group_column=None,
+                outcome_columns=selected_outcomes,
+                confirmation=confirmation,
+                results=[result],
+                raw_csv_saved=False,
+                audit_summary=audit_summary,
+                next_step=next_step,
+            )
 
         valid_group_column = self._resolve_group_column(group_column, headers)
         if not valid_group_column:
@@ -386,6 +548,7 @@ class DataWorkspaceService:
                 outcome_column=outcome,
                 group_column=valid_group_column,
                 rows=rows,
+                multiplicity_correction=normalized_multiplicity_correction,
             )
             for outcome in selected_outcomes
         ]
@@ -632,6 +795,25 @@ class DataWorkspaceService:
             raise ValueError(f"分组列不存在：{group_column}")
         return group_column
 
+    def _normalize_condition_values(self, values: list[str]) -> list[str]:
+        normalized_values: list[str] = []
+        seen_values: set[str] = set()
+        for value in values:
+            normalized_value = value.strip()
+            if not normalized_value or normalized_value in seen_values:
+                continue
+            normalized_values.append(normalized_value)
+            seen_values.add(normalized_value)
+        return normalized_values
+
+    def _normalize_multiplicity_correction(self, value: str) -> str:
+        normalized_value = value.strip().lower().replace("_", "-") or "holm"
+        if normalized_value in {"holm", "holm-bonferroni", "bonferroni-holm"}:
+            return "holm"
+        if normalized_value in {"fdr", "bh", "benjamini-hochberg", "bh-fdr"}:
+            return "fdr"
+        raise ValueError("多重比较校正方法只能是 Holm-Bonferroni 或 Benjamini-Hochberg FDR。")
+
     def _build_group_comparison(
         self,
         column_name: str,
@@ -823,6 +1005,7 @@ class DataWorkspaceService:
         outcome_column: str,
         group_column: str,
         rows: list[dict[str, str]],
+        multiplicity_correction: str,
     ) -> FormalTestResult:
         grouped_values = self._collect_grouped_numeric_values(
             outcome_column=outcome_column,
@@ -845,18 +1028,25 @@ class DataWorkspaceService:
             )
 
         if len(grouped_values) > 2:
-            return FormalTestResult(
+            if self._should_use_kruskal_wallis(grouped_values):
+                return self._build_kruskal_wallis_result(
+                    outcome_column=outcome_column,
+                    group_column=group_column,
+                    grouped_values=grouped_values,
+                    multiplicity_correction=multiplicity_correction,
+                )
+            if self._should_use_welch_anova(grouped_values):
+                return self._build_welch_anova_result(
+                    outcome_column=outcome_column,
+                    group_column=group_column,
+                    grouped_values=grouped_values,
+                    multiplicity_correction=multiplicity_correction,
+                )
+            return self._build_one_way_anova_result(
                 outcome_column=outcome_column,
                 group_column=group_column,
-                test_name="多组比较待复核",
-                status="needs_external_review",
-                group_count=len(grouped_values),
-                group_labels=group_labels,
-                interpretation=(
-                    f"{outcome_column} 在 {group_column} 下有 {len(grouped_values)} 个分组。"
-                    "当前原型不会自动执行 ANOVA 或 Kruskal-Wallis，请导出参数后在正式统计环境复核。"
-                ),
-                warnings=["多组比较需要明确方差齐性、事后比较和多重比较校正。"],
+                grouped_values=grouped_values,
+                multiplicity_correction=multiplicity_correction,
             )
 
         first_label, second_label = group_labels
@@ -935,6 +1125,875 @@ class DataWorkspaceService:
             warnings=warnings,
         )
 
+    def _build_paired_t_test_result(
+        self,
+        first_outcome_column: str,
+        second_outcome_column: str,
+        rows: list[dict[str, str]],
+    ) -> FormalTestResult:
+        paired_differences: list[float] = []
+        skipped_pair_count = 0
+        for row in rows:
+            first_raw_value = str(row.get(first_outcome_column, "") or "").strip()
+            second_raw_value = str(row.get(second_outcome_column, "") or "").strip()
+            if self._is_missing(first_raw_value) or self._is_missing(second_raw_value):
+                skipped_pair_count += 1
+                continue
+
+            first_values = self._parse_numeric_values([first_raw_value])
+            second_values = self._parse_numeric_values([second_raw_value])
+            if not first_values or not second_values:
+                skipped_pair_count += 1
+                continue
+            paired_differences.append(second_values[0] - first_values[0])
+
+        return self._build_paired_t_result_from_differences(
+            paired_differences=paired_differences,
+            outcome_label=f"{second_outcome_column} - {first_outcome_column}",
+            group_labels=[first_outcome_column, second_outcome_column],
+            first_label=first_outcome_column,
+            second_label=second_outcome_column,
+            skipped_pair_count=skipped_pair_count,
+            design_note="配对 t 检验要求每一行代表同一对象的两次/两条件测量。",
+            skipped_note_prefix="已排除",
+        )
+
+    def _build_long_paired_t_test_result(
+        self,
+        outcome_column: str,
+        subject_column: str,
+        condition_column: str,
+        first_condition: str,
+        second_condition: str,
+        rows: list[dict[str, str]],
+    ) -> FormalTestResult:
+        subject_values: dict[str, dict[str, float]] = defaultdict(dict)
+        duplicate_subjects: set[str] = set()
+        invalid_subjects: set[str] = set()
+        ignored_row_count = 0
+        target_conditions = {first_condition, second_condition}
+
+        for row in rows:
+            subject_value = str(row.get(subject_column, "") or "").strip()
+            condition_value = str(row.get(condition_column, "") or "").strip()
+            raw_outcome_value = str(row.get(outcome_column, "") or "").strip()
+            if self._is_missing(subject_value) or self._is_missing(condition_value):
+                ignored_row_count += 1
+                continue
+            if condition_value not in target_conditions:
+                ignored_row_count += 1
+                continue
+            if self._is_missing(raw_outcome_value):
+                invalid_subjects.add(subject_value)
+                continue
+
+            numeric_values = self._parse_numeric_values([raw_outcome_value])
+            if not numeric_values:
+                invalid_subjects.add(subject_value)
+                continue
+            if condition_value in subject_values[subject_value]:
+                duplicate_subjects.add(subject_value)
+                continue
+            subject_values[subject_value][condition_value] = numeric_values[0]
+
+        paired_differences: list[float] = []
+        incomplete_subject_count = 0
+        excluded_subjects = duplicate_subjects | invalid_subjects
+        for subject_value, condition_values in subject_values.items():
+            if subject_value in excluded_subjects:
+                continue
+            if first_condition not in condition_values or second_condition not in condition_values:
+                incomplete_subject_count += 1
+                continue
+            paired_differences.append(condition_values[second_condition] - condition_values[first_condition])
+
+        extra_warnings: list[str] = []
+        if duplicate_subjects:
+            extra_warnings.append(
+                f"已排除 {len(duplicate_subjects)} 个对象：同一对象在同一条件下存在重复行。"
+            )
+        if invalid_subjects:
+            extra_warnings.append(
+                f"已排除 {len(invalid_subjects)} 个对象：目标条件下存在缺失或非数值结局。"
+            )
+        if incomplete_subject_count:
+            extra_warnings.append(f"已排除 {incomplete_subject_count} 个对象：缺少其中一个目标条件。")
+        if ignored_row_count:
+            extra_warnings.append(f"已忽略 {ignored_row_count} 行非目标条件或缺少对象/条件标识的记录。")
+
+        return self._build_paired_t_result_from_differences(
+            paired_differences=paired_differences,
+            outcome_label=f"{outcome_column}: {second_condition} - {first_condition}",
+            group_labels=[first_condition, second_condition],
+            first_label=first_condition,
+            second_label=second_condition,
+            skipped_pair_count=0,
+            design_note=(
+                f"长表配对 t 检验按 {subject_column} 配对，并比较 "
+                f"{condition_column}={first_condition} 与 {second_condition}。"
+            ),
+            skipped_note_prefix="已排除",
+            extra_warnings=extra_warnings,
+        )
+
+    def _build_friedman_test_result(
+        self,
+        outcome_column: str,
+        subject_column: str,
+        condition_column: str,
+        condition_values: list[str],
+        rows: list[dict[str, str]],
+        multiplicity_correction: str,
+    ) -> FormalTestResult:
+        subject_values: dict[str, dict[str, float]] = defaultdict(dict)
+        duplicate_subjects: set[str] = set()
+        invalid_subjects: set[str] = set()
+        ignored_row_count = 0
+        target_conditions = set(condition_values)
+
+        for row in rows:
+            subject_value = str(row.get(subject_column, "") or "").strip()
+            condition_value = str(row.get(condition_column, "") or "").strip()
+            raw_outcome_value = str(row.get(outcome_column, "") or "").strip()
+            if self._is_missing(subject_value) or self._is_missing(condition_value):
+                ignored_row_count += 1
+                continue
+            if condition_value not in target_conditions:
+                ignored_row_count += 1
+                continue
+            if self._is_missing(raw_outcome_value):
+                invalid_subjects.add(subject_value)
+                continue
+
+            numeric_values = self._parse_numeric_values([raw_outcome_value])
+            if not numeric_values:
+                invalid_subjects.add(subject_value)
+                continue
+            if condition_value in subject_values[subject_value]:
+                duplicate_subjects.add(subject_value)
+                continue
+            subject_values[subject_value][condition_value] = numeric_values[0]
+
+        complete_subject_values: list[dict[str, float]] = []
+        incomplete_subject_count = 0
+        excluded_subjects = duplicate_subjects | invalid_subjects
+        for subject_value, values_by_condition in subject_values.items():
+            if subject_value in excluded_subjects:
+                continue
+            if any(condition not in values_by_condition for condition in condition_values):
+                incomplete_subject_count += 1
+                continue
+            complete_subject_values.append(
+                {condition: values_by_condition[condition] for condition in condition_values}
+            )
+
+        subject_count = len(complete_subject_values)
+        condition_count = len(condition_values)
+        warnings = [
+            f"Friedman 检验按 {subject_column} 配对，并比较 {condition_column} 中 {condition_count} 个条件。",
+            "P 值基于卡方近似；正式报告前需复核重复测量设计、缺失机制和异常值。",
+        ]
+        if duplicate_subjects:
+            warnings.append(f"已排除 {len(duplicate_subjects)} 个对象：同一对象在同一条件下存在重复行。")
+        if invalid_subjects:
+            warnings.append(f"已排除 {len(invalid_subjects)} 个对象：目标条件下存在缺失或非数值结局。")
+        if incomplete_subject_count:
+            warnings.append(f"已排除 {incomplete_subject_count} 个对象：未覆盖全部目标条件。")
+        if ignored_row_count:
+            warnings.append(f"已忽略 {ignored_row_count} 行非目标条件或缺少对象/条件标识的记录。")
+
+        if subject_count < 2:
+            return FormalTestResult(
+                outcome_column=outcome_column,
+                group_column=condition_column,
+                test_name="Friedman 检验未执行",
+                status="blocked",
+                group_count=condition_count,
+                group_labels=condition_values,
+                interpretation="完整重复测量对象不足，无法执行 Friedman 检验。",
+                warnings=["Friedman 检验至少需要 2 个完整对象。", *warnings],
+            )
+
+        rank_sums = {condition: 0.0 for condition in condition_values}
+        tie_sum = 0
+        for values_by_condition in complete_subject_values:
+            ordered_values = [values_by_condition[condition] for condition in condition_values]
+            ranks = self._rank_plain_values(ordered_values)
+            value_counts = Counter(ordered_values)
+            tie_sum += sum(count**3 - count for count in value_counts.values() if count > 1)
+            for condition, rank in zip(condition_values, ranks):
+                rank_sums[condition] += rank
+
+        statistic = (
+            12
+            / (subject_count * condition_count * (condition_count + 1))
+            * sum(rank_sum**2 for rank_sum in rank_sums.values())
+            - 3 * subject_count * (condition_count + 1)
+        )
+        tie_correction = 1 - tie_sum / (subject_count * condition_count * (condition_count**2 - 1))
+        if tie_correction <= 0:
+            return FormalTestResult(
+                outcome_column=outcome_column,
+                group_column=condition_column,
+                test_name="Friedman 检验未执行",
+                status="blocked",
+                group_count=condition_count,
+                group_labels=condition_values,
+                interpretation="所有完整对象的条件内秩无有效差异，无法执行 Friedman 检验。",
+                warnings=["所有重复测量值可能完全相同。", *warnings],
+            )
+        statistic = max(statistic / tie_correction, 0)
+        degrees_of_freedom = condition_count - 1
+        p_value = self._chi_square_survival(statistic, degrees_of_freedom)
+        if scipy_stats is not None and hasattr(scipy_stats, "friedmanchisquare"):
+            try:
+                friedman_result = scipy_stats.friedmanchisquare(
+                    *[
+                        [values_by_condition[condition] for values_by_condition in complete_subject_values]
+                        for condition in condition_values
+                    ]
+                )
+                statistic = max(float(friedman_result.statistic), 0)
+                p_value = self._clamp_probability(float(friedman_result.pvalue))
+                warnings[1] = (
+                    "P 值由 scipy.stats.friedmanchisquare 计算；正式报告前仍需复核重复测量设计、"
+                    "缺失机制和异常值。"
+                )
+            except (FloatingPointError, ValueError):
+                pass
+        kendalls_w = min(statistic / (subject_count * (condition_count - 1)), 1)
+
+        if kendalls_w >= 0.5:
+            effect_note = "一致性效应较大"
+        elif kendalls_w >= 0.3:
+            effect_note = "一致性效应中等"
+        elif kendalls_w >= 0.1:
+            effect_note = "一致性效应较小"
+        else:
+            effect_note = "一致性效应很小"
+        if subject_count < 10:
+            warnings.append("完整对象数小于 10，Friedman 卡方近似 P 值需要谨慎解释。")
+
+        interpretation = (
+            f"{outcome_column} 在 {condition_count} 个重复测量条件下，"
+            f"Friedman Q({degrees_of_freedom})={round(statistic, 4)}，"
+            f"P={self._format_p_value(p_value)}，Kendall's W={round(kendalls_w, 4)}（{effect_note}）。"
+        )
+
+        return FormalTestResult(
+            outcome_column=outcome_column,
+            group_column=condition_column,
+            test_name="Friedman 检验",
+            status="completed",
+            statistic=round(statistic, 6),
+            degrees_of_freedom=float(degrees_of_freedom),
+            p_value=round(p_value, 8),
+            effect_size=round(kendalls_w, 6),
+            group_count=condition_count,
+            group_labels=condition_values,
+            interpretation=interpretation,
+            warnings=warnings,
+            pairwise_results=self._build_pairwise_signed_rank_results(
+                complete_subject_values=complete_subject_values,
+                condition_values=condition_values,
+                multiplicity_correction=multiplicity_correction,
+            ),
+        )
+
+    def _build_repeated_measures_anova_design_result(
+        self,
+        outcome_column: str,
+        subject_column: str,
+        condition_column: str,
+        condition_values: list[str],
+        rows: list[dict[str, str]],
+    ) -> FormalTestResult:
+        subject_values: dict[str, dict[str, float]] = defaultdict(dict)
+        duplicate_subjects: set[str] = set()
+        invalid_subjects: set[str] = set()
+        ignored_row_count = 0
+        target_conditions = set(condition_values)
+
+        for row in rows:
+            subject_value = str(row.get(subject_column, "") or "").strip()
+            condition_value = str(row.get(condition_column, "") or "").strip()
+            raw_outcome_value = str(row.get(outcome_column, "") or "").strip()
+            if self._is_missing(subject_value) or self._is_missing(condition_value):
+                ignored_row_count += 1
+                continue
+            if condition_value not in target_conditions:
+                ignored_row_count += 1
+                continue
+            if self._is_missing(raw_outcome_value):
+                invalid_subjects.add(subject_value)
+                continue
+
+            numeric_values = self._parse_numeric_values([raw_outcome_value])
+            if not numeric_values:
+                invalid_subjects.add(subject_value)
+                continue
+            if condition_value in subject_values[subject_value]:
+                duplicate_subjects.add(subject_value)
+                continue
+            subject_values[subject_value][condition_value] = numeric_values[0]
+
+        complete_subject_count = 0
+        incomplete_subject_count = 0
+        excluded_subjects = duplicate_subjects | invalid_subjects
+        for subject_value, values_by_condition in subject_values.items():
+            if subject_value in excluded_subjects:
+                continue
+            if any(condition not in values_by_condition for condition in condition_values):
+                incomplete_subject_count += 1
+                continue
+            complete_subject_count += 1
+
+        condition_count = len(condition_values)
+        warnings = [
+            (
+                f"Recognized repeated-measures design with subject column {subject_column}, "
+                f"condition column {condition_column}, and {condition_count} target conditions."
+            ),
+            (
+                "Formal repeated-measures ANOVA is not computed in this prototype. "
+                "Validate the final F statistic, degrees of freedom, P value, and effect size "
+                "with statsmodels AnovaRM, R, SPSS, or another validated statistics workflow."
+            ),
+        ]
+        if duplicate_subjects:
+            warnings.append(
+                f"Excluded {len(duplicate_subjects)} subject(s) with duplicated rows inside the same condition."
+            )
+        if invalid_subjects:
+            warnings.append(
+                f"Excluded {len(invalid_subjects)} subject(s) with missing or non-numeric outcomes in target conditions."
+            )
+        if incomplete_subject_count:
+            warnings.append(
+                f"Found {incomplete_subject_count} incomplete subject(s); mixed-effects models may fit unbalanced repeated-measures data better."
+            )
+        if ignored_row_count:
+            warnings.append(
+                f"Ignored {ignored_row_count} row(s) outside target conditions or missing subject/condition identifiers."
+            )
+
+        if complete_subject_count < 2:
+            return FormalTestResult(
+                outcome_column=outcome_column,
+                group_column=condition_column,
+                test_name="Repeated-measures ANOVA design check",
+                status="blocked",
+                group_count=condition_count,
+                group_labels=condition_values,
+                interpretation=(
+                    "Repeated-measures ANOVA was not run because fewer than 2 complete subjects "
+                    "covered all selected conditions."
+                ),
+                warnings=warnings,
+            )
+
+        return FormalTestResult(
+            outcome_column=outcome_column,
+            group_column=condition_column,
+            test_name="Repeated-measures ANOVA design check",
+            status="needs_external_review",
+            group_count=condition_count,
+            group_labels=condition_values,
+            interpretation=(
+                "The uploaded CSV matches a long-table repeated-measures ANOVA design. "
+                "Formal ANOVA statistics should be reviewed in an external validated environment."
+            ),
+            warnings=warnings,
+        )
+
+    def _build_paired_t_result_from_differences(
+        self,
+        paired_differences: list[float],
+        outcome_label: str,
+        group_labels: list[str],
+        first_label: str,
+        second_label: str,
+        skipped_pair_count: int,
+        design_note: str,
+        skipped_note_prefix: str,
+        extra_warnings: list[str] | None = None,
+    ) -> FormalTestResult:
+        pair_count = len(paired_differences)
+        if pair_count < 2:
+            return FormalTestResult(
+                outcome_column=outcome_label,
+                group_column=None,
+                test_name="配对 t 检验未执行",
+                status="blocked",
+                group_count=2,
+                group_labels=group_labels,
+                interpretation=(
+                    f"{first_label} 与 {second_label} 的完整配对数据不足，"
+                    "无法估计差值方差。"
+                ),
+                warnings=["配对 t 检验至少需要 2 对完整数值。", *(extra_warnings or [])],
+            )
+
+        mean_difference = fmean(paired_differences)
+        difference_std_dev = stdev(paired_differences)
+        if difference_std_dev <= 0:
+            return FormalTestResult(
+                outcome_column=outcome_label,
+                group_column=None,
+                test_name="配对 t 检验未执行",
+                status="blocked",
+                group_count=2,
+                group_labels=group_labels,
+                interpretation=(
+                    f"{first_label} 与 {second_label} 的配对差值方差为 0，"
+                    "无法计算 t 统计量。"
+                ),
+                warnings=["所有配对差值相同，不适合做配对 t 检验。", *(extra_warnings or [])],
+            )
+
+        statistic = mean_difference / (difference_std_dev / sqrt(pair_count))
+        degrees_of_freedom = pair_count - 1
+        p_value = self._student_t_two_sided_p_value(statistic, degrees_of_freedom)
+        effect_size = mean_difference / difference_std_dev
+
+        warnings = [
+            design_note,
+            "正式报告前需复核差值近似正态、异常值和配对关系是否成立。",
+        ]
+        if pair_count < 10:
+            warnings.append("完整配对数小于 10，P 值需要谨慎解释。")
+        if skipped_pair_count:
+            warnings.append(f"{skipped_note_prefix} {skipped_pair_count} 行不完整或非数值配对。")
+        warnings.extend(extra_warnings or [])
+
+        if abs(effect_size) >= 0.8:
+            effect_note = "效应量较大"
+        elif abs(effect_size) >= 0.5:
+            effect_note = "效应量中等"
+        elif abs(effect_size) >= 0.2:
+            effect_note = "效应量较小"
+        else:
+            effect_note = "效应量很小"
+
+        interpretation = (
+            f"{second_label} 相对 {first_label} 的配对差值均值为 "
+            f"{round(mean_difference, 4)}，配对 t({degrees_of_freedom})={round(statistic, 4)}，"
+            f"双侧 P={self._format_p_value(p_value)}，dz={round(effect_size, 4)}（{effect_note}）。"
+        )
+
+        return FormalTestResult(
+            outcome_column=outcome_label,
+            group_column=None,
+            test_name="配对 t 检验",
+            status="completed",
+            statistic=round(statistic, 6),
+            degrees_of_freedom=float(degrees_of_freedom),
+            p_value=round(p_value, 8),
+            effect_size=round(effect_size, 6),
+            group_count=2,
+            group_labels=group_labels,
+            interpretation=interpretation,
+            warnings=warnings,
+        )
+
+    def _should_use_kruskal_wallis(self, grouped_values: dict[str, list[float]]) -> bool:
+        all_values = [
+            value
+            for values in grouped_values.values()
+            for value in values
+        ]
+        group_sizes = [len(values) for values in grouped_values.values()]
+        if min(group_sizes) < 10:
+            return True
+
+        if len(all_values) < 3:
+            return True
+        pooled_std_dev = stdev(all_values)
+        if pooled_std_dev <= 0:
+            return False
+        skewness_hint = 3 * (fmean(all_values) - median(all_values)) / pooled_std_dev
+        return abs(skewness_hint) >= 1
+
+    def _should_use_welch_anova(self, grouped_values: dict[str, list[float]]) -> bool:
+        group_sizes = [len(values) for values in grouped_values.values()]
+        group_variances = [self._sample_variance(values) for values in grouped_values.values()]
+        if any(variance <= 0 for variance in group_variances):
+            return False
+
+        variance_ratio = max(group_variances) / min(group_variances)
+        size_ratio = max(group_sizes) / min(group_sizes)
+        return variance_ratio >= 4 or size_ratio >= 3 or (variance_ratio >= 2 and size_ratio >= 2)
+
+    def _build_kruskal_wallis_result(
+        self,
+        outcome_column: str,
+        group_column: str,
+        grouped_values: dict[str, list[float]],
+        multiplicity_correction: str,
+    ) -> FormalTestResult:
+        group_labels = list(grouped_values.keys())
+        group_count = len(grouped_values)
+        ranked_values = self._rank_grouped_values(grouped_values)
+        total_n = len(ranked_values)
+        df = group_count - 1
+        if total_n <= group_count or df <= 0:
+            return FormalTestResult(
+                outcome_column=outcome_column,
+                group_column=group_column,
+                test_name="Kruskal-Wallis 检验未执行",
+                status="blocked",
+                group_count=group_count,
+                group_labels=group_labels,
+                interpretation=f"{outcome_column} 的有效样本量不足，无法执行 Kruskal-Wallis 检验。",
+                warnings=["每个分组都需要足够的有效数值。"],
+            )
+
+        rank_sums = {
+            label: 0.0
+            for label in group_labels
+        }
+        for label, _value, rank in ranked_values:
+            rank_sums[label] += rank
+
+        h_statistic = (
+            12
+            / (total_n * (total_n + 1))
+            * sum((rank_sums[label] ** 2) / len(grouped_values[label]) for label in group_labels)
+            - 3 * (total_n + 1)
+        )
+        tie_correction = self._rank_tie_correction(ranked_values)
+        if tie_correction <= 0:
+            return FormalTestResult(
+                outcome_column=outcome_column,
+                group_column=group_column,
+                test_name="Kruskal-Wallis 检验未执行",
+                status="blocked",
+                group_count=group_count,
+                group_labels=group_labels,
+                interpretation=f"{outcome_column} 的所有有效数值相同，无法比较秩分布差异。",
+                warnings=["常数列或完全相同的结局值不适合做秩和检验。"],
+            )
+        h_statistic = max(h_statistic / tie_correction, 0)
+        p_value = self._chi_square_survival(h_statistic, df)
+        epsilon_squared = max((h_statistic - group_count + 1) / (total_n - group_count), 0)
+        epsilon_squared = min(epsilon_squared, 1)
+
+        if epsilon_squared >= 0.26:
+            effect_note = "效应量较大"
+        elif epsilon_squared >= 0.08:
+            effect_note = "效应量中等"
+        elif epsilon_squared >= 0.01:
+            effect_note = "效应量较小"
+        else:
+            effect_note = "效应量很小"
+
+        group_sizes = [len(values) for values in grouped_values.values()]
+        warnings = [
+            "Kruskal-Wallis 检验只判断多组秩分布是否存在总体差异；已附带 Dunn 风格近似事后比较。",
+            "P 值基于卡方近似；正式报告前需结合研究设计和多重比较校正复核。",
+        ]
+        if min(group_sizes) < 5:
+            warnings.append("至少一个分组样本量小于 5，卡方近似 P 值需要谨慎解释。")
+        if tie_correction < 0.95:
+            warnings.append("数据中存在较多相同数值，已进行 ties correction。")
+
+        interpretation = (
+            f"{outcome_column} 按 {group_column} 分为 {group_count} 组后，"
+            f"Kruskal-Wallis H({df})={round(h_statistic, 4)}，"
+            f"P={self._format_p_value(p_value)}，ε²={round(epsilon_squared, 4)}（{effect_note}）。"
+        )
+
+        return FormalTestResult(
+            outcome_column=outcome_column,
+            group_column=group_column,
+            test_name="Kruskal-Wallis 检验",
+            status="completed",
+            statistic=round(h_statistic, 6),
+            degrees_of_freedom=float(df),
+            p_value=round(p_value, 8),
+            effect_size=round(epsilon_squared, 6),
+            group_count=group_count,
+            group_labels=group_labels,
+            interpretation=interpretation,
+            warnings=warnings,
+            pairwise_results=self._build_dunn_pairwise_results(
+                grouped_values,
+                multiplicity_correction=multiplicity_correction,
+            ),
+        )
+
+    def _build_welch_anova_result(
+        self,
+        outcome_column: str,
+        group_column: str,
+        grouped_values: dict[str, list[float]],
+        multiplicity_correction: str,
+    ) -> FormalTestResult:
+        group_labels = list(grouped_values.keys())
+        group_count = len(grouped_values)
+        group_stats = [
+            {
+                "label": label,
+                "n": len(values),
+                "mean": fmean(values),
+                "variance": self._sample_variance(values),
+            }
+            for label, values in grouped_values.items()
+        ]
+        invalid_groups = [
+            str(stat["label"])
+            for stat in group_stats
+            if stat["n"] < 2 or stat["variance"] <= 0
+        ]
+        if invalid_groups:
+            return FormalTestResult(
+                outcome_column=outcome_column,
+                group_column=group_column,
+                test_name="Welch ANOVA 未执行",
+                status="blocked",
+                group_count=group_count,
+                group_labels=group_labels,
+                interpretation=(
+                    f"{outcome_column} 在 {group_column} 下存在无法估计组内方差的分组，"
+                    "无法执行 Welch ANOVA。"
+                ),
+                warnings=[
+                    f"以下分组样本量不足或方差为 0：{'、'.join(invalid_groups[:5])}。",
+                    "请先补充数据、合并稀疏分组，或改用人工复核的统计方案。",
+                ],
+            )
+
+        weights = [
+            stat["n"] / stat["variance"]
+            for stat in group_stats
+        ]
+        total_weight = sum(weights)
+        if total_weight <= 0:
+            return FormalTestResult(
+                outcome_column=outcome_column,
+                group_column=group_column,
+                test_name="Welch ANOVA 未执行",
+                status="blocked",
+                group_count=group_count,
+                group_labels=group_labels,
+                interpretation=f"{outcome_column} 的 Welch 权重无法计算。",
+                warnings=["请确认每个分组都有足够变异和有效样本量。"],
+            )
+
+        weighted_mean = sum(
+            weight * stat["mean"]
+            for weight, stat in zip(weights, group_stats)
+        ) / total_weight
+        df_between = group_count - 1
+        correction_sum = sum(
+            ((1 - weight / total_weight) ** 2) / (stat["n"] - 1)
+            for weight, stat in zip(weights, group_stats)
+        )
+        if correction_sum <= 0:
+            return self._build_one_way_anova_result(
+                outcome_column=outcome_column,
+                group_column=group_column,
+                grouped_values=grouped_values,
+                multiplicity_correction=multiplicity_correction,
+            )
+
+        denominator_df = (group_count**2 - 1) / (3 * correction_sum)
+        denominator_adjustment = 1 + (
+            2
+            * (group_count - 2)
+            / (group_count**2 - 1)
+            * correction_sum
+        )
+        numerator = sum(
+            weight * (stat["mean"] - weighted_mean) ** 2
+            for weight, stat in zip(weights, group_stats)
+        ) / df_between
+        statistic = numerator / denominator_adjustment
+        p_value = self._f_distribution_survival(
+            statistic=statistic,
+            numerator_df=df_between,
+            denominator_df=denominator_df,
+        )
+        eta_squared = self._eta_squared_from_grouped_values(grouped_values)
+
+        if eta_squared >= 0.14:
+            effect_note = "描述性效应量较大"
+        elif eta_squared >= 0.06:
+            effect_note = "描述性效应量中等"
+        elif eta_squared >= 0.01:
+            effect_note = "描述性效应量较小"
+        else:
+            effect_note = "描述性效应量很小"
+
+        group_sizes = [int(stat["n"]) for stat in group_stats]
+        group_variances = [float(stat["variance"]) for stat in group_stats]
+        warnings = [
+            "Welch ANOVA 用于方差不齐或样本量不均衡的多组均值比较。",
+            "已附带 Games-Howell 风格近似事后比较；正式报告前需用统计软件复核精确分布。",
+        ]
+        if max(group_sizes) / min(group_sizes) >= 3:
+            warnings.append("分组样本量明显不均衡，已采用 Welch ANOVA 近似自由度。")
+        if max(group_variances) / min(group_variances) >= 4:
+            warnings.append("分组方差差异明显，已采用 Welch ANOVA。")
+
+        interpretation = (
+            f"{outcome_column} 按 {group_column} 分为 {group_count} 组后，"
+            f"Welch ANOVA F({df_between}, {round(denominator_df, 2)})={round(statistic, 4)}，"
+            f"P={self._format_p_value(p_value)}，描述性 η²={round(eta_squared, 4)}（{effect_note}）。"
+        )
+
+        return FormalTestResult(
+            outcome_column=outcome_column,
+            group_column=group_column,
+            test_name="Welch ANOVA",
+            status="completed",
+            statistic=round(statistic, 6),
+            degrees_of_freedom=float(df_between),
+            denominator_degrees_of_freedom=round(denominator_df, 6),
+            p_value=round(p_value, 8),
+            effect_size=round(eta_squared, 6),
+            group_count=group_count,
+            group_labels=group_labels,
+            interpretation=interpretation,
+            warnings=warnings,
+            pairwise_results=self._build_games_howell_pairwise_results(
+                grouped_values,
+                multiplicity_correction=multiplicity_correction,
+            ),
+        )
+
+    def _build_one_way_anova_result(
+        self,
+        outcome_column: str,
+        group_column: str,
+        grouped_values: dict[str, list[float]],
+        multiplicity_correction: str,
+    ) -> FormalTestResult:
+        group_labels = list(grouped_values.keys())
+        undersized_groups = [
+            label
+            for label, values in grouped_values.items()
+            if len(values) < 2
+        ]
+        if undersized_groups:
+            return FormalTestResult(
+                outcome_column=outcome_column,
+                group_column=group_column,
+                test_name="单因素 ANOVA 未执行",
+                status="blocked",
+                group_count=len(grouped_values),
+                group_labels=group_labels,
+                interpretation=(
+                    f"{outcome_column} 在 {group_column} 下存在有效样本量不足的分组，"
+                    "无法稳定估计组内方差。"
+                ),
+                warnings=[
+                    f"以下分组少于 2 个有效数值：{'、'.join(undersized_groups[:5])}。",
+                    "请先合并稀疏分组、补充数据或改用人工复核的统计方案。",
+                ],
+            )
+
+        all_values = [
+            value
+            for values in grouped_values.values()
+            for value in values
+        ]
+        group_count = len(grouped_values)
+        total_n = len(all_values)
+        df_between = group_count - 1
+        df_within = total_n - group_count
+        if df_between <= 0 or df_within <= 0:
+            return FormalTestResult(
+                outcome_column=outcome_column,
+                group_column=group_column,
+                test_name="单因素 ANOVA 未执行",
+                status="blocked",
+                group_count=group_count,
+                group_labels=group_labels,
+                interpretation=f"{outcome_column} 的自由度不足，无法执行单因素 ANOVA。",
+                warnings=["请确认每个分组都有足够的有效数值。"],
+            )
+
+        grand_mean = fmean(all_values)
+        group_means = {
+            label: fmean(values)
+            for label, values in grouped_values.items()
+        }
+        ss_between = sum(
+            len(values) * (group_means[label] - grand_mean) ** 2
+            for label, values in grouped_values.items()
+        )
+        ss_within = sum(
+            sum((value - group_means[label]) ** 2 for value in values)
+            for label, values in grouped_values.items()
+        )
+        if ss_within <= 0:
+            return FormalTestResult(
+                outcome_column=outcome_column,
+                group_column=group_column,
+                test_name="单因素 ANOVA 未执行",
+                status="blocked",
+                group_count=group_count,
+                group_labels=group_labels,
+                interpretation=f"{outcome_column} 的组内方差为 0，无法计算 F 统计量。",
+                warnings=["常数列或完全无组内变异不适合做均值差异检验。"],
+            )
+
+        ms_between = ss_between / df_between
+        ms_within = ss_within / df_within
+        statistic = ms_between / ms_within
+        p_value = self._f_distribution_survival(
+            statistic=statistic,
+            numerator_df=df_between,
+            denominator_df=df_within,
+        )
+        eta_squared = ss_between / (ss_between + ss_within) if (ss_between + ss_within) > 0 else 0
+
+        if eta_squared >= 0.14:
+            effect_note = "效应量较大"
+        elif eta_squared >= 0.06:
+            effect_note = "效应量中等"
+        elif eta_squared >= 0.01:
+            effect_note = "效应量较小"
+        else:
+            effect_note = "效应量很小"
+
+        group_sizes = [len(values) for values in grouped_values.values()]
+        warnings = [
+            "单因素 ANOVA 只检验总体均值差异；已附带 Tukey HSD 风格近似事后比较。",
+            "报告前仍需结合方差齐性、异常值和多重比较校正进行统计复核。",
+        ]
+        if min(group_sizes) < 10:
+            warnings.append("至少一个分组样本量小于 10，P 值需要谨慎解释。")
+        if max(group_sizes) / min(group_sizes) >= 3:
+            warnings.append("分组样本量不均衡，建议复核方差齐性或考虑 Welch ANOVA。")
+
+        interpretation = (
+            f"{outcome_column} 按 {group_column} 分为 {group_count} 组后，"
+            f"单因素 ANOVA F({df_between}, {df_within})={round(statistic, 4)}，"
+            f"P={self._format_p_value(p_value)}，η²={round(eta_squared, 4)}（{effect_note}）。"
+        )
+
+        return FormalTestResult(
+            outcome_column=outcome_column,
+            group_column=group_column,
+            test_name="单因素 ANOVA",
+            status="completed",
+            statistic=round(statistic, 6),
+            degrees_of_freedom=float(df_between),
+            denominator_degrees_of_freedom=float(df_within),
+            p_value=round(p_value, 8),
+            effect_size=round(eta_squared, 6),
+            group_count=group_count,
+            group_labels=group_labels,
+            interpretation=interpretation,
+            warnings=warnings,
+            pairwise_results=self._build_tukey_pairwise_results(
+                grouped_values,
+                multiplicity_correction=multiplicity_correction,
+            ),
+        )
+
     def _collect_grouped_numeric_values(
         self,
         outcome_column: str,
@@ -958,6 +2017,650 @@ class DataWorkspaceService:
                 key=lambda item: (-len(item[1]), item[0]),
             )
         )
+
+    def _rank_grouped_values(
+        self,
+        grouped_values: dict[str, list[float]],
+    ) -> list[tuple[str, float, float]]:
+        sorted_values = sorted(
+            [
+                (label, value)
+                for label, values in grouped_values.items()
+                for value in values
+            ],
+            key=lambda item: item[1],
+        )
+        ranked_values: list[tuple[str, float, float]] = []
+        index = 0
+        while index < len(sorted_values):
+            tie_end = index + 1
+            while tie_end < len(sorted_values) and sorted_values[tie_end][1] == sorted_values[index][1]:
+                tie_end += 1
+            average_rank = (index + 1 + tie_end) / 2
+            for tie_index in range(index, tie_end):
+                label, value = sorted_values[tie_index]
+                ranked_values.append((label, value, average_rank))
+            index = tie_end
+        return ranked_values
+
+    def _rank_plain_values(self, values: list[float]) -> list[float]:
+        sorted_values = sorted(enumerate(values), key=lambda item: item[1])
+        ranks = [0.0] * len(values)
+        index = 0
+        while index < len(sorted_values):
+            tie_end = index + 1
+            while tie_end < len(sorted_values) and sorted_values[tie_end][1] == sorted_values[index][1]:
+                tie_end += 1
+            average_rank = (index + 1 + tie_end) / 2
+            for tie_index in range(index, tie_end):
+                original_index, _value = sorted_values[tie_index]
+                ranks[original_index] = average_rank
+            index = tie_end
+        return ranks
+
+    def _rank_tie_correction(self, ranked_values: list[tuple[str, float, float]]) -> float:
+        total_n = len(ranked_values)
+        denominator = total_n**3 - total_n
+        if denominator <= 0:
+            return 0
+
+        value_counts = Counter(value for _label, value, _rank in ranked_values)
+        tie_sum = sum(count**3 - count for count in value_counts.values() if count > 1)
+        return 1 - tie_sum / denominator
+
+    def _build_tukey_pairwise_results(
+        self,
+        grouped_values: dict[str, list[float]],
+        multiplicity_correction: str,
+    ) -> list[PairwiseComparisonResult]:
+        results: list[PairwiseComparisonResult] = []
+        df_within = sum(len(values) - 1 for values in grouped_values.values())
+        ss_within = sum(
+            sum((value - fmean(values)) ** 2 for value in values)
+            for values in grouped_values.values()
+        )
+        if df_within <= 0 or ss_within <= 0:
+            return self._build_pairwise_welch_results(
+                grouped_values,
+                test_name="Tukey HSD 近似比较未执行，改用两两 Welch t 检验",
+                multiplicity_correction=multiplicity_correction,
+            )
+
+        mse = ss_within / df_within
+        for first_label, second_label in combinations(grouped_values.keys(), 2):
+            first_values = grouped_values[first_label]
+            second_values = grouped_values[second_label]
+            if len(first_values) < 2 or len(second_values) < 2:
+                results.append(
+                    PairwiseComparisonResult(
+                        group_a=first_label,
+                        group_b=second_label,
+                        test_name="Tukey HSD 近似比较",
+                        status="blocked",
+                        interpretation=f"{first_label} 与 {second_label} 有效样本量不足，未执行 Tukey 风格比较。",
+                        warnings=["每个分组至少需要 2 个有效数值。"],
+                    )
+                )
+                continue
+
+            mean_difference = fmean(first_values) - fmean(second_values)
+            standard_error = sqrt(mse / 2 * (1 / len(first_values) + 1 / len(second_values)))
+            if standard_error <= 0:
+                results.append(
+                    PairwiseComparisonResult(
+                        group_a=first_label,
+                        group_b=second_label,
+                        test_name="Tukey HSD 近似比较",
+                        status="blocked",
+                        interpretation=f"{first_label} 与 {second_label} 的 pooled MSE 无法支持两两比较。",
+                        warnings=["常数列或完全无组内变异不适合做 Tukey 风格比较。"],
+                    )
+                )
+                continue
+
+            q_statistic = abs(mean_difference) / standard_error
+            studentized_range_p_value = self._studentized_range_survival(
+                statistic=q_statistic,
+                group_count=len(grouped_values),
+                degrees_of_freedom=df_within,
+            )
+            if studentized_range_p_value is None:
+                t_like_statistic = q_statistic / sqrt(2)
+                p_value = self._student_t_two_sided_p_value(t_like_statistic, df_within)
+                p_value_warning = (
+                    "Tukey HSD 的 studentized range 分布不可用，当前 P 值使用 t 分布近似；"
+                    "正式报告前需用统计软件复核。"
+                )
+            else:
+                p_value = studentized_range_p_value
+                p_value_warning = "Tukey HSD P 值使用 scipy.stats.studentized_range 分布计算。"
+            effect_size = self._cohens_d(first_values, second_values)
+            results.append(
+                PairwiseComparisonResult(
+                    group_a=first_label,
+                    group_b=second_label,
+                    test_name="Tukey HSD 近似比较",
+                    status="completed",
+                    statistic=round(q_statistic, 6),
+                    degrees_of_freedom=float(df_within),
+                    p_value=round(p_value, 8),
+                    effect_size=round(effect_size, 6),
+                    interpretation=(
+                        f"{first_label} vs {second_label}：Tukey HSD 风格 q={round(q_statistic, 4)}，"
+                        f"原始 P={self._format_p_value(p_value)}。"
+                    ),
+                    warnings=[
+                        p_value_warning,
+                        self._multiplicity_warning(multiplicity_correction),
+                    ],
+                )
+            )
+
+        self._apply_multiplicity_correction(results, multiplicity_correction)
+        self._refresh_pairwise_interpretations(results)
+        return results
+
+    def _build_games_howell_pairwise_results(
+        self,
+        grouped_values: dict[str, list[float]],
+        multiplicity_correction: str,
+    ) -> list[PairwiseComparisonResult]:
+        results: list[PairwiseComparisonResult] = []
+        group_count = len(grouped_values)
+        for first_label, second_label in combinations(grouped_values.keys(), 2):
+            first_values = grouped_values[first_label]
+            second_values = grouped_values[second_label]
+            if len(first_values) < 2 or len(second_values) < 2:
+                results.append(
+                    PairwiseComparisonResult(
+                        group_a=first_label,
+                        group_b=second_label,
+                        test_name="Games-Howell 近似比较",
+                        status="blocked",
+                        interpretation=f"{first_label} 与 {second_label} 有效样本量不足，未执行 Games-Howell 比较。",
+                        warnings=["每个分组至少需要 2 个有效数值。"],
+                    )
+                )
+                continue
+
+            first_variance = self._sample_variance(first_values)
+            second_variance = self._sample_variance(second_values)
+            first_term = first_variance / len(first_values)
+            second_term = second_variance / len(second_values)
+            standard_error_squared = 0.5 * (first_term + second_term)
+            if standard_error_squared <= 0:
+                results.append(
+                    PairwiseComparisonResult(
+                        group_a=first_label,
+                        group_b=second_label,
+                        test_name="Games-Howell 近似比较",
+                        status="blocked",
+                        interpretation=f"{first_label} 与 {second_label} 组内方差为 0，未执行 Games-Howell 比较。",
+                        warnings=["常数列或完全无组内变异不适合做均值差异比较。"],
+                    )
+                )
+                continue
+
+            mean_difference = fmean(first_values) - fmean(second_values)
+            q_statistic = abs(mean_difference) / sqrt(standard_error_squared)
+            degrees_of_freedom = self._welch_degrees_of_freedom(
+                first_variance=first_variance,
+                first_n=len(first_values),
+                second_variance=second_variance,
+                second_n=len(second_values),
+            )
+            studentized_range_p_value = self._studentized_range_survival(
+                statistic=q_statistic,
+                group_count=group_count,
+                degrees_of_freedom=degrees_of_freedom,
+            )
+            if studentized_range_p_value is None:
+                t_like_statistic = q_statistic / sqrt(2)
+                p_value = self._student_t_two_sided_p_value(t_like_statistic, degrees_of_freedom)
+                p_value_warning = (
+                    "Games-Howell 的 studentized range 分布不可用，当前 P 值使用 Welch t 分布近似；"
+                    "正式报告前需用统计软件复核。"
+                )
+            else:
+                p_value = studentized_range_p_value
+                p_value_warning = "Games-Howell P 值使用 scipy.stats.studentized_range 分布计算。"
+            effect_size = self._cohens_d(first_values, second_values)
+
+            results.append(
+                PairwiseComparisonResult(
+                    group_a=first_label,
+                    group_b=second_label,
+                    test_name="Games-Howell 近似比较",
+                    status="completed",
+                    statistic=round(q_statistic, 6),
+                    degrees_of_freedom=round(degrees_of_freedom, 6),
+                    p_value=round(p_value, 8),
+                    effect_size=round(effect_size, 6),
+                    interpretation=(
+                        f"{first_label} vs {second_label}：Games-Howell q={round(q_statistic, 4)}，"
+                        f"df={round(degrees_of_freedom, 2)}，原始 P={self._format_p_value(p_value)}。"
+                    ),
+                    warnings=[
+                        p_value_warning,
+                        self._multiplicity_warning(multiplicity_correction),
+                    ],
+                )
+            )
+
+        self._apply_multiplicity_correction(results, multiplicity_correction)
+        self._refresh_pairwise_interpretations(results)
+        return results
+
+    def _build_dunn_pairwise_results(
+        self,
+        grouped_values: dict[str, list[float]],
+        multiplicity_correction: str,
+    ) -> list[PairwiseComparisonResult]:
+        results: list[PairwiseComparisonResult] = []
+        ranked_values = self._rank_grouped_values(grouped_values)
+        total_n = len(ranked_values)
+        tie_correction = self._rank_tie_correction(ranked_values)
+        if total_n <= 1 or tie_correction <= 0:
+            return results
+
+        rank_sums: dict[str, float] = {label: 0.0 for label in grouped_values}
+        for label, _value, rank in ranked_values:
+            rank_sums[label] += rank
+
+        for first_label, second_label in combinations(grouped_values.keys(), 2):
+            first_n = len(grouped_values[first_label])
+            second_n = len(grouped_values[second_label])
+            if first_n < 1 or second_n < 1:
+                results.append(
+                    PairwiseComparisonResult(
+                        group_a=first_label,
+                        group_b=second_label,
+                        test_name="Dunn 近似比较",
+                        status="blocked",
+                        interpretation=f"{first_label} 与 {second_label} 有效样本量不足，未执行 Dunn 比较。",
+                        warnings=["每个分组至少需要 1 个有效数值。"],
+                    )
+                )
+                continue
+
+            mean_rank_difference = rank_sums[first_label] / first_n - rank_sums[second_label] / second_n
+            standard_error = sqrt(total_n * (total_n + 1) / 12 * (1 / first_n + 1 / second_n) * tie_correction)
+            if standard_error <= 0:
+                continue
+            statistic = mean_rank_difference / standard_error
+            p_value = self._normal_two_sided_p_value(statistic)
+            effect_size = abs(statistic) / sqrt(total_n)
+            results.append(
+                PairwiseComparisonResult(
+                    group_a=first_label,
+                    group_b=second_label,
+                    test_name="Dunn 近似比较",
+                    status="completed",
+                    statistic=round(statistic, 6),
+                    p_value=round(p_value, 8),
+                    effect_size=round(effect_size, 6),
+                    interpretation=(
+                        f"{first_label} vs {second_label}：Dunn 近似 Z={round(statistic, 4)}，"
+                        f"原始 P={self._format_p_value(p_value)}。"
+                    ),
+                    warnings=[
+                        "Dunn 比较使用全局秩和正态近似；正式报告前需用统计软件复核。",
+                        self._multiplicity_warning(multiplicity_correction),
+                    ],
+                )
+            )
+
+        self._apply_multiplicity_correction(results, multiplicity_correction)
+        self._refresh_pairwise_interpretations(results)
+        return results
+
+    def _build_pairwise_signed_rank_results(
+        self,
+        complete_subject_values: list[dict[str, float]],
+        condition_values: list[str],
+        multiplicity_correction: str,
+    ) -> list[PairwiseComparisonResult]:
+        results: list[PairwiseComparisonResult] = []
+        for first_condition, second_condition in combinations(condition_values, 2):
+            differences = [
+                values_by_condition[second_condition] - values_by_condition[first_condition]
+                for values_by_condition in complete_subject_values
+            ]
+            non_zero_differences = [difference for difference in differences if difference != 0]
+            if len(non_zero_differences) < 2:
+                results.append(
+                    PairwiseComparisonResult(
+                        group_a=first_condition,
+                        group_b=second_condition,
+                        test_name="配对秩和近似比较",
+                        status="blocked",
+                        interpretation=(
+                            f"{first_condition} 与 {second_condition} 的非零配对差值不足，"
+                            "未执行 Friedman 事后配对秩和比较。"
+                        ),
+                        warnings=["配对秩和近似比较至少需要 2 个非零配对差值。"],
+                    )
+                )
+                continue
+
+            absolute_differences = [abs(difference) for difference in non_zero_differences]
+            ranks = self._rank_plain_values(absolute_differences)
+            positive_rank_sum = sum(
+                rank
+                for difference, rank in zip(non_zero_differences, ranks)
+                if difference > 0
+            )
+            sample_size = len(non_zero_differences)
+            expected_rank_sum = sample_size * (sample_size + 1) / 4
+            tie_counts = Counter(absolute_differences)
+            tie_sum = sum(count**3 - count for count in tie_counts.values() if count > 1)
+            variance = sample_size * (sample_size + 1) * (2 * sample_size + 1) / 24 - tie_sum / 48
+            if variance <= 0:
+                results.append(
+                    PairwiseComparisonResult(
+                        group_a=first_condition,
+                        group_b=second_condition,
+                        test_name="配对秩和近似比较",
+                        status="blocked",
+                        interpretation=(
+                            f"{first_condition} 与 {second_condition} 的配对差值秩方差为 0，"
+                            "未执行事后比较。"
+                        ),
+                        warnings=["常数差值或完全相同的绝对差值不适合做配对秩和近似比较。"],
+                    )
+                )
+                continue
+
+            statistic = (positive_rank_sum - expected_rank_sum) / sqrt(variance)
+            scipy_p_value = self._wilcoxon_two_sided_p_value(non_zero_differences)
+            p_value = scipy_p_value if scipy_p_value is not None else self._normal_two_sided_p_value(statistic)
+            effect_size = abs(statistic) / sqrt(sample_size)
+            warnings = [
+                self._multiplicity_warning(multiplicity_correction),
+            ]
+            if scipy_p_value is not None:
+                warnings.insert(
+                    0,
+                    "Friedman 事后比较 P 值由 scipy.stats.wilcoxon 计算；Z 和效应量为正态近似辅助指标。",
+                )
+            else:
+                warnings.insert(
+                    0,
+                    "Friedman 事后比较使用 Wilcoxon signed-rank 正态近似；正式报告前需用统计软件复核。",
+                )
+            zero_difference_count = len(differences) - sample_size
+            if zero_difference_count:
+                warnings.append(f"已忽略 {zero_difference_count} 个零差值配对。")
+            if sample_size < 10:
+                warnings.append("非零配对数小于 10，正态近似 P 值需要谨慎解释。")
+            if tie_sum > 0:
+                warnings.append("绝对差值中存在相同数值，已在方差估计中考虑 ties correction。")
+
+            results.append(
+                PairwiseComparisonResult(
+                    group_a=first_condition,
+                    group_b=second_condition,
+                    test_name="配对秩和近似比较",
+                    status="completed",
+                    statistic=round(statistic, 6),
+                    p_value=round(p_value, 8),
+                    effect_size=round(effect_size, 6),
+                    interpretation=(
+                        f"{first_condition} vs {second_condition}：配对秩和近似 Z={round(statistic, 4)}，"
+                        f"原始 P={self._format_p_value(p_value)}。"
+                    ),
+                    warnings=warnings,
+                )
+            )
+
+        self._apply_multiplicity_correction(results, multiplicity_correction)
+        self._refresh_pairwise_interpretations(results)
+        return results
+
+    def _build_pairwise_welch_results(
+        self,
+        grouped_values: dict[str, list[float]],
+        test_name: str = "两两 Welch t 检验",
+        extra_warning: str | None = None,
+        multiplicity_correction: str = "holm",
+    ) -> list[PairwiseComparisonResult]:
+        results: list[PairwiseComparisonResult] = []
+        for first_label, second_label in combinations(grouped_values.keys(), 2):
+            first_values = grouped_values[first_label]
+            second_values = grouped_values[second_label]
+            if len(first_values) < 2 or len(second_values) < 2:
+                results.append(
+                    PairwiseComparisonResult(
+                        group_a=first_label,
+                        group_b=second_label,
+                        test_name=test_name,
+                        status="blocked",
+                        interpretation=f"{first_label} 与 {second_label} 有效样本量不足，未执行两两比较。",
+                        warnings=["每个分组至少需要 2 个有效数值。"],
+                    )
+                )
+                continue
+
+            first_variance = self._sample_variance(first_values)
+            second_variance = self._sample_variance(second_values)
+            standard_error_squared = first_variance / len(first_values) + second_variance / len(second_values)
+            if standard_error_squared <= 0:
+                results.append(
+                    PairwiseComparisonResult(
+                        group_a=first_label,
+                        group_b=second_label,
+                        test_name=test_name,
+                        status="blocked",
+                        interpretation=f"{first_label} 与 {second_label} 组内方差为 0，未执行两两比较。",
+                        warnings=["常数列或完全无组内变异不适合做均值差异检验。"],
+                    )
+                )
+                continue
+
+            statistic = (fmean(first_values) - fmean(second_values)) / sqrt(standard_error_squared)
+            degrees_of_freedom = self._welch_degrees_of_freedom(
+                first_variance=first_variance,
+                first_n=len(first_values),
+                second_variance=second_variance,
+                second_n=len(second_values),
+            )
+            p_value = self._student_t_two_sided_p_value(statistic, degrees_of_freedom)
+            effect_size = self._cohens_d(first_values, second_values)
+            warnings = [self._multiplicity_warning(multiplicity_correction)]
+            if extra_warning:
+                warnings.insert(0, extra_warning)
+            if min(len(first_values), len(second_values)) < 10:
+                warnings.append("至少一个分组样本量小于 10，两两比较需要谨慎解释。")
+
+            results.append(
+                PairwiseComparisonResult(
+                    group_a=first_label,
+                    group_b=second_label,
+                    test_name=test_name,
+                    status="completed",
+                    statistic=round(statistic, 6),
+                    degrees_of_freedom=round(degrees_of_freedom, 6),
+                    p_value=round(p_value, 8),
+                    effect_size=round(effect_size, 6),
+                    interpretation=(
+                        f"{first_label} vs {second_label}：Welch t={round(statistic, 4)}，"
+                        f"原始 P={self._format_p_value(p_value)}。"
+                    ),
+                    warnings=warnings,
+                )
+            )
+
+        self._apply_multiplicity_correction(results, multiplicity_correction)
+        self._refresh_pairwise_interpretations(results)
+        return results
+
+    def _build_pairwise_rank_sum_results(
+        self,
+        grouped_values: dict[str, list[float]],
+        multiplicity_correction: str = "holm",
+    ) -> list[PairwiseComparisonResult]:
+        results: list[PairwiseComparisonResult] = []
+        for first_label, second_label in combinations(grouped_values.keys(), 2):
+            subset = {
+                first_label: grouped_values[first_label],
+                second_label: grouped_values[second_label],
+            }
+            first_values = subset[first_label]
+            second_values = subset[second_label]
+            first_n = len(first_values)
+            second_n = len(second_values)
+            if first_n < 1 or second_n < 1:
+                results.append(
+                    PairwiseComparisonResult(
+                        group_a=first_label,
+                        group_b=second_label,
+                        test_name="两两秩和近似比较",
+                        status="blocked",
+                        interpretation=f"{first_label} 与 {second_label} 有效样本量不足，未执行秩和比较。",
+                        warnings=["每个分组至少需要 1 个有效数值。"],
+                    )
+                )
+                continue
+
+            ranked_values = self._rank_grouped_values(subset)
+            total_n = len(ranked_values)
+            rank_sum_first = sum(rank for label, _value, rank in ranked_values if label == first_label)
+            u_first = rank_sum_first - first_n * (first_n + 1) / 2
+            u_second = first_n * second_n - u_first
+            tie_counts = Counter(value for _label, value, _rank in ranked_values)
+            tie_sum = sum(count**3 - count for count in tie_counts.values() if count > 1)
+            variance = first_n * second_n / 12 * (
+                total_n + 1 - tie_sum / (total_n * (total_n - 1))
+            )
+            if variance <= 0:
+                results.append(
+                    PairwiseComparisonResult(
+                        group_a=first_label,
+                        group_b=second_label,
+                        test_name="两两秩和近似比较",
+                        status="blocked",
+                        interpretation=f"{first_label} 与 {second_label} 数值完全相同，未执行秩和比较。",
+                        warnings=["常数列或完全相同的结局值不适合做秩和检验。"],
+                    )
+                )
+                continue
+
+            mean_u = first_n * second_n / 2
+            statistic = (u_first - mean_u) / sqrt(variance)
+            p_value = self._normal_two_sided_p_value(statistic)
+            rank_biserial = 1 - (2 * min(u_first, u_second) / (first_n * second_n))
+            warnings = [
+                f"两两秩和比较使用正态近似；{self._multiplicity_warning(multiplicity_correction)}",
+            ]
+            if min(first_n, second_n) < 5:
+                warnings.append("至少一个分组样本量小于 5，正态近似 P 值需要谨慎解释。")
+            if tie_sum > 0:
+                warnings.append("数据中存在相同数值，已在方差估计中考虑 ties correction。")
+
+            results.append(
+                PairwiseComparisonResult(
+                    group_a=first_label,
+                    group_b=second_label,
+                    test_name="两两秩和近似比较",
+                    status="completed",
+                    statistic=round(statistic, 6),
+                    p_value=round(p_value, 8),
+                    effect_size=round(rank_biserial, 6),
+                    interpretation=(
+                        f"{first_label} vs {second_label}：秩和近似 Z={round(statistic, 4)}，"
+                        f"原始 P={self._format_p_value(p_value)}。"
+                    ),
+                    warnings=warnings,
+                )
+            )
+
+        self._apply_multiplicity_correction(results, multiplicity_correction)
+        self._refresh_pairwise_interpretations(results)
+        return results
+
+    def _apply_multiplicity_correction(
+        self,
+        results: list[PairwiseComparisonResult],
+        multiplicity_correction: str,
+    ) -> None:
+        if multiplicity_correction == "fdr":
+            self._apply_benjamini_hochberg_fdr(results)
+            return
+        self._apply_holm_bonferroni(results)
+
+    def _multiplicity_warning(self, multiplicity_correction: str) -> str:
+        if multiplicity_correction == "fdr":
+            return "Benjamini-Hochberg FDR 校正用于控制假发现率，适合探索性或多指标场景。"
+        return "Holm-Bonferroni 校正用于保守控制多重比较风险。"
+
+    def _apply_holm_bonferroni(self, results: list[PairwiseComparisonResult]) -> None:
+        completed_results = [
+            (index, result.p_value)
+            for index, result in enumerate(results)
+            if result.status == "completed" and result.p_value is not None
+        ]
+        ordered_results = sorted(completed_results, key=lambda item: item[1])
+        running_adjusted_p = 0.0
+        test_count = len(ordered_results)
+        for order_index, (result_index, p_value) in enumerate(ordered_results):
+            adjusted_p = min((test_count - order_index) * p_value, 1)
+            running_adjusted_p = max(running_adjusted_p, adjusted_p)
+            results[result_index].adjusted_p_value = round(running_adjusted_p, 8)
+            results[result_index].correction_method = "Holm-Bonferroni"
+
+    def _apply_benjamini_hochberg_fdr(self, results: list[PairwiseComparisonResult]) -> None:
+        completed_results = [
+            (index, result.p_value)
+            for index, result in enumerate(results)
+            if result.status == "completed" and result.p_value is not None
+        ]
+        ordered_results = sorted(completed_results, key=lambda item: item[1])
+        test_count = len(ordered_results)
+        running_adjusted_p = 1.0
+        for reverse_rank, (result_index, p_value) in enumerate(reversed(ordered_results), start=1):
+            rank = test_count - reverse_rank + 1
+            adjusted_p = min(p_value * test_count / rank, 1)
+            running_adjusted_p = min(running_adjusted_p, adjusted_p)
+            results[result_index].adjusted_p_value = round(running_adjusted_p, 8)
+            results[result_index].correction_method = "Benjamini-Hochberg FDR"
+
+    def _refresh_pairwise_interpretations(self, results: list[PairwiseComparisonResult]) -> None:
+        for result in results:
+            if result.status != "completed" or result.adjusted_p_value is None:
+                continue
+            correction_label = (
+                "FDR"
+                if result.correction_method == "Benjamini-Hochberg FDR"
+                else "Holm"
+            )
+            result.interpretation = (
+                f"{result.group_a} vs {result.group_b}：{result.test_name}，"
+                f"原始 P={self._format_p_value(result.p_value or 1)}，"
+                f"{correction_label} 校正后 P={self._format_p_value(result.adjusted_p_value)}。"
+            )
+
+    def _eta_squared_from_grouped_values(self, grouped_values: dict[str, list[float]]) -> float:
+        all_values = [
+            value
+            for values in grouped_values.values()
+            for value in values
+        ]
+        if not all_values:
+            return 0
+
+        grand_mean = fmean(all_values)
+        group_means = {
+            label: fmean(values)
+            for label, values in grouped_values.items()
+        }
+        ss_between = sum(
+            len(values) * (group_means[label] - grand_mean) ** 2
+            for label, values in grouped_values.items()
+        )
+        ss_total = sum((value - grand_mean) ** 2 for value in all_values)
+        if ss_total <= 0:
+            return 0
+        return ss_between / ss_total
 
     def _sample_variance(self, values: list[float]) -> float:
         if len(values) < 2:
@@ -986,6 +2689,11 @@ class DataWorkspaceService:
         abs_statistic = abs(statistic)
         if abs_statistic == 0:
             return 1
+        if scipy_stats is not None:
+            try:
+                return self._clamp_probability(float(scipy_stats.t.sf(abs_statistic, degrees_of_freedom) * 2))
+            except (FloatingPointError, ValueError):
+                pass
         if abs_statistic >= 20:
             return 0
 
@@ -1014,6 +2722,210 @@ class DataWorkspaceService:
         )
         log_kernel = -((degrees_of_freedom + 1) / 2) * log(1 + value**2 / degrees_of_freedom)
         return exp(log_coefficient + log_kernel)
+
+    def _f_distribution_survival(
+        self,
+        statistic: float,
+        numerator_df: float,
+        denominator_df: float,
+    ) -> float:
+        if statistic <= 0 or numerator_df <= 0 or denominator_df <= 0:
+            return 1
+        if scipy_stats is not None:
+            try:
+                return self._clamp_probability(float(scipy_stats.f.sf(statistic, numerator_df, denominator_df)))
+            except (FloatingPointError, ValueError):
+                pass
+
+        numerator = numerator_df * statistic
+        x_value = numerator / (numerator + denominator_df)
+        cdf = self._regularized_incomplete_beta(
+            x_value,
+            numerator_df / 2,
+            denominator_df / 2,
+        )
+        cdf = max(0, min(cdf, 1))
+        return max(1 - cdf, 0)
+
+    def _chi_square_survival(self, statistic: float, degrees_of_freedom: int) -> float:
+        if statistic <= 0 or degrees_of_freedom <= 0:
+            return 1
+        if scipy_stats is not None:
+            try:
+                return self._clamp_probability(float(scipy_stats.chi2.sf(statistic, degrees_of_freedom)))
+            except (FloatingPointError, ValueError):
+                pass
+        survival = self._regularized_gamma_q(
+            degrees_of_freedom / 2,
+            statistic / 2,
+        )
+        return max(0, min(survival, 1))
+
+    def _normal_two_sided_p_value(self, statistic: float) -> float:
+        abs_statistic = abs(statistic)
+        if scipy_stats is not None:
+            try:
+                return self._clamp_probability(float(scipy_stats.norm.sf(abs_statistic) * 2))
+            except (FloatingPointError, ValueError):
+                pass
+        cdf = 0.5 * (1 + erf(abs_statistic / sqrt(2)))
+        return max(2 * (1 - cdf), 0)
+
+    def _studentized_range_survival(
+        self,
+        statistic: float,
+        group_count: int,
+        degrees_of_freedom: float,
+    ) -> float | None:
+        if statistic <= 0:
+            return 1
+        if group_count <= 1 or degrees_of_freedom <= 0:
+            return None
+        if scipy_stats is None or not hasattr(scipy_stats, "studentized_range"):
+            return None
+        try:
+            return self._clamp_probability(
+                float(scipy_stats.studentized_range.sf(statistic, group_count, degrees_of_freedom))
+            )
+        except (FloatingPointError, ValueError):
+            return None
+
+    def _wilcoxon_two_sided_p_value(self, differences: list[float]) -> float | None:
+        if scipy_stats is None or not hasattr(scipy_stats, "wilcoxon"):
+            return None
+        try:
+            result = scipy_stats.wilcoxon(
+                differences,
+                zero_method="wilcox",
+                correction=False,
+                alternative="two-sided",
+                method="auto",
+            )
+            return self._clamp_probability(float(result.pvalue))
+        except (FloatingPointError, TypeError, ValueError):
+            return None
+
+    def _clamp_probability(self, value: float) -> float:
+        if value != value:
+            return 1
+        return max(0, min(value, 1))
+
+    def _regularized_incomplete_beta(self, x_value: float, alpha: float, beta: float) -> float:
+        if x_value <= 0:
+            return 0
+        if x_value >= 1:
+            return 1
+
+        log_beta_factor = (
+            lgamma(alpha + beta)
+            - lgamma(alpha)
+            - lgamma(beta)
+            + alpha * log(x_value)
+            + beta * log(1 - x_value)
+        )
+        beta_factor = exp(log_beta_factor)
+        if x_value < (alpha + 1) / (alpha + beta + 2):
+            return beta_factor * self._beta_continued_fraction(alpha, beta, x_value) / alpha
+        return 1 - beta_factor * self._beta_continued_fraction(beta, alpha, 1 - x_value) / beta
+
+    def _beta_continued_fraction(self, alpha: float, beta: float, x_value: float) -> float:
+        max_iterations = 200
+        epsilon = 3e-12
+        tiny = 1e-30
+
+        qab = alpha + beta
+        qap = alpha + 1
+        qam = alpha - 1
+        c_value = 1
+        d_value = 1 - qab * x_value / qap
+        if abs(d_value) < tiny:
+            d_value = tiny
+        d_value = 1 / d_value
+        h_value = d_value
+
+        for iteration in range(1, max_iterations + 1):
+            double_iteration = 2 * iteration
+            coefficient = (
+                iteration
+                * (beta - iteration)
+                * x_value
+                / ((qam + double_iteration) * (alpha + double_iteration))
+            )
+            d_value = 1 + coefficient * d_value
+            if abs(d_value) < tiny:
+                d_value = tiny
+            c_value = 1 + coefficient / c_value
+            if abs(c_value) < tiny:
+                c_value = tiny
+            d_value = 1 / d_value
+            h_value *= d_value * c_value
+
+            coefficient = (
+                -(alpha + iteration)
+                * (qab + iteration)
+                * x_value
+                / ((alpha + double_iteration) * (qap + double_iteration))
+            )
+            d_value = 1 + coefficient * d_value
+            if abs(d_value) < tiny:
+                d_value = tiny
+            c_value = 1 + coefficient / c_value
+            if abs(c_value) < tiny:
+                c_value = tiny
+            d_value = 1 / d_value
+            delta = d_value * c_value
+            h_value *= delta
+            if abs(delta - 1) < epsilon:
+                break
+
+        return h_value
+
+    def _regularized_gamma_q(self, alpha: float, x_value: float) -> float:
+        if alpha <= 0:
+            return 1
+        if x_value <= 0:
+            return 1
+        if x_value < alpha + 1:
+            return 1 - self._regularized_gamma_p_series(alpha, x_value)
+        return self._regularized_gamma_q_continued_fraction(alpha, x_value)
+
+    def _regularized_gamma_p_series(self, alpha: float, x_value: float) -> float:
+        epsilon = 3e-12
+        term = 1 / alpha
+        total = term
+        current_alpha = alpha
+        for _iteration in range(200):
+            current_alpha += 1
+            term *= x_value / current_alpha
+            total += term
+            if abs(term) < abs(total) * epsilon:
+                break
+        return total * exp(-x_value + alpha * log(x_value) - lgamma(alpha))
+
+    def _regularized_gamma_q_continued_fraction(self, alpha: float, x_value: float) -> float:
+        epsilon = 3e-12
+        tiny = 1e-30
+        b_value = x_value + 1 - alpha
+        c_value = 1 / tiny
+        d_value = 1 / b_value if abs(b_value) > tiny else 1 / tiny
+        h_value = d_value
+
+        for iteration in range(1, 200):
+            coefficient = -iteration * (iteration - alpha)
+            b_value += 2
+            d_value = coefficient * d_value + b_value
+            if abs(d_value) < tiny:
+                d_value = tiny
+            c_value = b_value + coefficient / c_value
+            if abs(c_value) < tiny:
+                c_value = tiny
+            d_value = 1 / d_value
+            delta = d_value * c_value
+            h_value *= delta
+            if abs(delta - 1) < epsilon:
+                break
+
+        return exp(-x_value + alpha * log(x_value) - lgamma(alpha)) * h_value
 
     def _cohens_d(self, first_values: list[float], second_values: list[float]) -> float:
         first_variance = self._sample_variance(first_values)
