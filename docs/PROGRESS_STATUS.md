@@ -27,6 +27,17 @@
   - Mentor Evidence Service 已独立抽象，证据项包含来源状态、检索时间和外部链接预留字段
   - PubMed Evidence Provider：`MENTOR_EVIDENCE_PROVIDER=pubmed` 时通过 NCBI ESearch / ESummary 获取 PMID、题名、期刊、年份和 DOI；失败时返回 `external_pending` 证据和 PubMed 搜索链接
   - PubMed 结果质量保护：过滤无 PMID/无题名结果，优先近 7 年候选文献，保留文献类型和 `unreviewed` 人工复核状态
+  - PubMed 请求可靠性补强：新增保守请求间隔配置、响应结构防御、PMID 数字过滤、DOI/年份清洗、搜索链接 URL 编码和更明确的失败原因说明
+  - PubMed 日期检索参数优化：将模板检索式末尾的 `2019:2024` 拆分为 ESearch `mindate` / `maxdate` / `datetype=pdat` 参数，避免裸年份范围导致无 PMID
+  - PubMed 网络连通性已由用户本机验证：宽泛检索 `radiotherapy` 可返回真实 PMID 列表
+  - `mr_linac` 主题 PubMed 真实链路已由用户本机验证通过：返回 PMID `35946325`，题名为 `Practical guidelines of online MR-guided adaptive radiotherapy.`
+  - 其它 Mentor topic PubMed 首轮真实链路均已由用户本机验证可返回候选 PMID：`flash`→`38342233`，`ai_planning_qa`→`40563630`，`particle`→`35621386`，`radiomics`→`34663898`，`automation`→`39222848`，`sbrt`→`29033164`，`motion`→`39194360`
+  - PubMed 候选排序相关性增强：为各 Mentor topic 增加轻量关键词画像，在近 7 年优先的基础上按题名、期刊和文献类型关键词命中分排序，使泛题名候选不再优先于贴题候选
+  - PubMed 候选池扩大：新增 `MENTOR_PUBMED_CANDIDATE_RETMAX`，先抓取更多候选后再按 topic 相关性排序，最终仍按 `MENTOR_PUBMED_RETMAX` 返回展示条数
+  - `ai_planning_qa` PubMed 检索式轻量收紧：补充 `deep learning`、`quality assurance`、`patient-specific quality assurance` 和 `plan quality`，减少泛放疗文献优先返回
+  - `ai_planning_qa` 优化后已由用户本机复测通过：首轮候选变为 PMID `38798135`、`34343412`、`31495281`，题名分别聚焦 AI 质量保证、机器/深度学习 patient-specific QA 和 AI treatment planning
+  - 候选文献人工复核信息增强：项目级保存复核备注、复核人、是否已核对全文、是否用于 Introduction、是否用于 Discussion，并兼容旧 SQLite 表自动补列
+  - 前端复核控件增强：每条候选证据可填写复核备注、复核人、全文核对和 Introduction / Discussion 用途，Markdown 建议书、候选引用清单和 Alex Writer 交接文本同步导出这些字段
   - 前端候选文献人工复核：可将推荐依据标记为“待复核 / 确认可用 / 排除”，并同步到 Markdown 建议书导出
   - 候选文献复核状态持久化：项目级保存 Mentor 推荐依据的复核状态，重新生成推荐卡后可按 PMID / DOI / 本地证据键恢复
   - 候选引用清单：自动汇总“确认可用”的推荐依据，展示题名、期刊、年份、PMID、DOI 和来源课题，并同步导出到 Markdown
@@ -35,7 +46,7 @@
   - Alex Writer 写作提纲 Markdown 导出：可将本地提纲、项目研究问题、主要终点、候选引用和写作前检查清单导出为 `alex-writer-outline.md`
 - 未完成：
   - 联网真实趋势数据库
-  - PubMed 联网环境下的真实请求实测和速率限制策略；当前沙箱网络会触发访问套接字权限错误，联网审批未返回
+  - NCBI 实际限速行为验证；当前相关性排序和人工复核字段仍不等于系统综述或正式引用质量评价
   - 字段级引用管理、正式引用格式导出和可编辑写作草稿保存
   - Crossref 等外部证据自动检索和结果解析
   - 根据真实文献计量结果自动更新趋势热度

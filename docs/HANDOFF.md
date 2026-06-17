@@ -24,13 +24,24 @@
   - 新增独立 `mentor_evidence_service.py`，证据项已标注 `local_template` 状态、检索时间和外部链接预留字段，后续可替换为 PubMed / Crossref 实现
   - 新增 PubMed provider 和环境开关 `MENTOR_EVIDENCE_PROVIDER`；`pubmed` 模式会调用 NCBI ESearch / ESummary 解析 PMID、题名、期刊、年份和 DOI，失败时返回 `external_pending` 与 PubMed 搜索链接
   - PubMed provider 增加质量保护：过滤无 PMID/无题名结果，优先近 7 年候选文献，保留文献类型和 `unreviewed` 人工复核状态
+  - PubMed provider 增加可靠性保护：支持 `MENTOR_PUBMED_REQUEST_INTERVAL_SECONDS` 请求间隔配置，默认无 API key 时按保守间隔节流；同时补强响应结构防御、PMID 数字过滤、DOI/年份清洗、搜索链接 URL 编码和失败原因说明
+  - PubMed provider 增加日期检索参数优化：模板检索式末尾的 `2019:2024` 会在请求时拆分为 ESearch `mindate` / `maxdate` / `datetype=pdat` 参数，保留原始检索式用于展示和人工复核
+  - 用户本机已验证 PubMed API 可联网返回真实 PMID：宽泛检索 `radiotherapy` 返回 `['28902591', '40737738', '32671760']`
+  - 用户本机已验证 `mr_linac` 主题 PubMed 完整链路：返回 `pubmed 35946325 Practical guidelines of online MR-guided adaptive radiotherapy.`；该结果仍按候选文献处理，需人工复核后才进入正式引用
+  - 用户本机已验证其它 Mentor topic PubMed 首轮链路均可返回候选 PMID：`flash`→`38342233`，`ai_planning_qa`→`40563630`，`particle`→`35621386`，`radiomics`→`34663898`，`automation`→`39222848`，`sbrt`→`29033164`，`motion`→`39194360`
+  - PubMed 候选排序增加 topic 关键词相关性评分：近 7 年候选仍优先，同一近期范围内按题名、期刊和文献类型中的 topic 关键词命中分排序；不联网烟测已覆盖 `ai_planning_qa` 泛题名候选被贴题候选后置
+  - PubMed 候选池扩大：新增 `MENTOR_PUBMED_CANDIDATE_RETMAX`，ESearch 先抓更多候选，排序后仍只返回 `MENTOR_PUBMED_RETMAX` 条；不联网烟测已确认内部候选池扩大且最终展示条数不变
+  - `ai_planning_qa` 检索式已轻量收紧，补充 `deep learning`、`quality assurance`、`patient-specific quality assurance` 和 `plan quality`，用于减少泛放疗文献优先返回
+  - 用户本机已验证 `ai_planning_qa` 优化后首轮候选明显贴题：返回 PMID `38798135`、`34343412`、`31495281`，覆盖 AI 质量保证、机器/深度学习 patient-specific QA 和 AI treatment planning
+  - Mentor 候选文献人工复核信息已增强：后端模型、API payload 和 SQLite 记录支持 `review_note`、`reviewer`、`full_text_checked`、`use_in_introduction`、`use_in_discussion`，旧 SQLite 表会在首次读写复核记录时自动补列
+  - 前端候选证据卡新增复核备注、复核人、全文核对和 Introduction / Discussion 用途控件；研究方向建议书、候选引用清单和 Alex Writer 交接文本会同步这些复核字段
   - 前端新增候选文献复核按钮：待复核、确认可用、排除；状态可导出到 Markdown，并已持久化到项目级 SQLite 记录
   - Mentor 候选文献复核状态已新增项目级 SQLite 持久化；重新生成推荐卡后，可按 PMID / DOI / 本地证据键恢复“待复核 / 确认可用 / 排除”
   - 前端新增候选引用清单：自动汇总“确认可用”的推荐依据，展示题名、期刊、年份、PMID、DOI、来源课题和 PubMed 链接，并同步导出到 Markdown
   - 候选引用清单可交给 Alex Writer，生成 Introduction / Discussion 写作提纲、段落引用建议和仍需补充检索/阅读全文确认的项目
   - Alex Writer 新增写作工作区，基于“确认可用”的候选引用展示 Introduction / Discussion 本地提纲、候选引用和写作前检查清单
   - Alex Writer 写作工作区可导出 `alex-writer-outline.md`，包含项目研究问题、主要终点、Introduction / Discussion 提纲、候选引用和写作前检查清单
-  - 当前仍未完成联网环境下的真实 PubMed 实测、速率限制策略、人工质量复核流程和 Crossref 自动证据检索；工具沙箱内真实请求会触发 WinError 10013，联网审批未返回
+  - 当前仍未完成 NCBI 实际限速行为验证、正式引用格式导出、字段级引用管理和 Crossref 自动证据检索；当前相关性排序和人工复核字段仍不等于系统综述或正式引用质量评价
 - Prof. RadOnc Mentor 已补齐最小可用版本（MVP）：
   - 后端新增 `GET /api/mentor/trends`
   - 后端新增 `POST /api/mentor/recommendations`

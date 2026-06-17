@@ -31,8 +31,12 @@ class Settings:
     pubmed_api_key: str | None = os.getenv("PUBMED_API_KEY")
     pubmed_email: str | None = os.getenv("PUBMED_EMAIL")
     mentor_pubmed_retmax: int = int(os.getenv("MENTOR_PUBMED_RETMAX", "3"))
+    mentor_pubmed_candidate_retmax: int = int(os.getenv("MENTOR_PUBMED_CANDIDATE_RETMAX", "12"))
     mentor_evidence_timeout_seconds: float = float(
         os.getenv("MENTOR_EVIDENCE_TIMEOUT_SECONDS", "6"),
+    )
+    mentor_pubmed_request_interval_seconds: float = float(
+        os.getenv("MENTOR_PUBMED_REQUEST_INTERVAL_SECONDS", "-1"),
     )
     cors_origins: list[str] = None
 

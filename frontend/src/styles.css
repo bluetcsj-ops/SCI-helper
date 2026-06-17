@@ -2823,6 +2823,62 @@ button {
   background: #b91c1c;
 }
 
+.mentor-evidence-review-details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.mentor-evidence-review-details label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.mentor-evidence-review-details input {
+  width: 14px;
+  height: 14px;
+}
+
+.mentor-evidence-reviewer,
+.mentor-evidence-review-note {
+  display: grid;
+  gap: 5px;
+}
+
+.mentor-evidence-reviewer span,
+.mentor-evidence-review-note span {
+  color: #475569;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.mentor-evidence-reviewer input,
+.mentor-evidence-review-note textarea {
+  width: 100%;
+  border: 1px solid rgba(30, 64, 175, 0.16);
+  border-radius: 6px;
+  padding: 7px 8px;
+  background: rgba(255, 255, 255, 0.9);
+  color: #1e293b;
+  font-size: 12px;
+}
+
+.mentor-evidence-review-note textarea {
+  min-height: 54px;
+  resize: vertical;
+}
+
+.mentor-evidence-reviewer input:focus,
+.mentor-evidence-review-note textarea:focus {
+  border-color: rgba(29, 78, 216, 0.45);
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
 .mentor-reference-panel {
   border-color: rgba(21, 128, 61, 0.18);
 }
