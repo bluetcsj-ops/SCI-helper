@@ -198,6 +198,11 @@ class MentorEvidenceReviewRecord(Base):
     title: Mapped[str | None] = mapped_column(Text, nullable=True)
     search_query: Mapped[str] = mapped_column(Text, nullable=False, default="")
     review_status: Mapped[str] = mapped_column(String(24), nullable=False, default="unreviewed")
+    review_note: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    reviewer: Mapped[str] = mapped_column(String(120), nullable=False, default="")
+    full_text_checked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    use_in_introduction: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    use_in_discussion: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
         default=datetime.utcnow,

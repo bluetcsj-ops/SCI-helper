@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import json
+import re
+import time
 from datetime import UTC, datetime
+from threading import Lock
 from typing import Protocol
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode
+from urllib.parse import quote_plus, urlencode
 from urllib.request import urlopen
 
 from app.agents.mentor_models import MentorEvidenceItem
@@ -40,7 +43,7 @@ LOCAL_EVIDENCE_LIBRARY: dict[str, list[MentorEvidenceItem]] = {
     "ai_planning_qa": [
         MentorEvidenceItem(
             source_type="local_search_template",
-            search_query='("artificial intelligence" OR "machine learning") AND ("treatment planning" OR "patient-specific QA") AND radiotherapy',
+            search_query='("artificial intelligence" OR "machine learning" OR "deep learning") AND ("treatment planning" OR "quality assurance" OR "patient-specific quality assurance" OR "plan quality") AND radiotherapy',
             evidence_summary="AI 计划与 QA 方向持续活跃，常见主题包括自动计划质量预测、QA 通过率预测、计划复杂度和可解释特征。",
             recommendation_signal="如果已有计划、QA、log files 或批量导出能力，可快速形成结构化数据表。",
             limitation="预测模型类研究需要交叉验证、校准和过拟合控制，不能只报告训练集效果。",
@@ -101,6 +104,70 @@ LOCAL_EVIDENCE_LIBRARY: dict[str, list[MentorEvidenceItem]] = {
 }
 
 
+PUBMED_TOPIC_KEYWORDS: dict[str, list[str]] = {
+    "mr_linac": [
+        "mr-guided",
+        "mr guided",
+        "mr-linac",
+        "adaptive radiotherapy",
+        "online adaptive",
+        "magnetic resonance",
+    ],
+    "flash": [
+        "flash",
+        "ultra-high dose rate",
+        "ultrahigh dose rate",
+        "dose rate",
+    ],
+    "ai_planning_qa": [
+        "artificial intelligence",
+        "machine learning",
+        "deep learning",
+        "treatment planning",
+        "quality assurance",
+        "patient-specific qa",
+        "plan quality",
+    ],
+    "particle": [
+        "proton",
+        "carbon ion",
+        "particle therapy",
+        "robustness",
+        "dosimetry",
+    ],
+    "radiomics": [
+        "radiomics",
+        "radiogenomics",
+        "outcome",
+        "prediction",
+        "artificial intelligence",
+    ],
+    "automation": [
+        "automated treatment planning",
+        "automatic planning",
+        "knowledge-based planning",
+        "workflow",
+        "plan quality",
+    ],
+    "sbrt": [
+        "srs",
+        "sbrt",
+        "stereotactic",
+        "dose gradient",
+        "organ at risk",
+        "plan quality",
+    ],
+    "motion": [
+        "motion",
+        "gating",
+        "tracking",
+        "4dct",
+        "motion management",
+        "sbrt",
+    ],
+}
+
+
 class MentorEvidenceProvider(Protocol):
     def get_topic_evidence(self, topic_id: str) -> list[MentorEvidenceItem]:
         ...
@@ -134,6 +201,10 @@ class LocalMentorEvidenceProvider:
 
 
 class PubMedEvidenceProvider:
+    def __init__(self) -> None:
+        self._request_lock = Lock()
+        self._last_request_at = 0.0
+
     def get_topic_evidence(self, topic_id: str) -> list[MentorEvidenceItem]:
         query = self._query_for_topic(topic_id)
         retrieved_at = datetime.now(UTC).isoformat()
@@ -142,26 +213,64 @@ class PubMedEvidenceProvider:
             if not pmids:
                 return [self._pending_item(query, retrieved_at, "PubMed 未返回匹配 PMID。")]
             summaries = self._fetch_summaries(pmids)
-            filtered_summaries = self._filter_summaries(summaries)
+            filtered_summaries = self._filter_summaries(summaries, topic_id)
             if not filtered_summaries:
                 return [self._pending_item(query, retrieved_at, "PubMed 返回结果，但没有通过基础质量筛选的候选文献。")]
             return [self._summary_to_evidence(query, retrieved_at, summary) for summary in filtered_summaries]
-        except (HTTPError, URLError, TimeoutError, OSError, json.JSONDecodeError) as exc:
-            return [self._pending_item(query, retrieved_at, f"PubMed 请求未完成：{exc}")]
+        except (HTTPError, URLError, TimeoutError, OSError, json.JSONDecodeError, ValueError) as exc:
+            return [self._pending_item(query, retrieved_at, self._request_failure_message(exc))]
 
     def _search_pmids(self, query: str) -> list[str]:
+        search_params = self._pubmed_search_params(query)
         payload = self._request_json(
             "esearch.fcgi",
             {
+                **search_params,
                 "db": "pubmed",
-                "term": query,
                 "retmode": "json",
-                "retmax": str(max(settings.mentor_pubmed_retmax, 1)),
+                "retmax": str(
+                    max(
+                        settings.mentor_pubmed_candidate_retmax,
+                        settings.mentor_pubmed_retmax,
+                        1,
+                    )
+                ),
                 "sort": "relevance",
             },
         )
-        id_list = payload.get("esearchresult", {}).get("idlist", [])
-        return [str(item) for item in id_list if item]
+        esearch_result = payload.get("esearchresult", {})
+        if not isinstance(esearch_result, dict):
+            return []
+        id_list = esearch_result.get("idlist", [])
+        if not isinstance(id_list, list):
+            return []
+        pmids: list[str] = []
+        for item in id_list:
+            if item is None:
+                continue
+            pmid = str(item).strip()
+            if pmid.isdigit():
+                pmids.append(pmid)
+        return pmids
+
+    def _pubmed_search_params(self, query: str) -> dict[str, str]:
+        cleaned_query = self._clean_text(query)
+        date_match = re.search(
+            r"(?:\s+AND)?\s+((?:19|20)\d{2})\s*:\s*((?:19|20)\d{2})\s*$",
+            cleaned_query,
+        )
+        if not date_match:
+            return {"term": cleaned_query}
+        start_year, end_year = date_match.groups()
+        term = self._clean_text(cleaned_query[: date_match.start()])
+        if not term:
+            term = cleaned_query
+        return {
+            "term": term,
+            "mindate": start_year,
+            "maxdate": end_year,
+            "datetype": "pdat",
+        }
 
     def _fetch_summaries(self, pmids: list[str]) -> list[dict[str, object]]:
         payload = self._request_json(
@@ -173,10 +282,23 @@ class PubMedEvidenceProvider:
             },
         )
         result = payload.get("result", {})
+        if not isinstance(result, dict):
+            return []
         uids = result.get("uids", [])
-        return [result[uid] for uid in uids if uid in result]
+        if not isinstance(uids, list):
+            return []
+        summaries: list[dict[str, object]] = []
+        for uid in uids:
+            summary = result.get(str(uid))
+            if isinstance(summary, dict):
+                summaries.append(summary)
+        return summaries
 
-    def _filter_summaries(self, summaries: list[dict[str, object]]) -> list[dict[str, object]]:
+    def _filter_summaries(
+        self,
+        summaries: list[dict[str, object]],
+        topic_id: str,
+    ) -> list[dict[str, object]]:
         filtered: list[dict[str, object]] = []
         for summary in summaries:
             uid = str(summary.get("uid") or "").strip()
@@ -184,15 +306,25 @@ class PubMedEvidenceProvider:
             if not uid or not title:
                 continue
             filtered.append(summary)
-        return sorted(filtered, key=self._summary_sort_key, reverse=True)[
+        return sorted(filtered, key=lambda summary: self._summary_sort_key(summary, topic_id), reverse=True)[
             : max(settings.mentor_pubmed_retmax, 1)
         ]
 
-    def _summary_sort_key(self, summary: dict[str, object]) -> tuple[int, int]:
+    def _summary_sort_key(self, summary: dict[str, object], topic_id: str) -> tuple[int, int, int]:
         year = self._publication_year(str(summary.get("pubdate") or ""))
         publication_year = int(year) if year and year.isdigit() else 0
         is_recent = 1 if publication_year >= datetime.now(UTC).year - 7 else 0
-        return (is_recent, publication_year)
+        return (is_recent, self._topic_relevance_score(summary, topic_id), publication_year)
+
+    def _topic_relevance_score(self, summary: dict[str, object], topic_id: str) -> int:
+        keywords = PUBMED_TOPIC_KEYWORDS.get(topic_id, [])
+        if not keywords:
+            return 0
+        title = self._clean_text(str(summary.get("title") or ""))
+        journal = self._clean_text(str(summary.get("fulljournalname") or summary.get("source") or ""))
+        publication_types = " ".join(self._publication_types(summary))
+        searchable_text = f"{title} {journal} {publication_types}".lower()
+        return sum(1 for keyword in keywords if keyword.lower() in searchable_text)
 
     def _request_json(self, endpoint: str, params: dict[str, str]) -> dict[str, object]:
         query_params = {
@@ -204,8 +336,45 @@ class PubMedEvidenceProvider:
         if settings.pubmed_api_key:
             query_params["api_key"] = settings.pubmed_api_key
         url = f"{settings.pubmed_base_url.rstrip('/')}/{endpoint}?{urlencode(query_params)}"
+        self._wait_for_request_slot()
         with urlopen(url, timeout=settings.mentor_evidence_timeout_seconds) as response:
-            return json.loads(response.read().decode("utf-8"))
+            payload = json.loads(response.read().decode("utf-8"))
+        if not isinstance(payload, dict):
+            raise ValueError("PubMed 返回内容不是 JSON object。")
+        return payload
+
+    def _wait_for_request_slot(self) -> None:
+        request_interval = self._request_interval_seconds()
+        if request_interval <= 0:
+            return
+        with self._request_lock:
+            elapsed = time.monotonic() - self._last_request_at
+            wait_seconds = request_interval - elapsed
+            if wait_seconds > 0:
+                time.sleep(wait_seconds)
+            self._last_request_at = time.monotonic()
+
+    def _request_interval_seconds(self) -> float:
+        if settings.mentor_pubmed_request_interval_seconds >= 0:
+            return settings.mentor_pubmed_request_interval_seconds
+        return 0.11 if settings.pubmed_api_key else 0.34
+
+    def _request_failure_message(
+        self,
+        exc: HTTPError | URLError | TimeoutError | OSError | json.JSONDecodeError | ValueError,
+    ) -> str:
+        if isinstance(exc, HTTPError):
+            reason = exc.reason or exc.msg or "未返回原因"
+            return f"PubMed HTTP {exc.code}：{reason}"
+        if isinstance(exc, URLError):
+            return f"PubMed 网络不可达：{exc.reason}"
+        if isinstance(exc, TimeoutError):
+            return "PubMed 请求超时。"
+        if isinstance(exc, json.JSONDecodeError):
+            return f"PubMed 返回内容无法解析为 JSON：{exc.msg}"
+        if isinstance(exc, OSError):
+            return f"PubMed 系统网络错误：{exc}"
+        return f"PubMed 返回内容不符合预期：{exc}"
 
     def _summary_to_evidence(
         self,
@@ -213,9 +382,9 @@ class PubMedEvidenceProvider:
         retrieved_at: str,
         summary: dict[str, object],
     ) -> MentorEvidenceItem:
-        pmid = str(summary.get("uid") or "")
-        title = str(summary.get("title") or "题名未返回")
-        journal = str(summary.get("fulljournalname") or summary.get("source") or "期刊未返回")
+        pmid = str(summary.get("uid") or "").strip()
+        title = self._clean_text(str(summary.get("title") or "")) or "题名未返回"
+        journal = self._clean_text(str(summary.get("fulljournalname") or summary.get("source") or "")) or "期刊未返回"
         publication_year = self._publication_year(str(summary.get("pubdate") or ""))
         doi = self._extract_doi(summary)
         publication_types = self._publication_types(summary)
@@ -261,9 +430,9 @@ class PubMedEvidenceProvider:
         ][0]
 
     def _publication_year(self, pubdate: str) -> str | None:
-        for token in pubdate.split():
-            if token.isdigit() and len(token) == 4:
-                return token
+        match = re.search(r"\b(19|20)\d{2}\b", pubdate)
+        if match:
+            return match.group(0)
         return None
 
     def _extract_doi(self, summary: dict[str, object]) -> str | None:
@@ -274,14 +443,20 @@ class PubMedEvidenceProvider:
             if not isinstance(article_id, dict):
                 continue
             if article_id.get("idtype") == "doi" and article_id.get("value"):
-                return str(article_id["value"])
+                doi = str(article_id["value"]).strip()
+                if doi.lower().startswith("doi:"):
+                    doi = doi[4:].strip()
+                return doi.rstrip(" .")
         return None
 
     def _publication_types(self, summary: dict[str, object]) -> list[str]:
         pub_types = summary.get("pubtype")
         if not isinstance(pub_types, list):
             return []
-        return [str(item) for item in pub_types if item]
+        return [self._clean_text(str(item)) for item in pub_types if self._clean_text(str(item))]
+
+    def _clean_text(self, value: str) -> str:
+        return re.sub(r"\s+", " ", value).strip()
 
     def _query_for_topic(self, topic_id: str) -> str:
         local_items = LOCAL_EVIDENCE_LIBRARY.get(topic_id)
@@ -290,7 +465,7 @@ class PubMedEvidenceProvider:
         return "radiotherapy physics AND plan quality AND clinical workflow"
 
     def _pubmed_search_url(self, query: str) -> str:
-        return f"https://pubmed.ncbi.nlm.nih.gov/?term={query.replace(' ', '+')}"
+        return f"https://pubmed.ncbi.nlm.nih.gov/?term={quote_plus(query)}"
 
 
 class MentorEvidenceService:

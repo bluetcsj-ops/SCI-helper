@@ -81,6 +81,11 @@ class MentorEvidenceReviewUpdate(BaseModel):
     title: str | None = None
     search_query: str = ""
     review_status: str
+    review_note: str = ""
+    reviewer: str = ""
+    full_text_checked: bool = False
+    use_in_introduction: bool = False
+    use_in_discussion: bool = False
 
 
 class MentorEvidenceReview(BaseModel):
@@ -94,4 +99,9 @@ class MentorEvidenceReview(BaseModel):
     title: str | None = None
     search_query: str
     review_status: str
+    review_note: str = ""
+    reviewer: str = ""
+    full_text_checked: bool = False
+    use_in_introduction: bool = False
+    use_in_discussion: bool = False
     updated_at: str

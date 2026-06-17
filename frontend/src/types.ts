@@ -76,6 +76,11 @@ export interface MentorEvidenceItem {
   doi?: string | null;
   publication_types: string[];
   review_status: string;
+  review_note?: string;
+  reviewer?: string;
+  full_text_checked?: boolean;
+  use_in_introduction?: boolean;
+  use_in_discussion?: boolean;
   search_query: string;
   evidence_summary: string;
   recommendation_signal: string;
@@ -101,6 +106,11 @@ export interface MentorEvidenceReview {
   title?: string | null;
   search_query: string;
   review_status: string;
+  review_note: string;
+  reviewer: string;
+  full_text_checked: boolean;
+  use_in_introduction: boolean;
+  use_in_discussion: boolean;
   updated_at: string;
 }
 
@@ -113,6 +123,11 @@ export interface MentorEvidenceReviewUpdate {
   title?: string | null;
   search_query: string;
   review_status: string;
+  review_note: string;
+  reviewer: string;
+  full_text_checked: boolean;
+  use_in_introduction: boolean;
+  use_in_discussion: boolean;
 }
 
 export interface UserProfile {

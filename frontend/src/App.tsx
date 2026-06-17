@@ -66,6 +66,7 @@ import type {
   ItemStatus,
   MentorEvidenceItem,
   MentorEvidenceReview,
+  MentorEvidenceReviewUpdate,
   MentorRecommendationCard,
   MentorRecommendationResponse,
   MentorTrendSnapshot,
@@ -534,6 +535,14 @@ function formatMentorReviewStatus(status: string): string {
   return labels[status] ?? status;
 }
 
+function formatMentorReviewUsage(evidence: MentorEvidenceItem): string {
+  const usages = [
+    evidence.use_in_introduction ? "Introduction" : null,
+    evidence.use_in_discussion ? "Discussion" : null,
+  ].filter(Boolean);
+  return usages.length ? usages.join(" / ") : "暂未指定";
+}
+
 function mentorEvidenceKey(
   cardTitle: string,
   evidenceIndex: number,
@@ -562,18 +571,40 @@ function applyMentorEvidenceReviews(
       ...card,
       evidence_items: card.evidence_items.map((evidence, evidenceIndex) => {
         const savedReview = reviewMap[mentorEvidenceKey(card.title, evidenceIndex, evidence)];
-        return savedReview ? { ...evidence, review_status: savedReview.review_status } : evidence;
+        return savedReview
+          ? {
+              ...evidence,
+              review_status: savedReview.review_status,
+              review_note: savedReview.review_note,
+              reviewer: savedReview.reviewer,
+              full_text_checked: savedReview.full_text_checked,
+              use_in_introduction: savedReview.use_in_introduction,
+              use_in_discussion: savedReview.use_in_discussion,
+            }
+          : evidence;
       }),
     })),
   };
 }
 
+type MentorEvidenceReviewPatch = Partial<
+  Pick<
+    MentorEvidenceReviewUpdate,
+    | "review_status"
+    | "review_note"
+    | "reviewer"
+    | "full_text_checked"
+    | "use_in_introduction"
+    | "use_in_discussion"
+  >
+>;
+
 function mentorEvidenceReviewPayload(
   cardTitle: string,
   evidenceIndex: number,
   evidence: MentorEvidenceItem,
-  reviewStatus: string,
-) {
+  reviewPatch: MentorEvidenceReviewPatch,
+): MentorEvidenceReviewUpdate {
   return {
     evidence_key: mentorEvidenceKey(cardTitle, evidenceIndex, evidence),
     card_title: cardTitle,
@@ -582,7 +613,12 @@ function mentorEvidenceReviewPayload(
     doi: evidence.doi ?? null,
     title: evidence.title ?? null,
     search_query: evidence.search_query,
-    review_status: reviewStatus,
+    review_status: reviewPatch.review_status ?? evidence.review_status,
+    review_note: reviewPatch.review_note ?? evidence.review_note ?? "",
+    reviewer: reviewPatch.reviewer ?? evidence.reviewer ?? "",
+    full_text_checked: reviewPatch.full_text_checked ?? evidence.full_text_checked ?? false,
+    use_in_introduction: reviewPatch.use_in_introduction ?? evidence.use_in_introduction ?? false,
+    use_in_discussion: reviewPatch.use_in_discussion ?? evidence.use_in_discussion ?? false,
   };
 }
 
@@ -1262,19 +1298,11 @@ function App() {
     }));
   }
 
-  async function handleMentorEvidenceReview(
+  function updateMentorEvidenceReviewInReport(
     cardTitle: string,
     evidenceIndex: number,
-    evidence: MentorEvidenceItem,
-    reviewStatus: string,
+    reviewPatch: MentorEvidenceReviewPatch,
   ) {
-    const reviewPayload = mentorEvidenceReviewPayload(
-      cardTitle,
-      evidenceIndex,
-      evidence,
-      reviewStatus,
-    );
-
     setMentorRecommendationReport((current) => {
       if (!current) {
         return current;
@@ -1289,12 +1317,34 @@ function App() {
           return {
             ...card,
             evidence_items: card.evidence_items.map((evidence, index) =>
-              index === evidenceIndex ? { ...evidence, review_status: reviewStatus } : evidence,
+              index === evidenceIndex ? { ...evidence, ...reviewPatch } : evidence,
             ),
           };
         }),
       };
     });
+  }
+
+  async function handleMentorEvidenceReview(
+    cardTitle: string,
+    evidenceIndex: number,
+    evidence: MentorEvidenceItem,
+    reviewPatch: MentorEvidenceReviewPatch,
+  ) {
+    const nextPatch = { ...reviewPatch };
+    const nextStatus = nextPatch.review_status ?? evidence.review_status;
+    if (
+      nextStatus !== "unreviewed" &&
+      !nextPatch.reviewer &&
+      !evidence.reviewer &&
+      currentUser?.display_name
+    ) {
+      nextPatch.reviewer = currentUser.display_name;
+    }
+
+    const reviewPayload = mentorEvidenceReviewPayload(cardTitle, evidenceIndex, evidence, nextPatch);
+
+    updateMentorEvidenceReviewInReport(cardTitle, evidenceIndex, nextPatch);
 
     if (!selectedProjectId) {
       return;
@@ -1355,6 +1405,10 @@ function App() {
           evidence.retrieved_at ? `    - 检索时间：${evidence.retrieved_at}` : "    - 检索时间：未进行真实外部检索",
           evidence.external_url ? `    - 外部链接：${evidence.external_url}` : "    - 外部链接：待真实检索后补充",
           `    - 复核状态：${formatMentorReviewStatus(evidence.review_status)}`,
+          `    - 复核人：${evidence.reviewer?.trim() || "待补充"}`,
+          `    - 全文核对：${evidence.full_text_checked ? "是" : "否"}`,
+          `    - 引用用途：${formatMentorReviewUsage(evidence)}`,
+          `    - 复核备注：${evidence.review_note?.trim() || "无"}`,
           evidence.pmid ? `    - PMID：${evidence.pmid}` : "    - PMID：待真实检索后补充",
           evidence.title ? `    - 题名：${evidence.title}` : "    - 题名：待真实检索后补充",
           evidence.journal ? `    - 期刊：${evidence.journal}` : "    - 期刊：待真实检索后补充",
@@ -1384,6 +1438,10 @@ function App() {
             evidence.doi ? `   - DOI：${evidence.doi}` : "   - DOI：待补充",
             evidence.external_url ? `   - 链接：${evidence.external_url}` : "   - 链接：待补充",
             `   - 复核状态：${formatMentorReviewStatus(evidence.review_status)}`,
+            `   - 复核人：${evidence.reviewer?.trim() || "待补充"}`,
+            `   - 全文核对：${evidence.full_text_checked ? "是" : "否"}`,
+            `   - 引用用途：${formatMentorReviewUsage(evidence)}`,
+            `   - 复核备注：${evidence.review_note?.trim() || "无"}`,
             "",
           ])
         : ["- 暂无确认可用的候选引用。"]),
@@ -1435,6 +1493,9 @@ function App() {
         evidence.pmid ? `   - PMID：${evidence.pmid}` : "   - PMID：待补充",
         evidence.doi ? `   - DOI：${evidence.doi}` : "   - DOI：待补充",
         evidence.external_url ? `   - 链接：${evidence.external_url}` : "   - 链接：待补充",
+        `   - 全文核对：${evidence.full_text_checked ? "是" : "否"}`,
+        `   - 引用用途：${formatMentorReviewUsage(evidence)}`,
+        `   - 复核备注：${evidence.review_note?.trim() || "无"}`,
         "",
       ]),
       "## 写作前检查清单",
@@ -2023,6 +2084,9 @@ function App() {
           `   - PMID：${evidence.pmid ?? "待补充"}`,
           `   - DOI：${evidence.doi ?? "待补充"}`,
           `   - 文献类型：${evidence.publication_types.join(" / ") || "待补充"}`,
+          `   - 全文核对：${evidence.full_text_checked ? "是" : "否"}`,
+          `   - 引用用途：${formatMentorReviewUsage(evidence)}`,
+          `   - 复核备注：${evidence.review_note?.trim() || "无"}`,
           `   - 推荐信号：${evidence.recommendation_signal}`,
           `   - 局限：${evidence.limitation}`,
         ].join("\n"),
@@ -4068,7 +4132,7 @@ function App() {
                                               item.title,
                                               evidenceIndex,
                                               evidence,
-                                              option.value,
+                                              { review_status: option.value },
                                             )
                                           }
                                         >
@@ -4076,6 +4140,95 @@ function App() {
                                         </button>
                                       ))}
                                     </div>
+                                    <div className="mentor-evidence-review-details">
+                                      <label>
+                                        <input
+                                          type="checkbox"
+                                          checked={evidence.full_text_checked ?? false}
+                                          onChange={(event) =>
+                                            handleMentorEvidenceReview(
+                                              item.title,
+                                              evidenceIndex,
+                                              evidence,
+                                              { full_text_checked: event.currentTarget.checked },
+                                            )
+                                          }
+                                        />
+                                        <span>全文已核对</span>
+                                      </label>
+                                      <label>
+                                        <input
+                                          type="checkbox"
+                                          checked={evidence.use_in_introduction ?? false}
+                                          onChange={(event) =>
+                                            handleMentorEvidenceReview(
+                                              item.title,
+                                              evidenceIndex,
+                                              evidence,
+                                              { use_in_introduction: event.currentTarget.checked },
+                                            )
+                                          }
+                                        />
+                                        <span>Introduction</span>
+                                      </label>
+                                      <label>
+                                        <input
+                                          type="checkbox"
+                                          checked={evidence.use_in_discussion ?? false}
+                                          onChange={(event) =>
+                                            handleMentorEvidenceReview(
+                                              item.title,
+                                              evidenceIndex,
+                                              evidence,
+                                              { use_in_discussion: event.currentTarget.checked },
+                                            )
+                                          }
+                                        />
+                                        <span>Discussion</span>
+                                      </label>
+                                    </div>
+                                    <label className="mentor-evidence-reviewer">
+                                      <span>复核人</span>
+                                      <input
+                                        type="text"
+                                        value={evidence.reviewer ?? ""}
+                                        placeholder={currentUser?.display_name ?? "填写复核人"}
+                                        onChange={(event) =>
+                                          updateMentorEvidenceReviewInReport(item.title, evidenceIndex, {
+                                            reviewer: event.currentTarget.value,
+                                          })
+                                        }
+                                        onBlur={(event) =>
+                                          handleMentorEvidenceReview(
+                                            item.title,
+                                            evidenceIndex,
+                                            evidence,
+                                            { reviewer: event.currentTarget.value },
+                                          )
+                                        }
+                                      />
+                                    </label>
+                                    <label className="mentor-evidence-review-note">
+                                      <span>复核备注</span>
+                                      <textarea
+                                        value={evidence.review_note ?? ""}
+                                        placeholder="记录确认依据、排除原因或需要阅读全文核对的问题"
+                                        rows={2}
+                                        onChange={(event) =>
+                                          updateMentorEvidenceReviewInReport(item.title, evidenceIndex, {
+                                            review_note: event.currentTarget.value,
+                                          })
+                                        }
+                                        onBlur={(event) =>
+                                          handleMentorEvidenceReview(
+                                            item.title,
+                                            evidenceIndex,
+                                            evidence,
+                                            { review_note: event.currentTarget.value },
+                                          )
+                                        }
+                                      />
+                                    </label>
                                   </article>
                                 ))}
                               </div>
@@ -4182,6 +4335,13 @@ function App() {
                                     </small>
                                     {evidence.doi ? <small>DOI {evidence.doi}</small> : null}
                                     <small>来源课题：{cardTitle}</small>
+                                    <small>
+                                      全文核对：{evidence.full_text_checked ? "是" : "否"} · 引用用途：
+                                      {formatMentorReviewUsage(evidence)}
+                                    </small>
+                                    {evidence.review_note?.trim() ? (
+                                      <small>复核备注：{evidence.review_note}</small>
+                                    ) : null}
                                   </div>
                                   {evidence.external_url ? (
                                     <a href={evidence.external_url} target="_blank" rel="noreferrer">
