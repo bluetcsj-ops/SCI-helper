@@ -36,11 +36,18 @@ class MentorEvidenceItem(BaseModel):
     evidence_status: str = "local_template"
     retrieved_at: str | None = None
     external_url: str | None = None
+    crossref_url: str | None = None
     pmid: str | None = None
     title: str | None = None
     journal: str | None = None
     publication_year: str | None = None
     doi: str | None = None
+    citation_text: str | None = None
+    vancouver_citation: str | None = None
+    authors: list[str] = Field(default_factory=list)
+    volume: str | None = None
+    issue: str | None = None
+    page: str | None = None
     publication_types: list[str] = Field(default_factory=list)
     review_status: str = "unreviewed"
     search_query: str

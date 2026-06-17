@@ -40,10 +40,12 @@ import {
   getProjectProtocol,
   getProjectReminders,
   getProjects,
+  getWriterIntroductionDraft,
   refreshProjectReminders,
   saveDataAnalysisRecord,
   saveMentorEvidenceReview,
   saveProjectProtocol,
+  saveWriterIntroductionDraft,
   sendChat,
   updateTaskStatus,
   uploadDataQualityReport,
@@ -81,6 +83,8 @@ import type {
   ReminderType,
   RiskLevel,
   UserProfile,
+  WriterIntroductionDraft,
+  WriterIntroductionDraftUpdate,
 } from "./types";
 
 const agentIcons = {
@@ -520,6 +524,7 @@ function formatMentorEvidenceStatus(status: string): string {
   const labels: Record<string, string> = {
     local_template: "本地证据模板",
     pubmed: "PubMed 检索结果",
+    pubmed_crossref: "PubMed + Crossref 候选",
     crossref: "Crossref 检索结果",
     external_pending: "待真实检索复核",
   };
@@ -541,6 +546,117 @@ function formatMentorReviewUsage(evidence: MentorEvidenceItem): string {
     evidence.use_in_discussion ? "Discussion" : null,
   ].filter(Boolean);
   return usages.length ? usages.join(" / ") : "暂未指定";
+}
+
+function formatMentorCitationDetails(evidence: MentorEvidenceItem): string {
+  const volumeIssue = evidence.volume
+    ? `${evidence.volume}${evidence.issue ? `(${evidence.issue})` : ""}`
+    : evidence.issue
+      ? `(${evidence.issue})`
+      : "";
+  const details = [
+    evidence.authors?.length ? `作者：${evidence.authors.join(", ")}` : null,
+    volumeIssue ? `卷期：${volumeIssue}` : null,
+    evidence.page ? `页码/编号：${evidence.page}` : null,
+  ].filter(Boolean);
+  return details.length ? details.join(" · ") : "作者、卷期和页码待补充";
+}
+
+type IntroductionDraftField =
+  | "background_paragraph"
+  | "gap_paragraph"
+  | "objective_paragraph";
+
+const introductionDraftFieldLabels: Record<IntroductionDraftField, string> = {
+  background_paragraph: "背景段",
+  gap_paragraph: "研究空白段",
+  objective_paragraph: "研究目的段",
+};
+
+interface IntroductionCitationUsage {
+  key: string;
+  label: string;
+  count: number;
+  sections: string[];
+}
+
+interface IntroductionUsedReference {
+  usage: IntroductionCitationUsage;
+  cardTitle?: string;
+  evidence?: MentorEvidenceItem;
+}
+
+function buildCitationTrace(evidence: MentorEvidenceItem): string {
+  const traceItems = [
+    evidence.pmid ? `PMID ${evidence.pmid}` : null,
+    evidence.doi ? `DOI ${evidence.doi}` : null,
+  ].filter(Boolean);
+  const citation = evidence.vancouver_citation || evidence.citation_text;
+  return [
+    traceItems.length ? traceItems.join(" / ") : "候选来源待核对",
+    citation ? `候选引用：${citation}` : null,
+  ]
+    .filter(Boolean)
+    .join("；");
+}
+
+function buildIntroductionCitationSentence(
+  field: IntroductionDraftField,
+  evidence: MentorEvidenceItem,
+): string {
+  const title = evidence.title?.replace(/\.$/, "") || evidence.evidence_summary;
+  const topicText = title ? `“${title}”` : "相关候选文献";
+  const trace = buildCitationTrace(evidence);
+  const sentenceByField: Record<IntroductionDraftField, string> = {
+    background_paragraph: `已有${topicText}等候选文献提示，该方向在放疗物理流程、计划质量或临床实施中具有持续研究价值。[${trace}]`,
+    gap_paragraph: `不过，现有${topicText}相关证据仍需要结合本中心设备、数据结构和具体流程进一步验证其适用性。[${trace}]`,
+    objective_paragraph: `因此，本研究拟在上述候选文献线索基础上，围绕当前项目的具体研究问题进一步评估本中心数据中的相关物理或流程指标。[${trace}]`,
+  };
+  return sentenceByField[field];
+}
+
+function extractIntroductionCitationUsages(
+  draft: WriterIntroductionDraftUpdate,
+): IntroductionCitationUsage[] {
+  const usageMap = new Map<string, IntroductionCitationUsage>();
+  const entries = Object.entries(draft) as [IntroductionDraftField, string][];
+
+  entries.forEach(([field, text]) => {
+    const sectionLabel = introductionDraftFieldLabels[field];
+    const matches = [
+      ...Array.from(text.matchAll(/\bDOI\s+([^\]\s；;，,]+)/gi)).map((match) => ({
+        key: `doi:${match[1].toLowerCase()}`,
+        label: `DOI ${match[1]}`,
+      })),
+      ...Array.from(text.matchAll(/\bPMID\s+(\d+)/gi)).map((match) => ({
+        key: `pmid:${match[1]}`,
+        label: `PMID ${match[1]}`,
+      })),
+    ];
+
+    matches.forEach((match) => {
+      const current = usageMap.get(match.key) ?? {
+        key: match.key,
+        label: match.label,
+        count: 0,
+        sections: [],
+      };
+      current.count += 1;
+      if (!current.sections.includes(sectionLabel)) {
+        current.sections.push(sectionLabel);
+      }
+      usageMap.set(match.key, current);
+    });
+  });
+
+  return Array.from(usageMap.values()).sort((left, right) => right.count - left.count);
+}
+
+function referenceKeysForEvidence(evidence: MentorEvidenceItem): string[] {
+  return [
+    evidence.doi ? `doi:${evidence.doi.toLowerCase()}` : null,
+    evidence.pmid ? `pmid:${evidence.pmid}` : null,
+  ].filter(Boolean) as string[];
 }
 
 function mentorEvidenceKey(
@@ -634,6 +750,14 @@ function createMentorFormState() {
   };
 }
 
+function createWriterIntroductionDraftForm(): WriterIntroductionDraftUpdate {
+  return {
+    background_paragraph: "",
+    gap_paragraph: "",
+    objective_paragraph: "",
+  };
+}
+
 function App() {
   const [dashboard, setDashboard] = useState<DashboardSummary | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -649,6 +773,10 @@ function App() {
     Record<string, MentorEvidenceReview>
   >({});
   const [mentorForm, setMentorForm] = useState(createMentorFormState);
+  const [writerIntroductionDraft, setWriterIntroductionDraft] =
+    useState<WriterIntroductionDraft | null>(null);
+  const [writerIntroductionDraftForm, setWriterIntroductionDraftForm] =
+    useState<WriterIntroductionDraftUpdate>(createWriterIntroductionDraftForm);
   const [protocol, setProtocol] = useState<ProjectProtocol | null>(null);
   const [planDrafts, setPlanDrafts] = useState<ProjectPlanDraft[]>([]);
   const [selectedPlanDraftId, setSelectedPlanDraftId] = useState<number | null>(null);
@@ -697,6 +825,8 @@ function App() {
   const [isStatisticsLoading, setIsStatisticsLoading] = useState(false);
   const [isFormalTestLoading, setIsFormalTestLoading] = useState(false);
   const [isWriterDrafting, setIsWriterDrafting] = useState(false);
+  const [isWriterDraftLoading, setIsWriterDraftLoading] = useState(false);
+  const [isWriterDraftSaving, setIsWriterDraftSaving] = useState(false);
   const [showAllTasks, setShowAllTasks] = useState(false);
   const [showAllDraftTasks, setShowAllDraftTasks] = useState(false);
   const [showAllDataRequirements, setShowAllDataRequirements] = useState(false);
@@ -803,23 +933,33 @@ function App() {
 
     const referenceTitles = mentorCandidateReferences
       .map(({ evidence }) => evidence.title ?? evidence.evidence_summary)
-      .slice(0, 4);
-    const introPoints = [
-      "说明研究主题在放疗物理流程、计划质量或临床执行中的现实意义。",
-      "概括当前方向已有工作，突出已确认候选引用所支持的关键背景。",
-      protocol?.research_question
-        ? `收束到本研究问题：${protocol.research_question}`
-        : "收束到本项目的具体研究问题，并明确主要物理终点。",
-    ];
-    const discussionPoints = [
-      "先解释主要发现可能对应的物理机制或流程意义，避免超出数据范围。",
-      "将结果与候选引用中的相近主题进行对照，区分一致、补充和差异点。",
-      "明确单中心、回顾性、样本量、数据完整性和统计复核限制。",
+      .slice(0, 5);
+    const introductionParagraphs = [
+      {
+        title: "背景段",
+        purpose: "交代研究方向在放疗物理流程、计划质量、质控或临床执行中的现实意义。",
+        writingCue: referenceTitles.length
+          ? `可从这些确认可用文献切入背景：${referenceTitles.slice(0, 3).join("；")}。`
+          : "先用确认可用文献概括该方向为什么值得关注。",
+      },
+      {
+        title: "研究空白段",
+        purpose: "指出既有研究尚未充分回答的本中心、本设备、本流程或本数据问题。",
+        writingCue: "只描述候选文献能支持的研究空白；不要写成系统综述结论或夸大为所有研究一致。",
+      },
+      {
+        title: "研究目的段",
+        purpose: "把背景和空白收束到本研究的具体问题、对象和主要终点。",
+        writingCue: protocol?.research_question
+          ? `可收束到当前研究问题：${protocol.research_question}`
+          : "补充 Project Protocol 后，再把本段收束到明确研究问题和主要终点。",
+      },
     ];
     return {
-      introPoints,
-      discussionPoints,
+      introductionParagraphs,
       referenceTitles,
+      discussionDeferredNote:
+        "Discussion 暂不自动生成；请等待 Dr. Data Lin 完成正式结果确认后，再基于真实发现生成解释、对照和局限性段落。",
       remainingChecks: [
         "阅读全文确认候选文献是否真正支持拟写观点。",
         "补充近 5-7 年同主题研究，确认是否存在更高质量证据。",
@@ -851,6 +991,29 @@ function App() {
   const privacyReport = qualityReport?.privacy_report ?? null;
   const hasBlockingPrivacyRisk = privacyReport?.risk_level === "red";
   const canEditSelectedProject = projectAccess?.can_edit ?? true;
+  const introductionCitationUsages = useMemo(
+    () => extractIntroductionCitationUsages(writerIntroductionDraftForm),
+    [writerIntroductionDraftForm],
+  );
+  const introductionSectionsWithoutCitation = useMemo(() => {
+    const entries = Object.entries(writerIntroductionDraftForm) as [IntroductionDraftField, string][];
+    return entries
+      .filter(([, text]) => text.trim())
+      .filter(([, text]) => !/\b(?:DOI\s+[^\]\s；;，,]+|PMID\s+\d+)/i.test(text))
+      .map(([field]) => introductionDraftFieldLabels[field]);
+  }, [writerIntroductionDraftForm]);
+  const introductionUsedReferences = useMemo<IntroductionUsedReference[]>(() => {
+    return introductionCitationUsages.map((usage) => {
+      const matchedReference = mentorCandidateReferences.find(({ evidence }) =>
+        referenceKeysForEvidence(evidence).includes(usage.key),
+      );
+      return {
+        usage,
+        cardTitle: matchedReference?.cardTitle,
+        evidence: matchedReference?.evidence,
+      };
+    });
+  }, [introductionCitationUsages, mentorCandidateReferences]);
   const formalTestReport = statisticsReport?.formal_test_report ?? null;
   const isFormalTestReady = useMemo(() => {
     return (
@@ -905,6 +1068,8 @@ function App() {
     setQualityReport(null);
     setStatisticsReport(null);
     setDataAuditLogs([]);
+    setWriterIntroductionDraft(null);
+    setWriterIntroductionDraftForm(createWriterIntroductionDraftForm());
     setUploadedCsvFile(null);
     setSelectedGroupColumn("");
     setSelectedOutcomeColumns([]);
@@ -985,6 +1150,47 @@ function App() {
     }
 
     loadMentorEvidenceReviews();
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [selectedProjectId]);
+
+  useEffect(() => {
+    let isCurrent = true;
+
+    async function loadWriterIntroductionDraft() {
+      if (!selectedProjectId) {
+        setWriterIntroductionDraft(null);
+        setWriterIntroductionDraftForm(createWriterIntroductionDraftForm());
+        return;
+      }
+
+      setIsWriterDraftLoading(true);
+      try {
+        const draft = await getWriterIntroductionDraft(selectedProjectId);
+        if (isCurrent) {
+          setWriterIntroductionDraft(draft);
+          setWriterIntroductionDraftForm({
+            background_paragraph: draft.background_paragraph,
+            gap_paragraph: draft.gap_paragraph,
+            objective_paragraph: draft.objective_paragraph,
+          });
+        }
+      } catch (caughtError) {
+        if (isCurrent) {
+          setWriterIntroductionDraft(null);
+          setWriterIntroductionDraftForm(createWriterIntroductionDraftForm());
+          setError(caughtError instanceof Error ? caughtError.message : "Introduction 草稿读取失败。");
+        }
+      } finally {
+        if (isCurrent) {
+          setIsWriterDraftLoading(false);
+        }
+      }
+    }
+
+    loadWriterIntroductionDraft();
 
     return () => {
       isCurrent = false;
@@ -1404,6 +1610,7 @@ function App() {
           `  - 状态：${formatMentorEvidenceStatus(evidence.evidence_status)}`,
           evidence.retrieved_at ? `    - 检索时间：${evidence.retrieved_at}` : "    - 检索时间：未进行真实外部检索",
           evidence.external_url ? `    - 外部链接：${evidence.external_url}` : "    - 外部链接：待真实检索后补充",
+          evidence.crossref_url ? `    - Crossref/DOI 链接：${evidence.crossref_url}` : "    - Crossref/DOI 链接：待补充",
           `    - 复核状态：${formatMentorReviewStatus(evidence.review_status)}`,
           `    - 复核人：${evidence.reviewer?.trim() || "待补充"}`,
           `    - 全文核对：${evidence.full_text_checked ? "是" : "否"}`,
@@ -1411,9 +1618,17 @@ function App() {
           `    - 复核备注：${evidence.review_note?.trim() || "无"}`,
           evidence.pmid ? `    - PMID：${evidence.pmid}` : "    - PMID：待真实检索后补充",
           evidence.title ? `    - 题名：${evidence.title}` : "    - 题名：待真实检索后补充",
+          evidence.authors?.length ? `    - 作者：${evidence.authors.join(", ")}` : "    - 作者：待真实检索后补充",
           evidence.journal ? `    - 期刊：${evidence.journal}` : "    - 期刊：待真实检索后补充",
           evidence.publication_year ? `    - 年份：${evidence.publication_year}` : "    - 年份：待真实检索后补充",
+          evidence.volume ? `    - 卷：${evidence.volume}` : "    - 卷：待真实检索后补充",
+          evidence.issue ? `    - 期：${evidence.issue}` : "    - 期：待真实检索后补充",
+          evidence.page ? `    - 页码/编号：${evidence.page}` : "    - 页码/编号：待真实检索后补充",
           evidence.doi ? `    - DOI：${evidence.doi}` : "    - DOI：待真实检索后补充",
+          evidence.citation_text ? `    - 候选引用草稿：${evidence.citation_text}` : "    - 候选引用草稿：待补充",
+          evidence.vancouver_citation
+            ? `    - Vancouver 候选引用：${evidence.vancouver_citation}`
+            : "    - Vancouver 候选引用：待补充",
           evidence.publication_types.length
             ? `    - 文献类型：${evidence.publication_types.join(" / ")}`
             : "    - 文献类型：待真实检索后补充",
@@ -1432,11 +1647,20 @@ function App() {
         ? mentorCandidateReferences.flatMap(({ cardTitle, evidence }, index) => [
             `${index + 1}. ${evidence.title ?? evidence.evidence_summary}`,
             `   - 来源课题：${cardTitle}`,
+            evidence.authors?.length ? `   - 作者：${evidence.authors.join(", ")}` : "   - 作者：待补充",
             evidence.journal ? `   - 期刊：${evidence.journal}` : "   - 期刊：待补充",
             evidence.publication_year ? `   - 年份：${evidence.publication_year}` : "   - 年份：待补充",
+            evidence.volume ? `   - 卷：${evidence.volume}` : "   - 卷：待补充",
+            evidence.issue ? `   - 期：${evidence.issue}` : "   - 期：待补充",
+            evidence.page ? `   - 页码/编号：${evidence.page}` : "   - 页码/编号：待补充",
             evidence.pmid ? `   - PMID：${evidence.pmid}` : "   - PMID：待补充",
             evidence.doi ? `   - DOI：${evidence.doi}` : "   - DOI：待补充",
             evidence.external_url ? `   - 链接：${evidence.external_url}` : "   - 链接：待补充",
+            evidence.crossref_url ? `   - Crossref/DOI 链接：${evidence.crossref_url}` : "   - Crossref/DOI 链接：待补充",
+            evidence.citation_text ? `   - 候选引用草稿：${evidence.citation_text}` : "   - 候选引用草稿：待补充",
+            evidence.vancouver_citation
+              ? `   - Vancouver 候选引用：${evidence.vancouver_citation}`
+              : "   - Vancouver 候选引用：待补充",
             `   - 复核状态：${formatMentorReviewStatus(evidence.review_status)}`,
             `   - 复核人：${evidence.reviewer?.trim() || "待补充"}`,
             `   - 全文核对：${evidence.full_text_checked ? "是" : "否"}`,
@@ -1478,21 +1702,51 @@ function App() {
       protocol?.research_question ? `研究问题：${protocol.research_question}` : "研究问题：待补充",
       protocol?.primary_endpoint ? `主要终点：${protocol.primary_endpoint}` : "主要终点：待补充",
       "",
-      "## Introduction 提纲",
-      ...writerOutlineDraft.introPoints.map((point) => `- ${point}`),
+      "## Introduction 段落骨架",
+      ...writerOutlineDraft.introductionParagraphs.flatMap((paragraph) => [
+        `### ${paragraph.title}`,
+        `- 写作目的：${paragraph.purpose}`,
+        `- 写作提示：${paragraph.writingCue}`,
+        "",
+      ]),
       "",
-      "## Discussion 提纲",
-      ...writerOutlineDraft.discussionPoints.map((point) => `- ${point}`),
+      "## Introduction 可编辑草稿",
+      "### 背景段",
+      writerIntroductionDraftForm.background_paragraph.trim() ||
+        writerOutlineDraft.introductionParagraphs[0]?.writingCue ||
+        "待撰写",
+      "",
+      "### 研究空白段",
+      writerIntroductionDraftForm.gap_paragraph.trim() ||
+        writerOutlineDraft.introductionParagraphs[1]?.writingCue ||
+        "待撰写",
+      "",
+      "### 研究目的段",
+      writerIntroductionDraftForm.objective_paragraph.trim() ||
+        writerOutlineDraft.introductionParagraphs[2]?.writingCue ||
+        "待撰写",
+      "",
+      "## Discussion",
+      writerOutlineDraft.discussionDeferredNote,
       "",
       "## 候选引用清单",
       ...mentorCandidateReferences.flatMap(({ cardTitle, evidence }, index) => [
         `${index + 1}. ${evidence.title ?? evidence.evidence_summary}`,
         `   - 来源课题：${cardTitle}`,
+        evidence.authors?.length ? `   - 作者：${evidence.authors.join(", ")}` : "   - 作者：待补充",
         evidence.journal ? `   - 期刊：${evidence.journal}` : "   - 期刊：待补充",
         evidence.publication_year ? `   - 年份：${evidence.publication_year}` : "   - 年份：待补充",
+        evidence.volume ? `   - 卷：${evidence.volume}` : "   - 卷：待补充",
+        evidence.issue ? `   - 期：${evidence.issue}` : "   - 期：待补充",
+        evidence.page ? `   - 页码/编号：${evidence.page}` : "   - 页码/编号：待补充",
         evidence.pmid ? `   - PMID：${evidence.pmid}` : "   - PMID：待补充",
         evidence.doi ? `   - DOI：${evidence.doi}` : "   - DOI：待补充",
         evidence.external_url ? `   - 链接：${evidence.external_url}` : "   - 链接：待补充",
+        evidence.crossref_url ? `   - Crossref/DOI 链接：${evidence.crossref_url}` : "   - Crossref/DOI 链接：待补充",
+        evidence.citation_text ? `   - 候选引用草稿：${evidence.citation_text}` : "   - 候选引用草稿：待补充",
+        evidence.vancouver_citation
+          ? `   - Vancouver 候选引用：${evidence.vancouver_citation}`
+          : "   - Vancouver 候选引用：待补充",
         `   - 全文核对：${evidence.full_text_checked ? "是" : "否"}`,
         `   - 引用用途：${formatMentorReviewUsage(evidence)}`,
         `   - 复核备注：${evidence.review_note?.trim() || "无"}`,
@@ -1509,6 +1763,86 @@ function App() {
     try {
       link.href = url;
       link.download = "alex-writer-outline.md";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  function handleDownloadIntroductionDraft() {
+    const duplicateUsages = introductionCitationUsages.filter((usage) => usage.count > 1);
+    const matchedReferences = introductionUsedReferences.filter((item) => item.evidence);
+    const unmatchedReferences = introductionUsedReferences.filter((item) => !item.evidence);
+    const content = [
+      "# Introduction 草稿",
+      "",
+      `导出时间：${new Date().toLocaleString("zh-CN")}`,
+      selectedProject ? `关联项目：${selectedProject.name} / ${selectedProject.title}` : "关联项目：未指定",
+      protocol?.research_question ? `研究问题：${protocol.research_question}` : "研究问题：待补充",
+      protocol?.primary_endpoint ? `主要终点：${protocol.primary_endpoint}` : "主要终点：待补充",
+      "",
+      "## 正文草稿",
+      "",
+      "### 背景段",
+      writerIntroductionDraftForm.background_paragraph.trim() || "待撰写",
+      "",
+      "### 研究空白段",
+      writerIntroductionDraftForm.gap_paragraph.trim() || "待撰写",
+      "",
+      "### 研究目的段",
+      writerIntroductionDraftForm.objective_paragraph.trim() || "待撰写",
+      "",
+      "## 已使用候选引用",
+      ...(matchedReferences.length
+        ? matchedReferences.flatMap((item, index) => {
+            const evidence = item.evidence;
+            return [
+              `${index + 1}. ${
+                evidence?.vancouver_citation || evidence?.citation_text || evidence?.title || item.usage.label
+              }`,
+              `   - 追溯标记：${item.usage.label}`,
+              `   - 出现位置：${item.usage.sections.join(" / ")}`,
+              `   - 出现次数：${item.usage.count}`,
+              item.cardTitle ? `   - 来源课题：${item.cardTitle}` : "   - 来源课题：待补充",
+              evidence?.pmid ? `   - PMID：${evidence.pmid}` : "   - PMID：待补充",
+              evidence?.doi ? `   - DOI：${evidence.doi}` : "   - DOI：待补充",
+              evidence?.external_url ? `   - PubMed：${evidence.external_url}` : "   - PubMed：待补充",
+              evidence?.crossref_url
+                ? `   - Crossref/DOI：${evidence.crossref_url}`
+                : "   - Crossref/DOI：待补充",
+              "",
+            ];
+          })
+        : ["- 当前草稿中没有匹配到候选引用。"]),
+      "",
+      "## 待人工核对",
+      ...(introductionSectionsWithoutCitation.length
+        ? [`- ${introductionSectionsWithoutCitation.join("、")}已有文字，但尚无 PMID / DOI 追溯标记。`]
+        : ["- 所有已有文字的段落都包含至少一个 PMID / DOI 追溯标记。"]),
+      ...(duplicateUsages.length
+        ? duplicateUsages.map(
+            (usage) =>
+              `- ${usage.label} 出现 ${usage.count} 次，位于 ${usage.sections.join(" / ")}，需人工确认是否重复使用。`,
+          )
+        : ["- 未发现重复 PMID / DOI 标记。"]),
+      ...(unmatchedReferences.length
+        ? unmatchedReferences.map(
+            (item) =>
+              `- ${item.usage.label} 在草稿中出现，但当前候选引用列表未匹配到对应文献，请人工核对。`,
+          )
+        : ["- 草稿中的 PMID / DOI 标记均已匹配到当前候选引用列表。"]),
+      "- 候选 Vancouver 引用不是最终投稿格式，正式投稿前仍需核对全文、DOI 页面和目标期刊格式。",
+      "",
+    ].join("\n");
+
+    const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    try {
+      link.href = url;
+      link.download = "introduction-draft.md";
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -2079,10 +2413,17 @@ function App() {
         [
           `${index + 1}. ${evidence.title ?? evidence.evidence_summary}`,
           `   - 来源课题：${cardTitle}`,
+          `   - 作者：${evidence.authors?.join(", ") || "待补充"}`,
           `   - 期刊：${evidence.journal ?? "待补充"}`,
           `   - 年份：${evidence.publication_year ?? "待补充"}`,
+          `   - 卷：${evidence.volume ?? "待补充"}`,
+          `   - 期：${evidence.issue ?? "待补充"}`,
+          `   - 页码/编号：${evidence.page ?? "待补充"}`,
           `   - PMID：${evidence.pmid ?? "待补充"}`,
           `   - DOI：${evidence.doi ?? "待补充"}`,
+          `   - Crossref/DOI 链接：${evidence.crossref_url ?? "待补充"}`,
+          `   - 候选引用草稿：${evidence.citation_text ?? "待补充"}`,
+          `   - Vancouver 候选引用：${evidence.vancouver_citation ?? "待补充"}`,
           `   - 文献类型：${evidence.publication_types.join(" / ") || "待补充"}`,
           `   - 全文核对：${evidence.full_text_checked ? "是" : "否"}`,
           `   - 引用用途：${formatMentorReviewUsage(evidence)}`,
@@ -2094,7 +2435,7 @@ function App() {
       .join("\n");
 
     return [
-      "请基于以下已经人工标记为“确认可用”的候选引用，生成 SCI 论文 Introduction 和 Discussion 的写作提纲。",
+      "请基于以下已经人工标记为“确认可用”的候选引用，生成 SCI 论文 Introduction 的段落写作骨架。",
       "要求：使用简体中文；不要编造未列出的文献、PMID、DOI、作者、样本量或结论；候选引用只能作为写作线索，不能当成已完成系统综述。",
       "",
       `项目：${selectedProject.name} - ${selectedProject.title}`,
@@ -2105,10 +2446,52 @@ function App() {
       "候选引用：",
       referenceText,
       "",
-      "请输出：1）Introduction 逻辑提纲；2）Discussion 逻辑提纲；3）每个段落建议引用哪些候选文献；4）仍需补充检索或人工阅读全文确认的项目。",
+      "请输出：1）Introduction 背景段、研究空白段、研究目的段写作骨架；2）每个段落建议引用哪些候选文献；3）仍需补充检索或人工阅读全文确认的项目。Discussion 请等待 Dr. Data Lin 正式结果确认后再生成。",
     ]
       .filter(Boolean)
       .join("\n");
+  }
+
+  async function handleSaveWriterIntroductionDraft() {
+    if (!selectedProjectId || isWriterDraftSaving || !canEditSelectedProject) {
+      return;
+    }
+
+    setIsWriterDraftSaving(true);
+    setError(null);
+    try {
+      const savedDraft = await saveWriterIntroductionDraft(
+        selectedProjectId,
+        writerIntroductionDraftForm,
+      );
+      setWriterIntroductionDraft(savedDraft);
+      setWriterIntroductionDraftForm({
+        background_paragraph: savedDraft.background_paragraph,
+        gap_paragraph: savedDraft.gap_paragraph,
+        objective_paragraph: savedDraft.objective_paragraph,
+      });
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Introduction 草稿保存失败。");
+    } finally {
+      setIsWriterDraftSaving(false);
+    }
+  }
+
+  function handleInsertSemanticCitation(
+    field: IntroductionDraftField,
+    evidence: MentorEvidenceItem,
+  ) {
+    if (!canEditSelectedProject) {
+      return;
+    }
+    const sentence = buildIntroductionCitationSentence(field, evidence);
+    setWriterIntroductionDraftForm((current) => {
+      const currentText = current[field].trimEnd();
+      return {
+        ...current,
+        [field]: currentText ? `${currentText}\n${sentence}` : sentence,
+      };
+    });
   }
 
   async function handleSendReferencesToWriter() {
@@ -2126,7 +2509,7 @@ function App() {
       speaker: "user",
       agentId: "writer",
       projectId: selectedProjectId,
-      content: "请根据 Mentor 已确认可用的候选引用生成 Introduction / Discussion 写作提纲。",
+      content: "请根据 Mentor 已确认可用的候选引用生成 Introduction 写作骨架。",
     };
 
     setSelectedAgentId("writer");
@@ -4100,13 +4483,25 @@ function App() {
                                             .filter(Boolean)
                                             .join(" · ")}
                                         </small>
+                                        <small>{formatMentorCitationDetails(evidence)}</small>
                                         {evidence.doi ? <small>DOI {evidence.doi}</small> : null}
+                                        {evidence.citation_text ? (
+                                          <small>候选引用：{evidence.citation_text}</small>
+                                        ) : null}
+                                        {evidence.vancouver_citation ? (
+                                          <small>Vancouver 候选引用：{evidence.vancouver_citation}</small>
+                                        ) : null}
                                         {evidence.publication_types.length ? (
                                           <small>{evidence.publication_types.join(" / ")}</small>
                                         ) : null}
                                         {evidence.external_url ? (
                                           <a href={evidence.external_url} target="_blank" rel="noreferrer">
                                             查看 PubMed
+                                          </a>
+                                        ) : null}
+                                        {evidence.crossref_url ? (
+                                          <a href={evidence.crossref_url} target="_blank" rel="noreferrer">
+                                            Crossref / DOI
                                           </a>
                                         ) : null}
                                       </div>
@@ -4334,6 +4729,13 @@ function App() {
                                         .join(" · ") || "来源信息待补充"}
                                     </small>
                                     {evidence.doi ? <small>DOI {evidence.doi}</small> : null}
+                                    <small>{formatMentorCitationDetails(evidence)}</small>
+                                    {evidence.citation_text ? (
+                                      <small>候选引用：{evidence.citation_text}</small>
+                                    ) : null}
+                                    {evidence.vancouver_citation ? (
+                                      <small>Vancouver 候选引用：{evidence.vancouver_citation}</small>
+                                    ) : null}
                                     <small>来源课题：{cardTitle}</small>
                                     <small>
                                       全文核对：{evidence.full_text_checked ? "是" : "否"} · 引用用途：
@@ -4346,6 +4748,11 @@ function App() {
                                   {evidence.external_url ? (
                                     <a href={evidence.external_url} target="_blank" rel="noreferrer">
                                       PubMed
+                                    </a>
+                                  ) : null}
+                                  {evidence.crossref_url ? (
+                                    <a href={evidence.crossref_url} target="_blank" rel="noreferrer">
+                                      Crossref
                                     </a>
                                   ) : null}
                                 </article>
@@ -4398,6 +4805,10 @@ function App() {
                           <Download aria-hidden="true" size={15} />
                           <span>导出提纲</span>
                         </button>
+                        <button type="button" onClick={handleDownloadIntroductionDraft}>
+                          <Download aria-hidden="true" size={15} />
+                          <span>导出正文</span>
+                        </button>
                         <FileText aria-hidden="true" size={20} />
                       </div>
                     </div>
@@ -4405,40 +4816,155 @@ function App() {
                     <div className="writer-outline-grid">
                       <section className="writer-outline-card">
                         <div className="mentor-section-head">
-                          <strong>Introduction 提纲</strong>
+                          <strong>Introduction 段落骨架</strong>
                           <span>{writerOutlineDraft ? "来自候选引用" : "等待候选引用"}</span>
                         </div>
                         {writerOutlineDraft ? (
                           <div className="writer-outline-list">
-                            {writerOutlineDraft.introPoints.map((point) => (
-                              <p key={point}>{point}</p>
+                            {writerOutlineDraft.introductionParagraphs.map((paragraph) => (
+                              <article key={paragraph.title}>
+                                <strong>{paragraph.title}</strong>
+                                <p>{paragraph.purpose}</p>
+                                <small>{paragraph.writingCue}</small>
+                              </article>
                             ))}
                           </div>
                         ) : (
                           <p className="writer-empty">
-                            先在 Mentor 中将候选文献标记为“确认可用”，这里会生成 Introduction 提纲。
+                            先在 Mentor 中将候选文献标记为“确认可用”，这里会生成 Introduction 段落骨架。
                           </p>
                         )}
                       </section>
 
                       <section className="writer-outline-card">
                         <div className="mentor-section-head">
-                          <strong>Discussion 提纲</strong>
-                          <span>{writerOutlineDraft ? "待人工扩写" : "等待候选引用"}</span>
+                          <strong>Discussion</strong>
+                          <span>等待数据结果</span>
                         </div>
                         {writerOutlineDraft ? (
-                          <div className="writer-outline-list">
-                            {writerOutlineDraft.discussionPoints.map((point) => (
-                              <p key={point}>{point}</p>
-                            ))}
-                          </div>
+                          <p className="writer-empty">{writerOutlineDraft.discussionDeferredNote}</p>
                         ) : (
                           <p className="writer-empty">
-                            确认可用文献后，系统会整理 Discussion 的比较、解释和局限主线。
+                            Discussion 将在 Dr. Data Lin 完成正式结果确认后生成。
                           </p>
                         )}
                       </section>
                     </div>
+
+                    <section className="writer-draft-card">
+                      <div className="mentor-section-head">
+                        <strong>Introduction 草稿</strong>
+                        <span>
+                          {isWriterDraftLoading
+                            ? "读取中"
+                            : writerIntroductionDraft?.updated_at
+                              ? `已保存 ${new Date(writerIntroductionDraft.updated_at).toLocaleString("zh-CN")}`
+                              : "本地项目草稿"}
+                        </span>
+                      </div>
+                      <div className="writer-draft-grid">
+                        <label>
+                          <span>背景段</span>
+                          <textarea
+                            value={writerIntroductionDraftForm.background_paragraph}
+                            placeholder={
+                              writerOutlineDraft?.introductionParagraphs[0]?.writingCue ??
+                              "概括研究方向的现实意义和候选文献背景。"
+                            }
+                            disabled={!canEditSelectedProject || isWriterDraftLoading}
+                            onChange={(event) =>
+                              setWriterIntroductionDraftForm((current) => ({
+                                ...current,
+                                background_paragraph: event.currentTarget.value,
+                              }))
+                            }
+                          />
+                        </label>
+                        <label>
+                          <span>研究空白段</span>
+                          <textarea
+                            value={writerIntroductionDraftForm.gap_paragraph}
+                            placeholder={
+                              writerOutlineDraft?.introductionParagraphs[1]?.writingCue ??
+                              "指出既有研究尚未覆盖的本中心、本设备、本流程或本数据问题。"
+                            }
+                            disabled={!canEditSelectedProject || isWriterDraftLoading}
+                            onChange={(event) =>
+                              setWriterIntroductionDraftForm((current) => ({
+                                ...current,
+                                gap_paragraph: event.currentTarget.value,
+                              }))
+                            }
+                          />
+                        </label>
+                        <label>
+                          <span>研究目的段</span>
+                          <textarea
+                            value={writerIntroductionDraftForm.objective_paragraph}
+                            placeholder={
+                              writerOutlineDraft?.introductionParagraphs[2]?.writingCue ??
+                              "收束到本研究的具体问题、对象和主要终点。"
+                            }
+                            disabled={!canEditSelectedProject || isWriterDraftLoading}
+                            onChange={(event) =>
+                              setWriterIntroductionDraftForm((current) => ({
+                                ...current,
+                                objective_paragraph: event.currentTarget.value,
+                              }))
+                            }
+                          />
+                        </label>
+                      </div>
+                      <div className="writer-draft-actions">
+                        <small>
+                          草稿会保存到当前项目；候选引用和段落内容仍需人工核对后再进入正式论文。
+                        </small>
+                        <button
+                          type="button"
+                          onClick={handleSaveWriterIntroductionDraft}
+                          disabled={!canEditSelectedProject || isWriterDraftSaving || isWriterDraftLoading}
+                        >
+                          {isWriterDraftSaving ? (
+                            <Loader2 aria-hidden="true" className="spin" size={15} />
+                          ) : (
+                            <Save aria-hidden="true" size={15} />
+                          )}
+                          <span>{isWriterDraftSaving ? "保存中" : "保存草稿"}</span>
+                        </button>
+                      </div>
+                      <div className="writer-citation-audit">
+                        <div className="mentor-section-head">
+                          <strong>引用使用清单</strong>
+                          <span>{introductionCitationUsages.length} 条可追溯标记</span>
+                        </div>
+                        {introductionCitationUsages.length ? (
+                          <div className="writer-citation-audit-list">
+                            {introductionCitationUsages.map((usage) => (
+                              <article
+                                className={usage.count > 1 ? "is-duplicate" : undefined}
+                                key={usage.key}
+                              >
+                                <strong>{usage.label}</strong>
+                                <small>
+                                  出现 {usage.count} 次 · 位于 {usage.sections.join(" / ")}
+                                </small>
+                                {usage.count > 1 ? (
+                                  <em>重复使用，需人工确认是否必要。</em>
+                                ) : null}
+                              </article>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="writer-empty">当前 Introduction 草稿还没有 PMID 或 DOI 追溯标记。</p>
+                        )}
+                        {introductionSectionsWithoutCitation.length ? (
+                          <p className="writer-citation-warning">
+                            {introductionSectionsWithoutCitation.join("、")}已有文字，但尚无 PMID / DOI
+                            追溯标记。
+                          </p>
+                        ) : null}
+                      </div>
+                    </section>
 
                     <section className="writer-reference-card">
                       <div className="mentor-section-head">
@@ -4455,7 +4981,30 @@ function App() {
                                   .filter(Boolean)
                                   .join(" · ") || "来源信息待补充"}
                               </small>
+                              {evidence.citation_text ? (
+                                <small>候选引用：{evidence.citation_text}</small>
+                              ) : null}
+                              <small>{formatMentorCitationDetails(evidence)}</small>
+                              {evidence.vancouver_citation ? (
+                                <small>Vancouver 候选引用：{evidence.vancouver_citation}</small>
+                              ) : null}
                               <small>用于：{cardTitle}</small>
+                              <div className="writer-reference-insert-actions">
+                                {[
+                                  { field: "background_paragraph" as const, label: "插入背景" },
+                                  { field: "gap_paragraph" as const, label: "插入空白" },
+                                  { field: "objective_paragraph" as const, label: "插入目的" },
+                                ].map((option) => (
+                                  <button
+                                    type="button"
+                                    key={option.field}
+                                    onClick={() => handleInsertSemanticCitation(option.field, evidence)}
+                                    disabled={!canEditSelectedProject || isWriterDraftLoading}
+                                  >
+                                    {option.label}
+                                  </button>
+                                ))}
+                              </div>
                             </article>
                           ))}
                         </div>

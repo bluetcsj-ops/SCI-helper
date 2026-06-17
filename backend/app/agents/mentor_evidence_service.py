@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from threading import Lock
 from typing import Protocol
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote_plus, urlencode
+from urllib.parse import quote, quote_plus, urlencode
 from urllib.request import urlopen
 
 from app.agents.mentor_models import MentorEvidenceItem
@@ -201,9 +201,10 @@ class LocalMentorEvidenceProvider:
 
 
 class PubMedEvidenceProvider:
-    def __init__(self) -> None:
+    def __init__(self, crossref_provider: CrossrefEvidenceProvider | None = None) -> None:
         self._request_lock = Lock()
         self._last_request_at = 0.0
+        self._crossref_provider = crossref_provider
 
     def get_topic_evidence(self, topic_id: str) -> list[MentorEvidenceItem]:
         query = self._query_for_topic(topic_id)
@@ -388,7 +389,7 @@ class PubMedEvidenceProvider:
         publication_year = self._publication_year(str(summary.get("pubdate") or ""))
         doi = self._extract_doi(summary)
         publication_types = self._publication_types(summary)
-        return MentorEvidenceItem(
+        evidence = MentorEvidenceItem(
             source_type="pubmed",
             evidence_status="pubmed",
             retrieved_at=retrieved_at,
@@ -408,6 +409,9 @@ class PubMedEvidenceProvider:
             ),
             limitation="自动检索只返回候选文献，不代表系统已完成系统综述、质量评价或引用真实性复核。",
         )
+        if self._crossref_provider:
+            return self._crossref_provider.enrich_evidence(evidence)
+        return evidence
 
     def _pending_item(
         self,
@@ -468,12 +472,334 @@ class PubMedEvidenceProvider:
         return f"https://pubmed.ncbi.nlm.nih.gov/?term={quote_plus(query)}"
 
 
+class CrossrefEvidenceProvider:
+    def enrich_evidence(self, evidence: MentorEvidenceItem) -> MentorEvidenceItem:
+        query = evidence.doi or evidence.title or evidence.search_query
+        if not query:
+            return evidence
+        retrieved_at = evidence.retrieved_at or datetime.now(UTC).isoformat()
+        try:
+            works = self._search_works(query)
+            matched_work, match_warning = self._best_match(works, evidence)
+            if not matched_work:
+                return evidence.model_copy(
+                    update={
+                        "limitation": (
+                            f"{evidence.limitation} {match_warning or 'Crossref 未返回可用于补充引用格式的匹配记录，'}"
+                            "需人工核对 DOI 和期刊官网。"
+                        )
+                    }
+                )
+            return self._merge_crossref_work(evidence, matched_work, retrieved_at)
+        except (HTTPError, URLError, TimeoutError, OSError, json.JSONDecodeError, ValueError) as exc:
+            return evidence.model_copy(
+                update={
+                    "limitation": (
+                        f"{evidence.limitation} Crossref 补充检索失败："
+                        f"{self._request_failure_message(exc)}"
+                    )
+                }
+            )
+
+    def _search_works(self, query: str) -> list[dict[str, object]]:
+        params = {
+            "rows": str(max(settings.mentor_crossref_retmax, 1)),
+            "select": (
+                "DOI,title,container-title,published-print,published-online,issued,type,URL,"
+                "author,volume,issue,page,article-number"
+            ),
+        }
+        if self._looks_like_doi(query):
+            endpoint = f"works/{quote(query.strip(), safe='')}"
+            payload = self._request_json(endpoint, {})
+            message = payload.get("message", {})
+            return [message] if isinstance(message, dict) else []
+        params["query.bibliographic"] = query
+        payload = self._request_json("works", params)
+        message = payload.get("message", {})
+        if not isinstance(message, dict):
+            return []
+        items = message.get("items", [])
+        if not isinstance(items, list):
+            return []
+        return [item for item in items if isinstance(item, dict)]
+
+    def _request_json(self, endpoint: str, params: dict[str, str]) -> dict[str, object]:
+        query_params = dict(params)
+        if settings.crossref_mailto:
+            query_params["mailto"] = settings.crossref_mailto
+        query_string = f"?{urlencode(query_params)}" if query_params else ""
+        url = f"{settings.crossref_base_url.rstrip('/')}/{endpoint}{query_string}"
+        with urlopen(url, timeout=settings.mentor_evidence_timeout_seconds) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        if not isinstance(payload, dict):
+            raise ValueError("Crossref 返回内容不是 JSON object。")
+        return payload
+
+    def _best_match(
+        self,
+        works: list[dict[str, object]],
+        evidence: MentorEvidenceItem,
+    ) -> tuple[dict[str, object] | None, str | None]:
+        if not works:
+            return None, None
+        evidence_doi = (evidence.doi or "").strip().lower()
+        if evidence_doi:
+            for work in works:
+                work_doi = str(work.get("DOI") or "").strip().lower()
+                if work_doi == evidence_doi:
+                    return work, None
+            return (
+                None,
+                "Crossref 返回结果未精确匹配当前 DOI，未自动写入候选引用草稿。",
+            )
+        evidence_title = self._normalize_title(evidence.title or "")
+        if not evidence_title:
+            return (
+                None,
+                "当前候选文献缺少题名或 DOI，Crossref 结果未自动写入候选引用草稿。",
+            )
+        best_work = max(works, key=lambda work: self._title_overlap_score(evidence_title, work))
+        best_score = self._title_overlap_score(evidence_title, best_work)
+        if best_score < settings.mentor_crossref_title_match_min_score:
+            return (
+                None,
+                (
+                    "Crossref 返回结果与当前题名相似度不足，"
+                    f"命中词数 {best_score}/{settings.mentor_crossref_title_match_min_score}，"
+                    "未自动写入候选引用草稿。"
+                ),
+            )
+        return best_work, None
+
+    def _merge_crossref_work(
+        self,
+        evidence: MentorEvidenceItem,
+        work: dict[str, object],
+        retrieved_at: str,
+    ) -> MentorEvidenceItem:
+        doi = evidence.doi or self._clean_text(str(work.get("DOI") or "")) or None
+        title = evidence.title or self._first_text(work.get("title"))
+        journal = evidence.journal or self._first_text(work.get("container-title"))
+        publication_year = evidence.publication_year or self._issued_year(work)
+        crossref_url = self._clean_text(str(work.get("URL") or "")) or (
+            f"https://doi.org/{doi}" if doi else None
+        )
+        authors = self._authors(work)
+        volume = self._clean_text(str(work.get("volume") or "")) or None
+        issue = self._clean_text(str(work.get("issue") or "")) or None
+        page = self._clean_text(str(work.get("page") or work.get("article-number") or "")) or None
+        publication_types = evidence.publication_types or [self._clean_text(str(work.get("type") or ""))]
+        publication_types = [item for item in publication_types if item]
+        return evidence.model_copy(
+            update={
+                "evidence_status": "pubmed_crossref" if evidence.evidence_status == "pubmed" else "crossref",
+                "retrieved_at": retrieved_at,
+                "crossref_url": crossref_url,
+                "doi": doi,
+                "title": title,
+                "journal": journal,
+                "publication_year": publication_year,
+                "publication_types": publication_types,
+                "authors": authors,
+                "volume": volume,
+                "issue": issue,
+                "page": page,
+                "citation_text": self._citation_text(title, journal, publication_year, doi),
+                "vancouver_citation": self._vancouver_citation(
+                    authors,
+                    title,
+                    journal,
+                    publication_year,
+                    volume,
+                    issue,
+                    page,
+                    doi,
+                ),
+                "recommendation_signal": (
+                    f"{evidence.recommendation_signal} Crossref 已补充 DOI/期刊元数据候选。"
+                ),
+                "limitation": (
+                    f"{evidence.limitation} Crossref 元数据仅用于生成候选引用草稿，"
+                    "正式投稿前仍需人工核对全文、期刊页面和引用格式。"
+                ),
+            }
+        )
+
+    def _issued_year(self, work: dict[str, object]) -> str | None:
+        for key in ("published-print", "published-online", "issued"):
+            date_parts = work.get(key)
+            if not isinstance(date_parts, dict):
+                continue
+            parts = date_parts.get("date-parts")
+            if not isinstance(parts, list) or not parts:
+                continue
+            first_date = parts[0]
+            if not isinstance(first_date, list) or not first_date:
+                continue
+            year = str(first_date[0]).strip()
+            if re.fullmatch(r"(19|20)\d{2}", year):
+                return year
+        return None
+
+    def _title_overlap_score(self, evidence_title: str, work: dict[str, object]) -> int:
+        candidate_title = self._normalize_title(self._first_text(work.get("title")) or "")
+        if not candidate_title:
+            return 0
+        evidence_words = set(evidence_title.split())
+        candidate_words = set(candidate_title.split())
+        return len(evidence_words & candidate_words)
+
+    def _authors(self, work: dict[str, object]) -> list[str]:
+        authors = work.get("author")
+        if not isinstance(authors, list):
+            return []
+        formatted_authors: list[str] = []
+        for author in authors:
+            if not isinstance(author, dict):
+                continue
+            formatted_author = self._format_author(author)
+            if formatted_author:
+                formatted_authors.append(formatted_author)
+        return formatted_authors
+
+    def _format_author(self, author: dict[str, object]) -> str | None:
+        family = self._clean_text(str(author.get("family") or ""))
+        given = self._clean_text(str(author.get("given") or ""))
+        name = self._clean_text(str(author.get("name") or ""))
+        if family:
+            initials = self._initials(given)
+            return f"{family} {initials}".strip()
+        return name or None
+
+    def _initials(self, given: str) -> str:
+        initials: list[str] = []
+        for part in re.split(r"[\s.-]+", given):
+            cleaned_part = re.sub(r"[^A-Za-z]", "", part)
+            if cleaned_part:
+                initials.append(cleaned_part[0].upper())
+        return "".join(initials)
+
+    def _citation_text(
+        self,
+        title: str | None,
+        journal: str | None,
+        publication_year: str | None,
+        doi: str | None,
+    ) -> str | None:
+        if not title:
+            return None
+        parts = [title.rstrip(".")]
+        journal_part = ". ".join(item for item in [journal, publication_year] if item)
+        if journal_part:
+            parts.append(journal_part)
+        if doi:
+            parts.append(f"doi:{doi}")
+        return ". ".join(parts) + "."
+
+    def _vancouver_citation(
+        self,
+        authors: list[str],
+        title: str | None,
+        journal: str | None,
+        publication_year: str | None,
+        volume: str | None,
+        issue: str | None,
+        page: str | None,
+        doi: str | None,
+    ) -> str | None:
+        if not title:
+            return None
+        citation_parts: list[str] = []
+        author_text = self._vancouver_author_text(authors)
+        if author_text:
+            citation_parts.append(author_text)
+        citation_parts.append(title.rstrip("."))
+        journal_text = self._vancouver_journal_text(journal, publication_year, volume, issue, page)
+        if journal_text:
+            citation_parts.append(journal_text)
+        if doi:
+            citation_parts.append(f"doi:{doi}")
+        return ". ".join(citation_parts) + "."
+
+    def _vancouver_author_text(self, authors: list[str]) -> str | None:
+        if not authors:
+            return None
+        if len(authors) > 6:
+            return f"{', '.join(authors[:6])}, et al"
+        return ", ".join(authors)
+
+    def _vancouver_journal_text(
+        self,
+        journal: str | None,
+        publication_year: str | None,
+        volume: str | None,
+        issue: str | None,
+        page: str | None,
+    ) -> str | None:
+        journal_parts = [item for item in [journal, publication_year] if item]
+        if not journal_parts:
+            return None
+        journal_text = ". ".join(journal_parts)
+        volume_issue = ""
+        if volume:
+            volume_issue = volume
+            if issue:
+                volume_issue += f"({issue})"
+        elif issue:
+            volume_issue = f"({issue})"
+        if volume_issue and page:
+            journal_text += f";{volume_issue}:{page}"
+        elif volume_issue:
+            journal_text += f";{volume_issue}"
+        elif page:
+            journal_text += f":{page}"
+        return journal_text
+
+    def _request_failure_message(
+        self,
+        exc: HTTPError | URLError | TimeoutError | OSError | json.JSONDecodeError | ValueError,
+    ) -> str:
+        if isinstance(exc, HTTPError):
+            reason = exc.reason or exc.msg or "未返回原因"
+            return f"HTTP {exc.code}：{reason}"
+        if isinstance(exc, URLError):
+            return f"网络不可达：{exc.reason}"
+        if isinstance(exc, TimeoutError):
+            return "请求超时。"
+        if isinstance(exc, json.JSONDecodeError):
+            return f"返回内容无法解析为 JSON：{exc.msg}"
+        if isinstance(exc, OSError):
+            return f"系统网络错误：{exc}"
+        return f"返回内容不符合预期：{exc}"
+
+    def _first_text(self, value: object) -> str | None:
+        if isinstance(value, list) and value:
+            return self._clean_text(str(value[0])) or None
+        if isinstance(value, str):
+            return self._clean_text(value) or None
+        return None
+
+    def _looks_like_doi(self, value: str) -> bool:
+        return bool(re.match(r"^10\.\S+/.+", value.strip(), flags=re.IGNORECASE))
+
+    def _normalize_title(self, value: str) -> str:
+        return re.sub(r"[^a-z0-9]+", " ", value.lower()).strip()
+
+    def _clean_text(self, value: str) -> str:
+        return re.sub(r"\s+", " ", value).strip()
+
+
 class MentorEvidenceService:
     def __init__(self) -> None:
         self._local_provider = LocalMentorEvidenceProvider()
-        self._pubmed_provider = PubMedEvidenceProvider()
+        self._crossref_provider = CrossrefEvidenceProvider()
+        self._pubmed_provider = PubMedEvidenceProvider(self._crossref_provider)
 
     def get_topic_evidence(self, topic_id: str) -> list[MentorEvidenceItem]:
+        if settings.mentor_evidence_provider == "crossref":
+            local_items = self._local_provider.get_topic_evidence(topic_id)
+            return [self._crossref_provider.enrich_evidence(item) for item in local_items]
         if settings.mentor_evidence_provider == "pubmed":
             return self._pubmed_provider.get_topic_evidence(topic_id)
         return self._local_provider.get_topic_evidence(topic_id)

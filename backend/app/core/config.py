@@ -30,8 +30,14 @@ class Settings:
     )
     pubmed_api_key: str | None = os.getenv("PUBMED_API_KEY")
     pubmed_email: str | None = os.getenv("PUBMED_EMAIL")
+    crossref_base_url: str = os.getenv("CROSSREF_BASE_URL", "https://api.crossref.org")
+    crossref_mailto: str | None = os.getenv("CROSSREF_MAILTO")
     mentor_pubmed_retmax: int = int(os.getenv("MENTOR_PUBMED_RETMAX", "3"))
     mentor_pubmed_candidate_retmax: int = int(os.getenv("MENTOR_PUBMED_CANDIDATE_RETMAX", "12"))
+    mentor_crossref_retmax: int = int(os.getenv("MENTOR_CROSSREF_RETMAX", "1"))
+    mentor_crossref_title_match_min_score: int = int(
+        os.getenv("MENTOR_CROSSREF_TITLE_MATCH_MIN_SCORE", "4"),
+    )
     mentor_evidence_timeout_seconds: float = float(
         os.getenv("MENTOR_EVIDENCE_TIMEOUT_SECONDS", "6"),
     )

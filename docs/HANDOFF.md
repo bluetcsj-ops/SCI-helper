@@ -41,7 +41,19 @@
   - 候选引用清单可交给 Alex Writer，生成 Introduction / Discussion 写作提纲、段落引用建议和仍需补充检索/阅读全文确认的项目
   - Alex Writer 新增写作工作区，基于“确认可用”的候选引用展示 Introduction / Discussion 本地提纲、候选引用和写作前检查清单
   - Alex Writer 写作工作区可导出 `alex-writer-outline.md`，包含项目研究问题、主要终点、Introduction / Discussion 提纲、候选引用和写作前检查清单
-  - 当前仍未完成 NCBI 实际限速行为验证、正式引用格式导出、字段级引用管理和 Crossref 自动证据检索；当前相关性排序和人工复核字段仍不等于系统综述或正式引用质量评价
+  - Alex Writer 已调整为 Introduction 聚焦模式：所有“确认可用”的候选文献默认进入 Introduction 引用池，生成背景段、研究空白段和研究目的段骨架；Discussion 暂不自动生成，等待 Dr. Data Lin 正式结果确认后再生成
+  - Alex Writer Introduction 可编辑草稿已接入：项目级保存背景段、研究空白段和研究目的段，重新打开项目后恢复；只读项目禁用保存；`alex-writer-outline.md` 导出当前草稿内容，空段落回退到骨架提示
+  - Introduction 引用语义插入辅助已接入：每条确认可用文献可插入到背景段、研究空白段或研究目的段；插入内容为保守语义模板句，保留 PMID/DOI/Vancouver 候选引用追溯，不自由改写、不自动保存
+  - Introduction 引用使用清单已接入：前端从草稿文本解析 PMID / DOI 标记，展示引用所在段落和出现次数；重复出现只提示不阻止；有文字但无追溯标记的段落会提示人工补引用
+  - Introduction 正文导出已接入：可导出 `introduction-draft.md`，内容分为正文草稿、实际使用的候选引用清单和待人工核对项目；只导出草稿中实际出现过 PMID / DOI 的引用，未使用候选引用不进入正文引用清单
+  - Crossref 候选引用补充已接入：PubMed 候选文献会尝试补充 Crossref/DOI 链接、期刊元数据和候选引用草稿；Crossref 失败时不阻断 PubMed 候选证据，只在局限性中提示人工复核
+  - Crossref 误匹配防护已接入：已有 DOI 时要求 Crossref DOI 精确匹配；无 DOI 时按题名规范化词命中阈值保守合并，低相似度结果不自动生成候选引用草稿
+  - Crossref 单条真实联网验证通过：已知 DOI `10.1016/j.radonc.2022.07.010` 返回 `https://doi.org/10.1016/j.radonc.2022.07.010` 和候选引用草稿 `Practical guidelines of online MR-guided adaptive radiotherapy. Radiotherapy and Oncology. 2022. doi:10.1016/j.radonc.2022.07.010.`
+  - Crossref 批量真实联网验证通过：`mr_linac`、`ai_planning_qa`、`sbrt`、`radiomics`、`motion` 共 15 条 PubMed 候选均成功补充 Crossref/DOI 链接和候选引用草稿，未出现 API 失败或阈值误拦截；默认题名阈值 `MENTOR_CROSSREF_TITLE_MATCH_MIN_SCORE=4` 暂不调整
+  - Vancouver 风格候选引用导出已接入：基于题名、期刊、年份和 DOI 生成不含作者/卷期/页码的保守候选格式，并同步到推荐依据、候选引用清单、Alex Writer 交接文本、《研究方向建议书》和 `alex-writer-outline.md`
+  - Vancouver 候选引用元数据增强已接入：从 Crossref 解析作者、卷、期、页码或 article number；作者超过 6 个时输出前 6 个加 `et al`，缺失字段会跳过而不是编造
+  - 前端推荐依据、候选引用清单、Alex Writer 交接文本、《研究方向建议书》和 `alex-writer-outline.md` 已同步导出 Crossref/DOI 链接与候选引用草稿
+  - 当前仍未完成 NCBI 实际限速行为验证、正式引用格式导出、字段级引用管理和 Crossref 真实联网批量验证；当前相关性排序、Crossref 候选元数据和人工复核字段仍不等于系统综述或正式引用质量评价
 - Prof. RadOnc Mentor 已补齐最小可用版本（MVP）：
   - 后端新增 `GET /api/mentor/trends`
   - 后端新增 `POST /api/mentor/recommendations`
@@ -186,6 +198,23 @@ OPENAI_API_KEY=你的 OpenAI API Key
 OPENAI_MODEL=gpt-4o
 ```
 
+Mentor evidence：
+
+```text
+MENTOR_EVIDENCE_PROVIDER=local 或 pubmed 或 crossref
+PUBMED_BASE_URL=https://eutils.ncbi.nlm.nih.gov/entrez/eutils
+PUBMED_API_KEY=
+PUBMED_EMAIL=
+CROSSREF_BASE_URL=https://api.crossref.org
+CROSSREF_MAILTO=你的邮箱，可选但建议填写
+MENTOR_PUBMED_RETMAX=3
+MENTOR_PUBMED_CANDIDATE_RETMAX=12
+MENTOR_CROSSREF_RETMAX=1
+MENTOR_CROSSREF_TITLE_MATCH_MIN_SCORE=4
+MENTOR_EVIDENCE_TIMEOUT_SECONDS=6
+MENTOR_PUBMED_REQUEST_INTERVAL_SECONDS=-1
+```
+
 ## 当前验证记录
 
 最近一次验证通过：
@@ -216,6 +245,34 @@ npm.cmd run build
   - 趋势快照可返回至少 6 个方向
   - 问卷提交后可返回 2-3 个推荐卡
   - 可导出本地 Markdown 建议书
+
+Crossref 候选引用补充验证：
+
+- 后端：`python -B -c "import app.agents.mentor_models; import app.agents.mentor_evidence_service; import app.core.config"`
+- 前端：`.\node_modules\.bin\tsc.cmd --noEmit`
+- 服务层不联网烟测：伪造 Crossref work 后，`CrossrefEvidenceProvider.enrich_evidence` 可生成 `pubmed_crossref` 状态、Crossref/DOI 链接和候选引用草稿
+- 误匹配防护不联网烟测：高相似题名可合并；低相似题名会保留 PubMed 候选、不生成候选引用草稿，并在局限性中提示相似度不足
+- 真实联网单条验证：`10.1016/j.radonc.2022.07.010` 可返回 DOI 链接和候选引用草稿
+- 真实联网批量验证：`mr_linac`、`ai_planning_qa`、`sbrt`、`radiomics`、`motion` 共 15 条 PubMed 候选均成功补充 Crossref/DOI 链接和候选引用草稿，未调整默认题名阈值
+- 正式引用仍需人工核对全文、DOI 页面和目标期刊格式
+
+Vancouver 候选引用验证：
+
+- 后端：`python -B -c "import app.agents.mentor_models; import app.agents.mentor_evidence_service; import app.core.config"`
+- 前端：`.\node_modules\.bin\tsc.cmd --noEmit`
+- 服务层不联网烟测：伪造 Crossref work 后，`CrossrefEvidenceProvider.enrich_evidence` 可生成 `vancouver_citation`
+- 服务层不联网烟测已覆盖：1-3 个作者、超过 6 个作者触发 `et al`、缺卷期页码时不产生异常标点
+- 当前 Vancouver 字段属于候选写作辅助格式，不是最终投稿格式；期刊缩写和目标期刊格式仍需人工核对
+
+Alex Writer Introduction 草稿验证：
+
+- 后端：`.\.venv\Scripts\python.exe -B -c "import app.db.models; import app.projects.models; import app.projects.writer_drafts; import app.api.routes.projects"`
+- 前端：`.\node_modules\.bin\tsc.cmd --noEmit`
+- Repository 烟测：使用内存 SQLite 保存并读取背景段、研究空白段和研究目的段
+- 权限边界：API 路由按项目权限读取；保存需要 `editor` 权限，前端只读项目禁用保存按钮
+- 前端类型检查覆盖引用语义插入逻辑；插入按钮仅更新本地草稿，仍需手动保存
+- 前端类型检查覆盖引用使用清单逻辑；重复引用和无追溯段落为提示性质，不自动修改草稿
+- 前端类型检查覆盖 `introduction-draft.md` 导出逻辑；导出引用清单只包含正文草稿中实际出现的 PMID / DOI 标记
 
 ## Git 上传安全规则
 

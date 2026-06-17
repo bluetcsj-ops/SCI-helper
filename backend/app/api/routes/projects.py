@@ -9,10 +9,13 @@ from app.projects.models import (
     ProjectProtocolExtractRequest,
     ProjectProtocolUpdate,
     TaskStatusUpdate,
+    WriterIntroductionDraft,
+    WriterIntroductionDraftUpdate,
 )
 from app.projects.plan_drafts import project_plan_draft_repository
 from app.projects.plan_generator import project_plan_generator
 from app.projects.repository import project_repository
+from app.projects.writer_drafts import writer_introduction_draft_repository
 from app.protocols.extractor import protocol_extractor
 from app.protocols.repository import protocol_repository
 from app.users.dependencies import ensure_project_access, get_current_user
@@ -156,6 +159,31 @@ def save_mentor_evidence_review(
         return mentor_evidence_review_repository.upsert_review(project_id=project_id, payload=request)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/{project_id}/writer/introduction-draft", response_model=WriterIntroductionDraft)
+def get_writer_introduction_draft(
+    project_id: str,
+    current_user: UserProfile = Depends(get_current_user),
+) -> WriterIntroductionDraft:
+    project = project_repository.get_project(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    ensure_project_access(project_id, current_user, ProjectAccessLevel.viewer)
+    return writer_introduction_draft_repository.get_draft(project_id)
+
+
+@router.put("/{project_id}/writer/introduction-draft", response_model=WriterIntroductionDraft)
+def save_writer_introduction_draft(
+    project_id: str,
+    request: WriterIntroductionDraftUpdate,
+    current_user: UserProfile = Depends(get_current_user),
+) -> WriterIntroductionDraft:
+    project = project_repository.get_project(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    ensure_project_access(project_id, current_user, ProjectAccessLevel.editor)
+    return writer_introduction_draft_repository.save_draft(project_id=project_id, payload=request)
 
 
 @router.get("/{project_id}/plan/drafts", response_model=list[ProjectPlanDraft])

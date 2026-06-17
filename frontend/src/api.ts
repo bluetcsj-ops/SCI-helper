@@ -23,6 +23,8 @@ import type {
   ProjectProtocolUpdate,
   ProjectReminderSummary,
   UserProfile,
+  WriterIntroductionDraft,
+  WriterIntroductionDraftUpdate,
 } from "./types";
 
 const API_BASE_URL =
@@ -89,6 +91,20 @@ export function saveMentorEvidenceReview(
   payload: MentorEvidenceReviewUpdate,
 ): Promise<MentorEvidenceReview> {
   return request<MentorEvidenceReview>(`/api/projects/${projectId}/mentor/evidence-reviews`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function getWriterIntroductionDraft(projectId: string): Promise<WriterIntroductionDraft> {
+  return request<WriterIntroductionDraft>(`/api/projects/${projectId}/writer/introduction-draft`);
+}
+
+export function saveWriterIntroductionDraft(
+  projectId: string,
+  payload: WriterIntroductionDraftUpdate,
+): Promise<WriterIntroductionDraft> {
+  return request<WriterIntroductionDraft>(`/api/projects/${projectId}/writer/introduction-draft`, {
     method: "PUT",
     body: JSON.stringify(payload),
   });

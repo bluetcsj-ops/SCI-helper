@@ -14,6 +14,7 @@ from app.db.models import (
     TaskRecord,
     TaskReminderRecord,
     UserRecord,
+    WriterIntroductionDraftRecord,
 )
 from app.db.session import Base, SessionLocal, engine
 from app.projects.models import Project
@@ -90,5 +91,6 @@ __all__ = [
     "TaskRecord",
     "TaskReminderRecord",
     "UserRecord",
+    "WriterIntroductionDraftRecord",
     "initialize_database",
 ]

@@ -97,6 +97,20 @@ class ProjectPlanDraft(BaseModel):
     applied_at: datetime | None = None
 
 
+class WriterIntroductionDraft(BaseModel):
+    project_id: str
+    background_paragraph: str = ""
+    gap_paragraph: str = ""
+    objective_paragraph: str = ""
+    updated_at: datetime | None = None
+
+
+class WriterIntroductionDraftUpdate(BaseModel):
+    background_paragraph: str = ""
+    gap_paragraph: str = ""
+    objective_paragraph: str = ""
+
+
 class TaskReminder(BaseModel):
     id: int
     project_id: str

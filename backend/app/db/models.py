@@ -209,3 +209,18 @@ class MentorEvidenceReviewRecord(Base):
         onupdate=datetime.utcnow,
         nullable=False,
     )
+
+
+class WriterIntroductionDraftRecord(Base):
+    __tablename__ = "writer_introduction_drafts"
+
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), primary_key=True)
+    background_paragraph: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    gap_paragraph: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    objective_paragraph: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False,
+    )

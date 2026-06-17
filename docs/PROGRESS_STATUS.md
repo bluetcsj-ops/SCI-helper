@@ -44,11 +44,23 @@
   - Alex Writer 联动：可将候选引用清单交给 Alex Writer，生成 Introduction / Discussion 写作提纲和仍需补充检索的项目清单
   - Alex Writer 写作工作区：展示基于候选引用的 Introduction / Discussion 本地提纲、候选引用列表和写作前检查清单
   - Alex Writer 写作提纲 Markdown 导出：可将本地提纲、项目研究问题、主要终点、候选引用和写作前检查清单导出为 `alex-writer-outline.md`
+  - Alex Writer Introduction 聚焦模式：所有“确认可用”的候选文献默认进入 Introduction 引用池，生成背景段、研究空白段和研究目的段骨架；Discussion 暂不自动生成，等待 Dr. Data Lin 正式结果确认后再生成
+  - Alex Writer Introduction 可编辑草稿：项目级保存背景段、研究空白段和研究目的段，重新打开项目后可恢复；`alex-writer-outline.md` 导出会包含当前草稿内容，空段落则回退到骨架提示
+  - Introduction 引用语义插入辅助：确认可用文献可一键以保守语义句插入背景段、研究空白段或研究目的段，并保留 PMID/DOI/Vancouver 候选引用追溯；插入只更新本地草稿，需手动保存
+  - Introduction 引用使用清单：从草稿中解析 PMID / DOI 追溯标记，显示引用出现段落、出现次数、重复使用提示，以及有文字但缺少追溯标记的段落
+  - Introduction 正文导出：可导出 `introduction-draft.md`，分离正文草稿、实际使用的候选引用清单和待人工核对项目；未在草稿中出现的候选引用不会进入正文引用清单
+  - Crossref 候选引用补充：PubMed 候选文献可尝试通过 Crossref 补充 DOI 链接、期刊元数据和候选引用草稿；失败时保留原 PubMed 候选并提示人工复核
+  - Crossref 误匹配防护：已有 DOI 时要求 Crossref DOI 精确匹配；无 DOI 时按题名规范化词命中阈值保守合并，低相似度结果不自动生成候选引用草稿
+  - Crossref 单条真实联网验证通过：已知 DOI `10.1016/j.radonc.2022.07.010` 可返回 DOI 链接和候选引用草稿
+  - Crossref 批量真实联网验证通过：`mr_linac`、`ai_planning_qa`、`sbrt`、`radiomics`、`motion` 共 15 条 PubMed 候选均成功补充 Crossref/DOI 链接和候选引用草稿；默认题名阈值 `MENTOR_CROSSREF_TITLE_MATCH_MIN_SCORE=4` 暂不调整
+  - Vancouver 风格候选引用导出：基于 Crossref/PubMed 的题名、期刊、年份和 DOI 生成不含作者/卷期/页码的保守候选格式，并同步到前端、Markdown 建议书和 Alex Writer 交接文本
+  - Vancouver 候选引用元数据增强：从 Crossref 解析作者、卷、期、页码或 article number；作者超过 6 个时按前 6 个加 `et al` 输出，缺失字段不编造
+  - 前端推荐依据、候选引用清单、Alex Writer 交接文本和 Markdown 导出已同步展示 Crossref/DOI 链接与候选引用草稿
 - 未完成：
   - 联网真实趋势数据库
   - NCBI 实际限速行为验证；当前相关性排序和人工复核字段仍不等于系统综述或正式引用质量评价
-  - 字段级引用管理、正式引用格式导出和可编辑写作草稿保存
-  - Crossref 等外部证据自动检索和结果解析
+  - 字段级引用管理、完整正式引用格式导出和可编辑写作草稿保存
+  - Crossref 更大样本量验证、期刊缩写规范化和目标期刊引用格式适配
   - 根据真实文献计量结果自动更新趋势热度
   - 自动引用真实 PMID / DOI 和代表性文献
   - 字段级差异对比与选择性合并
@@ -121,7 +133,7 @@
 - 未完成：
   - 写作风格学习
   - 文献真实检索与引用管理
-  - Introduction / Methods / Discussion 全链路写作
+  - Methods / Discussion 全链路写作，以及 Introduction 草稿的风格润色与版本管理
   - 期刊模板排版与投稿清单
 - 当前结论：
   - 仍处于早期原型阶段

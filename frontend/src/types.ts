@@ -69,11 +69,18 @@ export interface MentorEvidenceItem {
   evidence_status: string;
   retrieved_at?: string | null;
   external_url?: string | null;
+  crossref_url?: string | null;
   pmid?: string | null;
   title?: string | null;
   journal?: string | null;
   publication_year?: string | null;
   doi?: string | null;
+  citation_text?: string | null;
+  vancouver_citation?: string | null;
+  authors: string[];
+  volume?: string | null;
+  issue?: string | null;
+  page?: string | null;
   publication_types: string[];
   review_status: string;
   review_note?: string;
@@ -207,6 +214,19 @@ export interface ProjectPlanDraft {
   created_at: string;
   applied_at?: string | null;
 }
+
+export interface WriterIntroductionDraft {
+  project_id: string;
+  background_paragraph: string;
+  gap_paragraph: string;
+  objective_paragraph: string;
+  updated_at?: string | null;
+}
+
+export type WriterIntroductionDraftUpdate = Omit<
+  WriterIntroductionDraft,
+  "project_id" | "updated_at"
+>;
 
 export interface TaskReminder {
   id: number;
