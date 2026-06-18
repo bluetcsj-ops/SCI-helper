@@ -567,6 +567,14 @@ type IntroductionDraftField =
   | "gap_paragraph"
   | "objective_paragraph";
 
+type IntroductionCitationBindings = Record<IntroductionDraftField, string[]>;
+
+const introductionDraftFields: IntroductionDraftField[] = [
+  "background_paragraph",
+  "gap_paragraph",
+  "objective_paragraph",
+];
+
 const introductionDraftFieldLabels: Record<IntroductionDraftField, string> = {
   background_paragraph: "背景段",
   gap_paragraph: "研究空白段",
@@ -599,6 +607,8 @@ interface IntroductionFieldCitationMap {
   usages: IntroductionCitationUsage[];
   matchedReferences: IntroductionUsedReference[];
   unmatchedUsages: IntroductionCitationUsage[];
+  manualReferences: IntroductionUsedReference[];
+  unmatchedBindingKeys: string[];
 }
 
 interface MentorCandidateReference {
@@ -679,9 +689,9 @@ function extractIntroductionCitationUsages(
   draft: WriterIntroductionDraftUpdate,
 ): IntroductionCitationUsage[] {
   const usageMap = new Map<string, IntroductionCitationUsage>();
-  const entries = Object.entries(draft) as [IntroductionDraftField, string][];
 
-  entries.forEach(([field, text]) => {
+  introductionDraftFields.forEach((field) => {
+    const text = draft[field];
     const sectionLabel = introductionDraftFieldLabels[field];
     buildCitationUsagesForText(text, sectionLabel).forEach((usage) => {
       const current = usageMap.get(usage.key) ?? {
@@ -702,10 +712,42 @@ function extractIntroductionCitationUsages(
 }
 
 function referenceKeysForEvidence(evidence: MentorEvidenceItem): string[] {
-  return [
+  const keys = [
     evidence.doi ? `doi:${evidence.doi.toLowerCase()}` : null,
     evidence.pmid ? `pmid:${evidence.pmid}` : null,
   ].filter(Boolean) as string[];
+  if (!keys.length) {
+    keys.push(fallbackReferenceKeyForEvidence(evidence));
+  }
+  return keys;
+}
+
+function fallbackReferenceKeyForEvidence(evidence: MentorEvidenceItem): string {
+  const fallback = (evidence.title || evidence.search_query || evidence.evidence_summary)
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+  return `fallback:${fallback}`;
+}
+
+function primaryReferenceKeyForEvidence(evidence: MentorEvidenceItem): string {
+  if (evidence.doi?.trim()) {
+    return `doi:${evidence.doi.trim().toLowerCase()}`;
+  }
+  if (evidence.pmid?.trim()) {
+    return `pmid:${evidence.pmid.trim()}`;
+  }
+  return fallbackReferenceKeyForEvidence(evidence);
+}
+
+function formatCitationBindingKey(key: string): string {
+  if (key.startsWith("pmid:")) {
+    return `PMID ${key.slice(5)}`;
+  }
+  if (key.startsWith("doi:")) {
+    return `DOI ${key.slice(4)}`;
+  }
+  return "本地候选引用";
 }
 
 function findCandidateReferenceForUsage(
@@ -719,10 +761,26 @@ function buildIntroductionFieldCitationMaps(
   draft: WriterIntroductionDraftUpdate,
   references: MentorCandidateReference[],
 ): IntroductionFieldCitationMap[] {
-  return (Object.entries(draft) as [IntroductionDraftField, string][]).map(([field, text]) => {
+  const citationBindings = normalizeIntroductionCitationBindings(draft.citation_bindings);
+  return introductionDraftFields.map((field) => {
+    const text = draft[field];
     const label = introductionDraftFieldLabels[field];
     const usages = buildCitationUsagesForText(text, label);
     const usedReferences = usages.map((usage) => {
+      const matchedReference = findCandidateReferenceForUsage(usage, references);
+      return {
+        usage,
+        cardTitle: matchedReference?.cardTitle,
+        evidence: matchedReference?.evidence,
+      };
+    });
+    const manualReferences = citationBindings[field].map((key) => {
+      const usage = {
+        key,
+        label: formatCitationBindingKey(key),
+        count: 1,
+        sections: [label],
+      };
       const matchedReference = findCandidateReferenceForUsage(usage, references);
       return {
         usage,
@@ -738,8 +796,38 @@ function buildIntroductionFieldCitationMaps(
       usages,
       matchedReferences: usedReferences.filter((item) => item.evidence),
       unmatchedUsages: usedReferences.filter((item) => !item.evidence).map((item) => item.usage),
+      manualReferences: manualReferences.filter((item) => item.evidence),
+      unmatchedBindingKeys: manualReferences.filter((item) => !item.evidence).map((item) => item.usage.key),
     };
   });
+}
+
+function createEmptyIntroductionCitationBindings(): IntroductionCitationBindings {
+  return {
+    background_paragraph: [],
+    gap_paragraph: [],
+    objective_paragraph: [],
+  };
+}
+
+function normalizeIntroductionCitationBindings(
+  citationBindings?: Record<string, string[]> | null,
+): IntroductionCitationBindings {
+  const normalized = createEmptyIntroductionCitationBindings();
+  if (!citationBindings) {
+    return normalized;
+  }
+
+  introductionDraftFields.forEach((field) => {
+    const keys = citationBindings[field];
+    if (!Array.isArray(keys)) {
+      return;
+    }
+    normalized[field] = keys
+      .map((key) => key.trim())
+      .filter((key, index, allKeys) => key.length > 0 && allKeys.indexOf(key) === index);
+  });
+  return normalized;
 }
 
 function mentorReferenceDedupKey(evidence: MentorEvidenceItem): string {
@@ -750,11 +838,7 @@ function mentorReferenceDedupKey(evidence: MentorEvidenceItem): string {
     return `pmid:${evidence.pmid.trim()}`;
   }
 
-  const fallback = (evidence.title || evidence.search_query || evidence.evidence_summary)
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, " ");
-  return `fallback:${fallback}`;
+  return fallbackReferenceKeyForEvidence(evidence);
 }
 
 function mentorReferenceCompletenessScore(evidence: MentorEvidenceItem): number {
@@ -886,6 +970,7 @@ function createWriterIntroductionDraftForm(): WriterIntroductionDraftUpdate {
     background_paragraph: "",
     gap_paragraph: "",
     objective_paragraph: "",
+    citation_bindings: createEmptyIntroductionCitationBindings(),
   };
 }
 
@@ -1154,11 +1239,17 @@ function App() {
     [writerIntroductionDraftForm],
   );
   const introductionSectionsWithoutCitation = useMemo(() => {
-    const entries = Object.entries(writerIntroductionDraftForm) as [IntroductionDraftField, string][];
-    return entries
-      .filter(([, text]) => text.trim())
-      .filter(([, text]) => !/\b(?:DOI\s+[^\]\s；;，,]+|PMID\s+\d+)/i.test(text))
-      .map(([field]) => introductionDraftFieldLabels[field]);
+    const citationBindings = normalizeIntroductionCitationBindings(
+      writerIntroductionDraftForm.citation_bindings,
+    );
+    return introductionDraftFields
+      .filter((field) => writerIntroductionDraftForm[field].trim())
+      .filter(
+        (field) =>
+          !/\b(?:DOI\s+[^\]\s；;，,]+|PMID\s+\d+)/i.test(writerIntroductionDraftForm[field]) &&
+          citationBindings[field].length === 0,
+      )
+      .map((field) => introductionDraftFieldLabels[field]);
   }, [writerIntroductionDraftForm]);
   const introductionUsedReferences = useMemo<IntroductionUsedReference[]>(() => {
     return introductionCitationUsages.map((usage) => {
@@ -1335,6 +1426,7 @@ function App() {
             background_paragraph: draft.background_paragraph,
             gap_paragraph: draft.gap_paragraph,
             objective_paragraph: draft.objective_paragraph,
+            citation_bindings: normalizeIntroductionCitationBindings(draft.citation_bindings),
           });
         }
       } catch (caughtError) {
@@ -2005,6 +2097,12 @@ function App() {
     const duplicateUsages = introductionCitationUsages.filter((usage) => usage.count > 1);
     const matchedReferences = introductionUsedReferences.filter((item) => item.evidence);
     const unmatchedReferences = introductionUsedReferences.filter((item) => !item.evidence);
+    const unmatchedManualBindingKeys = introductionFieldCitationMaps.flatMap((fieldMap) =>
+      fieldMap.unmatchedBindingKeys.map((key) => ({
+        fieldLabel: fieldMap.label,
+        key,
+      })),
+    );
     const content = [
       "# Introduction 草稿",
       "",
@@ -2070,19 +2168,43 @@ function App() {
               ];
             })
           : []),
+        ...(fieldMap.manualReferences.length
+          ? fieldMap.manualReferences.flatMap((item, index) => {
+              const evidence = item.evidence;
+              return [
+                `手动绑定 ${index + 1}. ${item.usage.label} → ${
+                  evidence?.vancouver_citation || evidence?.citation_text || evidence?.title || "待补充题名"
+                }`,
+                item.cardTitle ? `   - 来源课题：${item.cardTitle}` : "   - 来源课题：待补充",
+                `   - 全文核对：${evidence?.full_text_checked ? "是" : "否"}`,
+                `   - 已标记用于 Introduction：${evidence?.use_in_introduction ? "是" : "否"}`,
+                evidence?.pmid ? `   - PMID：${evidence.pmid}` : "   - PMID：待补充",
+                evidence?.doi ? `   - DOI：${evidence.doi}` : "   - DOI：待补充",
+              ];
+            })
+          : []),
         ...(fieldMap.unmatchedUsages.length
           ? fieldMap.unmatchedUsages.map(
               (usage) => `- ${usage.label} 未匹配到当前候选引用列表，需人工核对。`,
             )
           : []),
-        ...(!fieldMap.usages.length ? ["- 暂无可映射引用。"] : []),
+        ...(fieldMap.unmatchedBindingKeys.length
+          ? fieldMap.unmatchedBindingKeys.map(
+              (key) => `- 手动绑定 ${formatCitationBindingKey(key)} 未匹配到当前候选引用列表，需人工核对。`,
+            )
+          : []),
+        ...(!fieldMap.usages.length &&
+        !fieldMap.manualReferences.length &&
+        !fieldMap.unmatchedBindingKeys.length
+          ? ["- 暂无可映射引用。"]
+          : []),
         "",
       ]),
       "",
       "## 待人工核对",
       ...(introductionSectionsWithoutCitation.length
-        ? [`- ${introductionSectionsWithoutCitation.join("、")}已有文字，但尚无 PMID / DOI 追溯标记。`]
-        : ["- 所有已有文字的段落都包含至少一个 PMID / DOI 追溯标记。"]),
+        ? [`- ${introductionSectionsWithoutCitation.join("、")}已有文字，但尚无 PMID / DOI 追溯标记或手动绑定。`]
+        : ["- 所有已有文字的段落都包含至少一个 PMID / DOI 追溯标记或手动绑定。"]),
       ...(duplicateUsages.length
         ? duplicateUsages.map(
             (usage) =>
@@ -2095,6 +2217,12 @@ function App() {
               `- ${item.usage.label} 在草稿中出现，但当前候选引用列表未匹配到对应文献，请人工核对。`,
           )
         : ["- 草稿中的 PMID / DOI 标记均已匹配到当前候选引用列表。"]),
+      ...(unmatchedManualBindingKeys.length
+        ? unmatchedManualBindingKeys.map(
+            (item) =>
+              `- ${item.fieldLabel} 手动绑定 ${formatCitationBindingKey(item.key)}，但当前候选引用列表未匹配到对应文献，请人工核对。`,
+          )
+        : ["- 手动绑定的引用均已匹配到当前候选引用列表。"]),
       "- 候选 Vancouver 引用不是最终投稿格式，正式投稿前仍需核对全文、DOI 页面和目标期刊格式。",
       "",
     ].join("\n");
@@ -2731,6 +2859,7 @@ function App() {
         background_paragraph: savedDraft.background_paragraph,
         gap_paragraph: savedDraft.gap_paragraph,
         objective_paragraph: savedDraft.objective_paragraph,
+        citation_bindings: normalizeIntroductionCitationBindings(savedDraft.citation_bindings),
       });
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "Introduction 草稿保存失败。");
@@ -2752,6 +2881,45 @@ function App() {
       return {
         ...current,
         [field]: currentText ? `${currentText}\n${sentence}` : sentence,
+      };
+    });
+  }
+
+  function isReferenceBoundToField(
+    field: IntroductionDraftField,
+    evidence: MentorEvidenceItem,
+  ): boolean {
+    const citationBindings = normalizeIntroductionCitationBindings(
+      writerIntroductionDraftForm.citation_bindings,
+    );
+    return citationBindings[field].includes(primaryReferenceKeyForEvidence(evidence));
+  }
+
+  function handleToggleManualCitationBinding(
+    field: IntroductionDraftField,
+    evidence: MentorEvidenceItem,
+    checked: boolean,
+  ) {
+    if (!canEditSelectedProject) {
+      return;
+    }
+
+    const referenceKey = primaryReferenceKeyForEvidence(evidence);
+    setWriterIntroductionDraftForm((current) => {
+      const citationBindings = normalizeIntroductionCitationBindings(current.citation_bindings);
+      const fieldKeys = citationBindings[field];
+      const nextFieldKeys = checked
+        ? fieldKeys.includes(referenceKey)
+          ? fieldKeys
+          : [...fieldKeys, referenceKey]
+        : fieldKeys.filter((key) => key !== referenceKey);
+
+      return {
+        ...current,
+        citation_bindings: {
+          ...citationBindings,
+          [field]: nextFieldKeys,
+        },
       };
     });
   }
@@ -5233,7 +5401,7 @@ function App() {
                         {introductionSectionsWithoutCitation.length ? (
                           <p className="writer-citation-warning">
                             {introductionSectionsWithoutCitation.join("、")}已有文字，但尚无 PMID / DOI
-                            追溯标记。
+                            追溯标记或手动绑定。
                           </p>
                         ) : null}
                         <div className="writer-field-citation-map">
@@ -5241,10 +5409,11 @@ function App() {
                             <strong>字段级引用映射</strong>
                             <span>
                               {introductionFieldCitationMaps.reduce(
-                                (total, fieldMap) => total + fieldMap.matchedReferences.length,
+                                (total, fieldMap) =>
+                                  total + fieldMap.matchedReferences.length + fieldMap.manualReferences.length,
                                 0,
                               )}{" "}
-                              条已匹配
+                              条自动/手动匹配
                             </span>
                           </div>
                           <div className="writer-field-citation-list">
@@ -5256,7 +5425,8 @@ function App() {
                                 <div className="writer-field-citation-head">
                                   <strong>{fieldMap.label}</strong>
                                   <small>
-                                    {fieldMap.usages.length} 条标记 · {fieldMap.matchedReferences.length} 条匹配
+                                    {fieldMap.usages.length} 条标记 · {fieldMap.matchedReferences.length} 条自动匹配 ·{" "}
+                                    {fieldMap.manualReferences.length} 条手动绑定
                                   </small>
                                 </div>
                                 {!fieldMap.hasText ? <p>该段尚未撰写。</p> : null}
@@ -5287,10 +5457,43 @@ function App() {
                                     })}
                                   </div>
                                 ) : null}
+                                {fieldMap.manualReferences.length ? (
+                                  <div className="writer-field-citation-items writer-field-citation-manual">
+                                    {fieldMap.manualReferences.map((item) => {
+                                      const evidence = item.evidence;
+                                      return (
+                                        <div key={`manual-${item.usage.key}`}>
+                                          <strong>手动绑定：{item.usage.label}</strong>
+                                          <small>
+                                            {evidence?.title ??
+                                              evidence?.vancouver_citation ??
+                                              evidence?.citation_text ??
+                                              "候选文献信息待补充"}
+                                          </small>
+                                          <small>
+                                            全文核对：{evidence?.full_text_checked ? "是" : "否"} ·
+                                            Introduction 用途：
+                                            {evidence?.use_in_introduction ? "是" : "否"}
+                                          </small>
+                                          {item.cardTitle ? <small>来源课题：{item.cardTitle}</small> : null}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                ) : null}
                                 {fieldMap.unmatchedUsages.length ? (
                                   <div className="writer-field-citation-unmatched">
                                     {fieldMap.unmatchedUsages.map((usage) => (
                                       <em key={usage.key}>{usage.label} 未匹配到当前候选引用。</em>
+                                    ))}
+                                  </div>
+                                ) : null}
+                                {fieldMap.unmatchedBindingKeys.length ? (
+                                  <div className="writer-field-citation-unmatched">
+                                    {fieldMap.unmatchedBindingKeys.map((key) => (
+                                      <em key={`manual-${key}`}>
+                                        手动绑定 {formatCitationBindingKey(key)} 未匹配到当前候选引用。
+                                      </em>
                                     ))}
                                   </div>
                                 ) : null}
@@ -5338,6 +5541,29 @@ function App() {
                                   >
                                     {option.label}
                                   </button>
+                                ))}
+                              </div>
+                              <div className="writer-reference-binding-actions" aria-label="手动绑定引用字段">
+                                {[
+                                  { field: "background_paragraph" as const, label: "绑定背景" },
+                                  { field: "gap_paragraph" as const, label: "绑定空白" },
+                                  { field: "objective_paragraph" as const, label: "绑定目的" },
+                                ].map((option) => (
+                                  <label key={option.field}>
+                                    <input
+                                      type="checkbox"
+                                      checked={isReferenceBoundToField(option.field, evidence)}
+                                      disabled={!canEditSelectedProject || isWriterDraftLoading}
+                                      onChange={(event) =>
+                                        handleToggleManualCitationBinding(
+                                          option.field,
+                                          evidence,
+                                          event.currentTarget.checked,
+                                        )
+                                      }
+                                    />
+                                    <span>{option.label}</span>
+                                  </label>
                                 ))}
                               </div>
                             </article>
