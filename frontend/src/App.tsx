@@ -596,6 +596,7 @@ interface IntroductionCitationMatch {
 interface IntroductionUsedReference {
   usage: IntroductionCitationUsage;
   cardTitle?: string;
+  evidenceIndex?: number;
   evidence?: MentorEvidenceItem;
 }
 
@@ -611,8 +612,30 @@ interface IntroductionFieldCitationMap {
   unmatchedBindingKeys: string[];
 }
 
+interface IntroductionCitationQualityIssue {
+  key: string;
+  category: string;
+  fieldLabel: string;
+  referenceLabel: string;
+  message: string;
+  suggestion: string;
+  action?:
+    | {
+        kind: "mark-introduction-use";
+        cardTitle: string;
+        evidenceIndex: number;
+        evidence: MentorEvidenceItem;
+      }
+    | {
+        kind: "remove-binding";
+        field: IntroductionDraftField;
+        bindingKey: string;
+      };
+}
+
 interface MentorCandidateReference {
   cardTitle: string;
+  evidenceIndex: number;
   evidence: MentorEvidenceItem;
 }
 
@@ -771,6 +794,7 @@ function buildIntroductionFieldCitationMaps(
       return {
         usage,
         cardTitle: matchedReference?.cardTitle,
+        evidenceIndex: matchedReference?.evidenceIndex,
         evidence: matchedReference?.evidence,
       };
     });
@@ -785,6 +809,7 @@ function buildIntroductionFieldCitationMaps(
       return {
         usage,
         cardTitle: matchedReference?.cardTitle,
+        evidenceIndex: matchedReference?.evidenceIndex,
         evidence: matchedReference?.evidence,
       };
     });
@@ -800,6 +825,131 @@ function buildIntroductionFieldCitationMaps(
       unmatchedBindingKeys: manualReferences.filter((item) => !item.evidence).map((item) => item.usage.key),
     };
   });
+}
+
+function buildIntroductionCitationQualityIssues(
+  fieldMaps: IntroductionFieldCitationMap[],
+): IntroductionCitationQualityIssue[] {
+  const issueMap = new Map<string, IntroductionCitationQualityIssue>();
+
+  function addIssue(
+    fieldLabel: string,
+    referenceLabel: string,
+    issueKey: string,
+    category: string,
+    message: string,
+    suggestion: string,
+    action?: IntroductionCitationQualityIssue["action"],
+  ) {
+    const key = `${fieldLabel}:${referenceLabel}:${issueKey}`;
+    if (!issueMap.has(key)) {
+      issueMap.set(key, { key, category, fieldLabel, referenceLabel, message, suggestion, action });
+    }
+  }
+
+  fieldMaps.forEach((fieldMap) => {
+    if (fieldMap.missingTrace) {
+      addIssue(
+        fieldMap.label,
+        "段落正文",
+        "missing-trace",
+        "追溯异常",
+        "已有正文但缺少 PMID / DOI 追溯标记或手动绑定",
+        "为该段插入 PMID / DOI 追溯标记，或手动绑定已确认可用的候选引用",
+      );
+    }
+
+    fieldMap.unmatchedUsages.forEach((usage) => {
+      addIssue(
+        fieldMap.label,
+        usage.label,
+        "unmatched-trace",
+        "追溯异常",
+        "追溯标记未匹配到当前候选引用",
+        "检查草稿中的 PMID / DOI 是否录入正确，或先把对应文献加入候选引用清单",
+      );
+    });
+
+    fieldMap.unmatchedBindingKeys.forEach((key) => {
+      addIssue(
+        fieldMap.label,
+        formatCitationBindingKey(key),
+        "unmatched-binding",
+        "绑定异常",
+        "手动绑定未匹配到当前候选引用",
+        "删除该手动绑定，或先确认对应候选文献仍在当前引用清单中",
+        { kind: "remove-binding", field: fieldMap.field, bindingKey: key },
+      );
+    });
+
+    [...fieldMap.matchedReferences, ...fieldMap.manualReferences].forEach((item) => {
+      const evidence = item.evidence;
+      if (!evidence) {
+        return;
+      }
+      const referenceLabel = item.usage.label;
+      if (!evidence.full_text_checked) {
+        addIssue(
+          fieldMap.label,
+          referenceLabel,
+          "full-text",
+          "全文核对",
+          "候选文献尚未核对全文",
+          "阅读全文并核对研究对象、方法、结论和 DOI 页面后，再勾选全文核对",
+        );
+      }
+      if (!evidence.pmid) {
+        addIssue(
+          fieldMap.label,
+          referenceLabel,
+          "pmid",
+          "元数据缺失",
+          "候选文献缺 PMID",
+          "在 PubMed 或候选文献复核备注中补充 PMID；若无 PMID，请保留 DOI 并人工说明",
+        );
+      }
+      if (!evidence.doi) {
+        addIssue(
+          fieldMap.label,
+          referenceLabel,
+          "doi",
+          "元数据缺失",
+          "候选文献缺 DOI",
+          "在 DOI 页面、Crossref 或期刊页面核对 DOI，并补充到候选文献记录",
+        );
+      }
+      if (!evidence.vancouver_citation) {
+        addIssue(
+          fieldMap.label,
+          referenceLabel,
+          "vancouver",
+          "引用格式",
+          "候选文献缺 Vancouver 候选引用",
+          "先补齐作者、期刊、年份、卷期页码或 DOI，再重新生成或人工整理候选引用",
+        );
+      }
+      if (!evidence.use_in_introduction) {
+        addIssue(
+          fieldMap.label,
+          referenceLabel,
+          "intro-use",
+          "用途标记",
+          "候选文献尚未标记为 Introduction 用途",
+          "如果该文献确实用于 Introduction，请在候选文献卡片勾选 Introduction 用途",
+          item.cardTitle && item.evidenceIndex !== undefined
+            ? {
+                kind: "mark-introduction-use",
+                cardTitle: item.cardTitle,
+                evidenceIndex: item.evidenceIndex,
+                evidence,
+              }
+            : undefined,
+        );
+      }
+    });
+  });
+
+  return Array.from(issueMap.values());
 }
 
 function createEmptyIntroductionCitationBindings(): IntroductionCitationBindings {
@@ -1043,6 +1193,9 @@ function App() {
   const [isWriterDrafting, setIsWriterDrafting] = useState(false);
   const [isWriterDraftLoading, setIsWriterDraftLoading] = useState(false);
   const [isWriterDraftSaving, setIsWriterDraftSaving] = useState(false);
+  const [citationQualityNotice, setCitationQualityNotice] = useState<string | null>(null);
+  const [updatingCitationQualityActionKey, setUpdatingCitationQualityActionKey] =
+    useState<string | null>(null);
   const [showAllTasks, setShowAllTasks] = useState(false);
   const [showAllDraftTasks, setShowAllDraftTasks] = useState(false);
   const [showAllDataRequirements, setShowAllDataRequirements] = useState(false);
@@ -1133,9 +1286,11 @@ function App() {
     return (
       mentorRecommendationReport?.recommendations.flatMap((card) =>
         card.evidence_items
-          .filter((evidence) => evidence.review_status === "reviewed")
-          .map((evidence) => ({
+          .map((evidence, evidenceIndex) => ({ evidence, evidenceIndex }))
+          .filter(({ evidence }) => evidence.review_status === "reviewed")
+          .map(({ evidence, evidenceIndex }) => ({
             cardTitle: card.title,
+            evidenceIndex,
             evidence,
           })),
       ) ?? []
@@ -1257,6 +1412,7 @@ function App() {
       return {
         usage,
         cardTitle: matchedReference?.cardTitle,
+        evidenceIndex: matchedReference?.evidenceIndex,
         evidence: matchedReference?.evidence,
       };
     });
@@ -1264,6 +1420,10 @@ function App() {
   const introductionFieldCitationMaps = useMemo(
     () => buildIntroductionFieldCitationMaps(writerIntroductionDraftForm, mentorCandidateReferences),
     [writerIntroductionDraftForm, mentorCandidateReferences],
+  );
+  const introductionCitationQualityIssues = useMemo(
+    () => buildIntroductionCitationQualityIssues(introductionFieldCitationMaps),
+    [introductionFieldCitationMaps],
   );
   const formalTestReport = statisticsReport?.formal_test_report ?? null;
   const isFormalTestReady = useMemo(() => {
@@ -1805,7 +1965,7 @@ function App() {
     updateMentorEvidenceReviewInReport(cardTitle, evidenceIndex, nextPatch);
 
     if (!selectedProjectId) {
-      return;
+      return true;
     }
 
     try {
@@ -1814,8 +1974,10 @@ function App() {
         ...current,
         [savedReview.evidence_key]: savedReview,
       }));
+      return true;
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "Mentor 文献复核状态保存失败。");
+      return false;
     }
   }
 
@@ -2200,6 +2362,14 @@ function App() {
           : []),
         "",
       ]),
+      "",
+      "## 引用质控摘要",
+      ...(introductionCitationQualityIssues.length
+        ? introductionCitationQualityIssues.map(
+            (issue) =>
+              `- [${issue.category}] ${issue.fieldLabel} / ${issue.referenceLabel}：${issue.message}。建议：${issue.suggestion}。`,
+          )
+        : ["- 当前字段级引用映射未发现引用质控风险。"]),
       "",
       "## 待人工核对",
       ...(introductionSectionsWithoutCitation.length
@@ -2922,6 +3092,58 @@ function App() {
         },
       };
     });
+  }
+
+  function handleRemoveManualCitationBinding(field: IntroductionDraftField, bindingKey: string) {
+    if (!canEditSelectedProject) {
+      return;
+    }
+
+    setWriterIntroductionDraftForm((current) => {
+      const citationBindings = normalizeIntroductionCitationBindings(current.citation_bindings);
+      return {
+        ...current,
+        citation_bindings: {
+          ...citationBindings,
+          [field]: citationBindings[field].filter((key) => key !== bindingKey),
+        },
+      };
+    });
+  }
+
+  async function handleCitationQualityMarkIntroductionUse(
+    issueKey: string,
+    action: Extract<
+      NonNullable<IntroductionCitationQualityIssue["action"]>,
+      { kind: "mark-introduction-use" }
+    >,
+  ) {
+    if (!canEditSelectedProject || !selectedProjectId) {
+      return;
+    }
+
+    setCitationQualityNotice("正在保存用途标记...");
+    setUpdatingCitationQualityActionKey(issueKey);
+    try {
+      const didSave = await handleMentorEvidenceReview(action.cardTitle, action.evidenceIndex, action.evidence, {
+        use_in_introduction: true,
+      });
+      setCitationQualityNotice(
+        didSave ? "已标记为 Introduction 用途。" : "用途标记保存失败，请查看页面错误提示。",
+      );
+    } finally {
+      setUpdatingCitationQualityActionKey(null);
+    }
+  }
+
+  function handleCitationQualityRemoveBinding(
+    action: Extract<
+      NonNullable<IntroductionCitationQualityIssue["action"]>,
+      { kind: "remove-binding" }
+    >,
+  ) {
+    handleRemoveManualCitationBinding(action.field, action.bindingKey);
+    setCitationQualityNotice("绑定已从草稿中移除，请点击“保存草稿”持久化。");
   }
 
   async function handleSendReferencesToWriter() {
@@ -5404,6 +5626,67 @@ function App() {
                             追溯标记或手动绑定。
                           </p>
                         ) : null}
+                        <div className="writer-citation-quality">
+                          <div className="mentor-section-head">
+                            <strong>引用质控摘要</strong>
+                            <span>{introductionCitationQualityIssues.length} 项待核对</span>
+                          </div>
+                          {citationQualityNotice ? (
+                            <p className="writer-citation-quality-notice">{citationQualityNotice}</p>
+                          ) : null}
+                          {introductionCitationQualityIssues.length ? (
+                            <div className="writer-citation-quality-list">
+                              {introductionCitationQualityIssues.map((issue) => (
+                                <article key={issue.key}>
+                                  <span>{issue.category}</span>
+                                  <strong>
+                                    {issue.fieldLabel} / {issue.referenceLabel}
+                                  </strong>
+                                  <small>{issue.message}</small>
+                                  <em>{issue.suggestion}</em>
+                                  {issue.action ? (
+                                    <div className="writer-citation-quality-actions">
+                                      {issue.action.kind === "mark-introduction-use" ? (
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            issue.action?.kind === "mark-introduction-use"
+                                              ? handleCitationQualityMarkIntroductionUse(issue.key, issue.action)
+                                              : undefined
+                                          }
+                                          disabled={
+                                            !canEditSelectedProject ||
+                                            !selectedProjectId ||
+                                            updatingCitationQualityActionKey === issue.key
+                                          }
+                                        >
+                                          {updatingCitationQualityActionKey === issue.key
+                                            ? "保存中..."
+                                            : "标记为 Introduction 用途"}
+                                        </button>
+                                      ) : null}
+                                      {issue.action.kind === "remove-binding" ? (
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            issue.action?.kind === "remove-binding"
+                                              ? handleCitationQualityRemoveBinding(issue.action)
+                                              : undefined
+                                          }
+                                          disabled={!canEditSelectedProject || Boolean(updatingCitationQualityActionKey)}
+                                        >
+                                          移除该绑定
+                                        </button>
+                                      ) : null}
+                                    </div>
+                                  ) : null}
+                                </article>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="writer-empty">当前字段级引用映射未发现引用质控风险。</p>
+                          )}
+                        </div>
                         <div className="writer-field-citation-map">
                           <div className="mentor-section-head">
                             <strong>字段级引用映射</strong>

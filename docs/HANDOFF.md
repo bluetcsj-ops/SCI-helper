@@ -1,6 +1,6 @@
 # 项目交接记录
 
-更新时间：2026-06-18
+更新时间：2026-06-19
 
 ## 项目定位
 
@@ -48,6 +48,10 @@
   - Introduction 正文导出已接入：可导出 `introduction-draft.md`，内容分为正文草稿、实际使用的候选引用清单和待人工核对项目；只导出草稿中实际出现过 PMID / DOI 的引用，未使用候选引用不进入正文引用清单
   - 字段级引用映射 MVP 已接入：Alex Writer 可按背景段、研究空白段和研究目的段分别解析 PMID / DOI 追溯标记，匹配当前确认可用候选文献，显示全文核对状态、Introduction 用途状态、未匹配标记和缺少追溯标记提示；`introduction-draft.md` 新增“字段级引用映射”章节
   - 可编辑引用绑定 MVP 已接入：Alex Writer 候选引用可手动绑定到背景段、研究空白段或研究目的段，绑定关系随 Introduction 草稿保存；字段级引用映射和 `introduction-draft.md` 同时展示自动解析与手动绑定
+  - 引用质量门禁 MVP 已接入：Alex Writer 字段级引用映射旁新增引用质控摘要，可按全文核对、元数据缺失、引用格式、追溯异常、绑定异常和用途标记分类提示风险，并同步导出到 `introduction-draft.md`
+  - 引用质控处理建议已接入：每条质控风险展示具体处理建议，帮助区分需要人工查文献的问题和可在当前页面处理的问题
+  - 引用质控快速处理入口已接入：用途标记类风险可一键标记为 Introduction 用途并保存 Mentor 文献复核状态；绑定异常类风险可从当前 Introduction 草稿移除异常绑定，仍需用户点击“保存草稿”持久化
+  - 引用质控状态反馈已接入：快速处理时显示保存中、已完成、保存失败或需保存草稿的局部提示，降低用户误判操作是否生效的风险
   - Crossref 候选引用补充已接入：PubMed 候选文献会尝试补充 Crossref/DOI 链接、期刊元数据和候选引用草稿；Crossref 失败时不阻断 PubMed 候选证据，只在局限性中提示人工复核
   - Crossref 误匹配防护已接入：已有 DOI 时要求 Crossref DOI 精确匹配；无 DOI 时按题名规范化词命中阈值保守合并，低相似度结果不自动生成候选引用草稿
   - Crossref 单条真实联网验证通过：已知 DOI `10.1016/j.radonc.2022.07.010` 返回 `https://doi.org/10.1016/j.radonc.2022.07.010` 和候选引用草稿 `Practical guidelines of online MR-guided adaptive radiotherapy. Radiotherapy and Oncology. 2022. doi:10.1016/j.radonc.2022.07.010.`
@@ -282,6 +286,14 @@ Alex Writer Introduction 草稿验证：
 - 可编辑引用绑定 MVP：后端 `py_compile` 和前端 `tsc --noEmit` 已通过；临时 SQLite 旧表烟测确认会自动补 `citation_bindings_json`，保存/读取时会清洗重复、空值和未知字段绑定
 - 本轮服务短跑验证：前端 Vite 返回 HTTP `200`，后端 `GET /health` 返回 `{"status":"ok","service":"Radiation Therapy SCI Workshop API","version":"0.1.0","environment":"development"}`；Codex 内置浏览器控制通道在当前 Windows 沙箱仍报权限错误，未完成真实页面点击验证
 
+引用质量门禁 MVP 验证：
+
+- 前端：`.\node_modules\.bin\tsc.cmd --noEmit`
+- 前端生产构建：`npm.cmd run build`
+- 服务联调：后端 `GET /health` 返回 `{"status":"ok","service":"Radiation Therapy SCI Workshop API","version":"0.1.0","environment":"development"}`；前端 `http://127.0.0.1:3000` 返回 HTTP `200`
+- 构建产物检查：`dist` 中可检索到 `引用质控摘要`、`保存中...`、`绑定已从草稿中移除` 和 `标记为 Introduction 用途`
+- 当前限制：本轮会话未暴露 Codex 内置浏览器控制工具，本地也未安装 Playwright，因此尚未完成真实页面点击验证；后续需人工或浏览器自动化确认用途标记保存、异常绑定移除、保存草稿提示和 `introduction-draft.md` 下载内容
+
 ## Git 上传安全规则
 
 以下内容不能上传：
@@ -301,7 +313,7 @@ Alex Writer Introduction 草稿验证：
 
 建议下一阶段继续深化科研功能薄切片：
 
-1. 引用质量门禁 MVP：在 Alex Writer 字段级引用映射旁提示未全文核对、缺 PMID / DOI、缺 Vancouver 候选引用、有正文但无追溯或手动绑定、手动绑定未匹配候选引用等风险，并同步到 `introduction-draft.md` 的引用质控摘要。
+1. 完成引用质控快速处理的真实页面点击验证，重点确认用途标记保存、异常绑定移除、保存草稿提示和 `introduction-draft.md` 导出内容。
 2. 继续增强正式统计可信度，例如重复测量 ANOVA、混合效应模型，以及 Dunn 检验的专用库复核。
 3. 优化单用户体验：本地配置、项目归档、数据导入模板和一键导出。
 
