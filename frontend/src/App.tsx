@@ -586,6 +586,17 @@ interface IntroductionUsedReference {
   evidence?: MentorEvidenceItem;
 }
 
+interface MentorCandidateReference {
+  cardTitle: string;
+  evidence: MentorEvidenceItem;
+}
+
+interface MentorDedupedCandidateReference {
+  cardTitles: string[];
+  duplicateCount: number;
+  evidence: MentorEvidenceItem;
+}
+
 function buildCitationTrace(evidence: MentorEvidenceItem): string {
   const traceItems = [
     evidence.pmid ? `PMID ${evidence.pmid}` : null,
@@ -656,6 +667,54 @@ function referenceKeysForEvidence(evidence: MentorEvidenceItem): string[] {
   return [
     evidence.doi ? `doi:${evidence.doi.toLowerCase()}` : null,
     evidence.pmid ? `pmid:${evidence.pmid}` : null,
+  ].filter(Boolean) as string[];
+}
+
+function mentorReferenceDedupKey(evidence: MentorEvidenceItem): string {
+  if (evidence.doi?.trim()) {
+    return `doi:${evidence.doi.trim().toLowerCase()}`;
+  }
+  if (evidence.pmid?.trim()) {
+    return `pmid:${evidence.pmid.trim()}`;
+  }
+
+  const fallback = (evidence.title || evidence.search_query || evidence.evidence_summary)
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+  return `fallback:${fallback}`;
+}
+
+function mentorReferenceCompletenessScore(evidence: MentorEvidenceItem): number {
+  return [
+    evidence.vancouver_citation,
+    evidence.citation_text,
+    evidence.pmid,
+    evidence.doi,
+    evidence.authors?.length,
+    evidence.journal,
+    evidence.publication_year,
+    evidence.volume,
+    evidence.issue,
+    evidence.page,
+    evidence.external_url,
+    evidence.crossref_url,
+    evidence.full_text_checked,
+  ].filter(Boolean).length;
+}
+
+function mentorReferenceManualCheckItems(evidence: MentorEvidenceItem): string[] {
+  return [
+    evidence.full_text_checked ? null : "尚未核对全文",
+    evidence.vancouver_citation ? null : "缺 Vancouver 候选引用",
+    evidence.pmid ? null : "缺 PMID",
+    evidence.doi ? null : "缺 DOI",
+    evidence.authors?.length ? null : "缺作者",
+    evidence.journal ? null : "缺期刊",
+    evidence.publication_year ? null : "缺年份",
+    evidence.volume ? null : "缺卷",
+    evidence.issue ? null : "缺期",
+    evidence.page ? null : "缺页码/编号",
   ].filter(Boolean) as string[];
 }
 
@@ -913,7 +972,7 @@ function App() {
       .slice(0, 4);
   }, [mentorTrendSnapshot]);
 
-  const mentorCandidateReferences = useMemo(() => {
+  const mentorCandidateReferences = useMemo<MentorCandidateReference[]>(() => {
     return (
       mentorRecommendationReport?.recommendations.flatMap((card) =>
         card.evidence_items
@@ -925,6 +984,33 @@ function App() {
       ) ?? []
     );
   }, [mentorRecommendationReport]);
+
+  const mentorDedupedCandidateReferences = useMemo<MentorDedupedCandidateReference[]>(() => {
+    const referencesByKey = new Map<string, MentorDedupedCandidateReference>();
+
+    mentorCandidateReferences.forEach(({ cardTitle, evidence }) => {
+      const key = mentorReferenceDedupKey(evidence);
+      const current = referencesByKey.get(key);
+      if (!current) {
+        referencesByKey.set(key, {
+          cardTitles: [cardTitle],
+          duplicateCount: 1,
+          evidence,
+        });
+        return;
+      }
+
+      current.duplicateCount += 1;
+      if (!current.cardTitles.includes(cardTitle)) {
+        current.cardTitles.push(cardTitle);
+      }
+      if (mentorReferenceCompletenessScore(evidence) > mentorReferenceCompletenessScore(current.evidence)) {
+        current.evidence = evidence;
+      }
+    });
+
+    return Array.from(referencesByKey.values());
+  }, [mentorCandidateReferences]);
 
   const writerOutlineDraft = useMemo(() => {
     if (!mentorCandidateReferences.length) {
@@ -1681,6 +1767,76 @@ function App() {
     try {
       link.href = url;
       link.download = "research-direction-brief.md";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  function handleDownloadVancouverReferences() {
+    if (!mentorDedupedCandidateReferences.length) {
+      return;
+    }
+
+    const manualCheckLines = mentorDedupedCandidateReferences.flatMap(({ evidence }, index) => {
+      const checkItems = mentorReferenceManualCheckItems(evidence);
+      return checkItems.length
+        ? [`- ${index + 1}. ${evidence.title ?? evidence.evidence_summary}：${checkItems.join("；")}`]
+        : [];
+    });
+    const content = [
+      "# Vancouver 候选引用清单",
+      "",
+      `导出时间：${new Date().toLocaleString("zh-CN")}`,
+      selectedProject ? `关联项目：${selectedProject.name} / ${selectedProject.title}` : "关联项目：未指定",
+      `原始确认可用候选数：${mentorCandidateReferences.length}`,
+      `去重后候选引用数：${mentorDedupedCandidateReferences.length}`,
+      "",
+      "## 使用边界",
+      "- 本文件只汇总已在 Mentor 中标记为“确认可用”的候选文献。",
+      "- Vancouver 候选引用不是最终投稿格式；正式投稿前仍需核对全文、DOI 页面、期刊缩写、卷期页码和目标期刊格式。",
+      "- 当前清单不等同于系统综述、质量评价或引用真实性复核结论。",
+      "",
+      "## References",
+      ...mentorDedupedCandidateReferences.flatMap(({ cardTitles, duplicateCount, evidence }, index) => {
+        const checkItems = mentorReferenceManualCheckItems(evidence);
+        return [
+          `${index + 1}. ${evidence.vancouver_citation || evidence.citation_text || evidence.title || evidence.evidence_summary}`,
+          `   - 来源课题：${cardTitles.join(" / ")}${duplicateCount > 1 ? `（合并 ${duplicateCount} 条候选）` : ""}`,
+          evidence.title ? `   - 题名：${evidence.title}` : "   - 题名：待补充",
+          evidence.authors?.length ? `   - 作者：${evidence.authors.join(", ")}` : "   - 作者：待补充",
+          evidence.journal ? `   - 期刊：${evidence.journal}` : "   - 期刊：待补充",
+          evidence.publication_year ? `   - 年份：${evidence.publication_year}` : "   - 年份：待补充",
+          evidence.volume ? `   - 卷：${evidence.volume}` : "   - 卷：待补充",
+          evidence.issue ? `   - 期：${evidence.issue}` : "   - 期：待补充",
+          evidence.page ? `   - 页码/编号：${evidence.page}` : "   - 页码/编号：待补充",
+          evidence.pmid ? `   - PMID：${evidence.pmid}` : "   - PMID：待补充",
+          evidence.doi ? `   - DOI：${evidence.doi}` : "   - DOI：待补充",
+          evidence.external_url ? `   - PubMed：${evidence.external_url}` : "   - PubMed：待补充",
+          evidence.crossref_url ? `   - Crossref/DOI：${evidence.crossref_url}` : "   - Crossref/DOI：待补充",
+          `   - 全文核对：${evidence.full_text_checked ? "是" : "否"}`,
+          `   - 引用用途：${formatMentorReviewUsage(evidence)}`,
+          `   - 复核人：${evidence.reviewer?.trim() || "待补充"}`,
+          `   - 复核备注：${evidence.review_note?.trim() || "无"}`,
+          `   - 待人工核对：${checkItems.length ? checkItems.join("；") : "暂无明显缺项，仍需按目标期刊复核"}`,
+          "",
+        ];
+      }),
+      "## 待人工核对总表",
+      ...(manualCheckLines.length
+        ? manualCheckLines
+        : ["- 暂无字段缺项；仍需人工核对全文、DOI 页面和目标期刊格式。"]),
+      "",
+    ].join("\n");
+
+    const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    try {
+      link.href = url;
+      link.download = "references-vancouver.md";
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -4763,19 +4919,30 @@ function App() {
                               将推荐依据标记为“确认可用”后，会在这里汇总为候选引用。
                             </p>
                           )}
-                          <button
-                            className="mentor-reference-handoff"
-                            type="button"
-                            onClick={handleSendReferencesToWriter}
-                            disabled={!mentorCandidateReferences.length || isWriterDrafting}
-                          >
-                            {isWriterDrafting ? (
-                              <Loader2 aria-hidden="true" className="spin" size={16} />
-                            ) : (
-                              <FileText aria-hidden="true" size={16} />
-                            )}
-                            <span>交给 Alex Writer</span>
-                          </button>
+                          <div className="mentor-reference-actions">
+                            <button
+                              className="mentor-reference-handoff mentor-reference-export"
+                              type="button"
+                              onClick={handleDownloadVancouverReferences}
+                              disabled={!mentorDedupedCandidateReferences.length}
+                            >
+                              <Download aria-hidden="true" size={16} />
+                              <span>导出引用</span>
+                            </button>
+                            <button
+                              className="mentor-reference-handoff"
+                              type="button"
+                              onClick={handleSendReferencesToWriter}
+                              disabled={!mentorCandidateReferences.length || isWriterDrafting}
+                            >
+                              {isWriterDrafting ? (
+                                <Loader2 aria-hidden="true" className="spin" size={16} />
+                              ) : (
+                                <FileText aria-hidden="true" size={16} />
+                              )}
+                              <span>交给 Alex Writer</span>
+                            </button>
+                          </div>
                         </section>
                         <section className="mentor-brief-section mentor-next-steps">
                           <div className="mentor-section-head">

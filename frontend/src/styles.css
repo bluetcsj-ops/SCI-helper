@@ -3081,6 +3081,12 @@ button {
   text-decoration: underline;
 }
 
+.mentor-reference-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .mentor-reference-handoff {
   display: inline-flex;
   width: fit-content;
@@ -3095,6 +3101,10 @@ button {
   color: #fff;
   font-weight: 900;
   cursor: pointer;
+}
+
+.mentor-reference-export {
+  background: #0f766e;
 }
 
 .mentor-reference-handoff:disabled {
