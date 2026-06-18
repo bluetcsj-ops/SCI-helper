@@ -172,6 +172,7 @@
 
 ## 当前优先级建议
 
-1. 增强 Prof. RadOnc Mentor 的真实文献证据能力：PubMed / Crossref 检索、趋势计量、PMID / DOI 引用和代表文献复核
-2. 再补 Alex Writer 的 Methods / Results 连贯草稿能力
-3. 最后回到 Dr. Data Lin 的高阶统计增强：完整 repeated-measures ANOVA、mixed effects model、SciPy 精度复核
+1. 引用质量门禁 MVP：在 Alex Writer 字段级引用映射旁提示未全文核对、缺 PMID / DOI、缺 Vancouver 候选引用、有正文但无追溯或手动绑定、手动绑定未匹配候选引用等风险，并同步到 `introduction-draft.md`
+2. 增强 Prof. RadOnc Mentor 的真实文献证据能力：PubMed / Crossref 检索、趋势计量、PMID / DOI 引用和代表文献复核
+3. 再补 Alex Writer 的 Methods / Results 连贯草稿能力
+4. 最后回到 Dr. Data Lin 的高阶统计增强：完整 repeated-measures ANOVA、mixed effects model、SciPy 精度复核
