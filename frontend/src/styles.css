@@ -1076,6 +1076,70 @@ button {
   line-height: 1.5;
 }
 
+.writer-field-citation-map {
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid rgba(36, 48, 64, 0.08);
+  padding-top: 10px;
+}
+
+.writer-field-citation-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px;
+}
+
+.writer-field-citation-list article {
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(36, 48, 64, 0.1);
+  border-radius: 8px;
+  padding: 10px;
+  background: #ffffff;
+}
+
+.writer-field-citation-list article.is-missing-trace {
+  border-color: rgba(217, 119, 6, 0.35);
+  background: #fffbeb;
+}
+
+.writer-field-citation-head,
+.writer-field-citation-items,
+.writer-field-citation-items div,
+.writer-field-citation-unmatched {
+  display: grid;
+  gap: 4px;
+}
+
+.writer-field-citation-head strong,
+.writer-field-citation-items strong {
+  color: #1e293b;
+  font-size: 13px;
+}
+
+.writer-field-citation-head small,
+.writer-field-citation-items small,
+.writer-field-citation-list p {
+  margin: 0;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.writer-field-citation-items div {
+  border-radius: 8px;
+  padding: 8px;
+  background: #f8fafc;
+}
+
+.writer-field-citation-list em,
+.writer-field-citation-unmatched em {
+  color: #92400e;
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.5;
+}
+
 .analysis-record-button {
   display: inline-flex;
   min-height: 40px;
