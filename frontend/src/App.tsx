@@ -580,10 +580,25 @@ interface IntroductionCitationUsage {
   sections: string[];
 }
 
+interface IntroductionCitationMatch {
+  key: string;
+  label: string;
+}
+
 interface IntroductionUsedReference {
   usage: IntroductionCitationUsage;
   cardTitle?: string;
   evidence?: MentorEvidenceItem;
+}
+
+interface IntroductionFieldCitationMap {
+  field: IntroductionDraftField;
+  label: string;
+  hasText: boolean;
+  missingTrace: boolean;
+  usages: IntroductionCitationUsage[];
+  matchedReferences: IntroductionUsedReference[];
+  unmatchedUsages: IntroductionCitationUsage[];
 }
 
 interface MentorCandidateReference {
@@ -626,6 +641,40 @@ function buildIntroductionCitationSentence(
   return sentenceByField[field];
 }
 
+function extractCitationMatches(text: string): IntroductionCitationMatch[] {
+  return [
+    ...Array.from(text.matchAll(/\bDOI\s+([^\]\s；;，,]+)/gi)).map((match) => ({
+      key: `doi:${match[1].toLowerCase()}`,
+      label: `DOI ${match[1]}`,
+    })),
+    ...Array.from(text.matchAll(/\bPMID\s+(\d+)/gi)).map((match) => ({
+      key: `pmid:${match[1]}`,
+      label: `PMID ${match[1]}`,
+    })),
+  ];
+}
+
+function buildCitationUsagesForText(
+  text: string,
+  sectionLabel: string,
+): IntroductionCitationUsage[] {
+  const usageMap = new Map<string, IntroductionCitationUsage>();
+  extractCitationMatches(text).forEach((match) => {
+    const current = usageMap.get(match.key) ?? {
+      key: match.key,
+      label: match.label,
+      count: 0,
+      sections: [],
+    };
+    current.count += 1;
+    if (!current.sections.includes(sectionLabel)) {
+      current.sections.push(sectionLabel);
+    }
+    usageMap.set(match.key, current);
+  });
+  return Array.from(usageMap.values()).sort((left, right) => right.count - left.count);
+}
+
 function extractIntroductionCitationUsages(
   draft: WriterIntroductionDraftUpdate,
 ): IntroductionCitationUsage[] {
@@ -634,29 +683,18 @@ function extractIntroductionCitationUsages(
 
   entries.forEach(([field, text]) => {
     const sectionLabel = introductionDraftFieldLabels[field];
-    const matches = [
-      ...Array.from(text.matchAll(/\bDOI\s+([^\]\s；;，,]+)/gi)).map((match) => ({
-        key: `doi:${match[1].toLowerCase()}`,
-        label: `DOI ${match[1]}`,
-      })),
-      ...Array.from(text.matchAll(/\bPMID\s+(\d+)/gi)).map((match) => ({
-        key: `pmid:${match[1]}`,
-        label: `PMID ${match[1]}`,
-      })),
-    ];
-
-    matches.forEach((match) => {
-      const current = usageMap.get(match.key) ?? {
-        key: match.key,
-        label: match.label,
+    buildCitationUsagesForText(text, sectionLabel).forEach((usage) => {
+      const current = usageMap.get(usage.key) ?? {
+        key: usage.key,
+        label: usage.label,
         count: 0,
         sections: [],
       };
-      current.count += 1;
+      current.count += usage.count;
       if (!current.sections.includes(sectionLabel)) {
         current.sections.push(sectionLabel);
       }
-      usageMap.set(match.key, current);
+      usageMap.set(usage.key, current);
     });
   });
 
@@ -668,6 +706,40 @@ function referenceKeysForEvidence(evidence: MentorEvidenceItem): string[] {
     evidence.doi ? `doi:${evidence.doi.toLowerCase()}` : null,
     evidence.pmid ? `pmid:${evidence.pmid}` : null,
   ].filter(Boolean) as string[];
+}
+
+function findCandidateReferenceForUsage(
+  usage: IntroductionCitationUsage,
+  references: MentorCandidateReference[],
+): MentorCandidateReference | undefined {
+  return references.find(({ evidence }) => referenceKeysForEvidence(evidence).includes(usage.key));
+}
+
+function buildIntroductionFieldCitationMaps(
+  draft: WriterIntroductionDraftUpdate,
+  references: MentorCandidateReference[],
+): IntroductionFieldCitationMap[] {
+  return (Object.entries(draft) as [IntroductionDraftField, string][]).map(([field, text]) => {
+    const label = introductionDraftFieldLabels[field];
+    const usages = buildCitationUsagesForText(text, label);
+    const usedReferences = usages.map((usage) => {
+      const matchedReference = findCandidateReferenceForUsage(usage, references);
+      return {
+        usage,
+        cardTitle: matchedReference?.cardTitle,
+        evidence: matchedReference?.evidence,
+      };
+    });
+    return {
+      field,
+      label,
+      hasText: Boolean(text.trim()),
+      missingTrace: Boolean(text.trim()) && usages.length === 0,
+      usages,
+      matchedReferences: usedReferences.filter((item) => item.evidence),
+      unmatchedUsages: usedReferences.filter((item) => !item.evidence).map((item) => item.usage),
+    };
+  });
 }
 
 function mentorReferenceDedupKey(evidence: MentorEvidenceItem): string {
@@ -1090,9 +1162,7 @@ function App() {
   }, [writerIntroductionDraftForm]);
   const introductionUsedReferences = useMemo<IntroductionUsedReference[]>(() => {
     return introductionCitationUsages.map((usage) => {
-      const matchedReference = mentorCandidateReferences.find(({ evidence }) =>
-        referenceKeysForEvidence(evidence).includes(usage.key),
-      );
+      const matchedReference = findCandidateReferenceForUsage(usage, mentorCandidateReferences);
       return {
         usage,
         cardTitle: matchedReference?.cardTitle,
@@ -1100,6 +1170,10 @@ function App() {
       };
     });
   }, [introductionCitationUsages, mentorCandidateReferences]);
+  const introductionFieldCitationMaps = useMemo(
+    () => buildIntroductionFieldCitationMaps(writerIntroductionDraftForm, mentorCandidateReferences),
+    [writerIntroductionDraftForm, mentorCandidateReferences],
+  );
   const formalTestReport = statisticsReport?.formal_test_report ?? null;
   const isFormalTestReady = useMemo(() => {
     return (
@@ -1972,6 +2046,38 @@ function App() {
             ];
           })
         : ["- 当前草稿中没有匹配到候选引用。"]),
+      "",
+      "## 字段级引用映射",
+      ...introductionFieldCitationMaps.flatMap((fieldMap) => [
+        `### ${fieldMap.label}`,
+        fieldMap.hasText ? "- 段落状态：已有文字" : "- 段落状态：待撰写",
+        fieldMap.missingTrace
+          ? "- 追溯状态：已有文字但尚无 PMID / DOI 追溯标记"
+          : `- 追溯标记数：${fieldMap.usages.length}`,
+        ...(fieldMap.matchedReferences.length
+          ? fieldMap.matchedReferences.flatMap((item, index) => {
+              const evidence = item.evidence;
+              return [
+                `${index + 1}. ${item.usage.label} → ${
+                  evidence?.vancouver_citation || evidence?.citation_text || evidence?.title || "待补充题名"
+                }`,
+                item.cardTitle ? `   - 来源课题：${item.cardTitle}` : "   - 来源课题：待补充",
+                `   - 出现次数：${item.usage.count}`,
+                `   - 全文核对：${evidence?.full_text_checked ? "是" : "否"}`,
+                `   - 已标记用于 Introduction：${evidence?.use_in_introduction ? "是" : "否"}`,
+                evidence?.pmid ? `   - PMID：${evidence.pmid}` : "   - PMID：待补充",
+                evidence?.doi ? `   - DOI：${evidence.doi}` : "   - DOI：待补充",
+              ];
+            })
+          : []),
+        ...(fieldMap.unmatchedUsages.length
+          ? fieldMap.unmatchedUsages.map(
+              (usage) => `- ${usage.label} 未匹配到当前候选引用列表，需人工核对。`,
+            )
+          : []),
+        ...(!fieldMap.usages.length ? ["- 暂无可映射引用。"] : []),
+        "",
+      ]),
       "",
       "## 待人工核对",
       ...(introductionSectionsWithoutCitation.length
@@ -5130,6 +5236,68 @@ function App() {
                             追溯标记。
                           </p>
                         ) : null}
+                        <div className="writer-field-citation-map">
+                          <div className="mentor-section-head">
+                            <strong>字段级引用映射</strong>
+                            <span>
+                              {introductionFieldCitationMaps.reduce(
+                                (total, fieldMap) => total + fieldMap.matchedReferences.length,
+                                0,
+                              )}{" "}
+                              条已匹配
+                            </span>
+                          </div>
+                          <div className="writer-field-citation-list">
+                            {introductionFieldCitationMaps.map((fieldMap) => (
+                              <article
+                                className={fieldMap.missingTrace ? "is-missing-trace" : undefined}
+                                key={fieldMap.field}
+                              >
+                                <div className="writer-field-citation-head">
+                                  <strong>{fieldMap.label}</strong>
+                                  <small>
+                                    {fieldMap.usages.length} 条标记 · {fieldMap.matchedReferences.length} 条匹配
+                                  </small>
+                                </div>
+                                {!fieldMap.hasText ? <p>该段尚未撰写。</p> : null}
+                                {fieldMap.missingTrace ? (
+                                  <em>该段已有文字，但还没有 PMID / DOI 追溯标记。</em>
+                                ) : null}
+                                {fieldMap.matchedReferences.length ? (
+                                  <div className="writer-field-citation-items">
+                                    {fieldMap.matchedReferences.map((item) => {
+                                      const evidence = item.evidence;
+                                      return (
+                                        <div key={item.usage.key}>
+                                          <strong>{item.usage.label}</strong>
+                                          <small>
+                                            {evidence?.title ??
+                                              evidence?.vancouver_citation ??
+                                              evidence?.citation_text ??
+                                              "候选文献信息待补充"}
+                                          </small>
+                                          <small>
+                                            全文核对：{evidence?.full_text_checked ? "是" : "否"} ·
+                                            Introduction 用途：
+                                            {evidence?.use_in_introduction ? "是" : "否"}
+                                          </small>
+                                          {item.cardTitle ? <small>来源课题：{item.cardTitle}</small> : null}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                ) : null}
+                                {fieldMap.unmatchedUsages.length ? (
+                                  <div className="writer-field-citation-unmatched">
+                                    {fieldMap.unmatchedUsages.map((usage) => (
+                                      <em key={usage.key}>{usage.label} 未匹配到当前候选引用。</em>
+                                    ))}
+                                  </div>
+                                ) : null}
+                              </article>
+                            ))}
+                          </div>
+                        </div>
                       </div>
                     </section>
 
