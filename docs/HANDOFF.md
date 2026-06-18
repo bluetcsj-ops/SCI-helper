@@ -1,6 +1,6 @@
 # 项目交接记录
 
-更新时间：2026-06-17
+更新时间：2026-06-18
 
 ## 项目定位
 
@@ -53,6 +53,7 @@
   - Vancouver 风格候选引用导出已接入：基于题名、期刊、年份和 DOI 生成不含作者/卷期/页码的保守候选格式，并同步到推荐依据、候选引用清单、Alex Writer 交接文本、《研究方向建议书》和 `alex-writer-outline.md`
   - Vancouver 候选引用元数据增强已接入：从 Crossref 解析作者、卷、期、页码或 article number；作者超过 6 个时输出前 6 个加 `et al`，缺失字段会跳过而不是编造
   - 前端推荐依据、候选引用清单、Alex Writer 交接文本、《研究方向建议书》和 `alex-writer-outline.md` 已同步导出 Crossref/DOI 链接与候选引用草稿
+  - Vancouver 候选引用清单独立导出 MVP 已接入：Mentor 候选引用清单新增“导出引用”按钮，可将“确认可用”的候选文献按 DOI / PMID / 题名去重后导出为 `references-vancouver.md`；导出内容包含候选 Vancouver、PMID、DOI、PubMed/Crossref 链接、来源课题、全文核对状态、引用用途、复核人、复核备注和待人工核对项；该文件仍是候选复核清单，不是最终投稿格式
   - 当前仍未完成 NCBI 实际限速行为验证、正式引用格式导出、字段级引用管理和 Crossref 真实联网批量验证；当前相关性排序、Crossref 候选元数据和人工复核字段仍不等于系统综述或正式引用质量评价
 - Prof. RadOnc Mentor 已补齐最小可用版本（MVP）：
   - 后端新增 `GET /api/mentor/trends`
@@ -260,6 +261,8 @@ Vancouver 候选引用验证：
 
 - 后端：`python -B -c "import app.agents.mentor_models; import app.agents.mentor_evidence_service; import app.core.config"`
 - 前端：`.\node_modules\.bin\tsc.cmd --noEmit`
+- 前端导出 MVP：Mentor 候选引用清单新增 `references-vancouver.md` 下载入口，导出前按 DOI / PMID / 题名去重，并列出待人工核对项
+- 本轮服务短跑验证：前端 Vite 可返回 HTTP `200`，后端 `GET /health` 返回 `{"status":"ok","service":"Radiation Therapy SCI Workshop API","version":"0.1.0","environment":"development"}`；Codex 内置浏览器控制通道在当前 Windows 沙箱报权限错误，未完成真实点击下载验证
 - 服务层不联网烟测：伪造 Crossref work 后，`CrossrefEvidenceProvider.enrich_evidence` 可生成 `vancouver_citation`
 - 服务层不联网烟测已覆盖：1-3 个作者、超过 6 个作者触发 `et al`、缺卷期页码时不产生异常标点
 - 当前 Vancouver 字段属于候选写作辅助格式，不是最终投稿格式；期刊缩写和目标期刊格式仍需人工核对
