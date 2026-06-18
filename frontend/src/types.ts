@@ -220,6 +220,7 @@ export interface WriterIntroductionDraft {
   background_paragraph: string;
   gap_paragraph: string;
   objective_paragraph: string;
+  citation_bindings: Record<string, string[]>;
   updated_at?: string | null;
 }
 

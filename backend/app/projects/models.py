@@ -102,6 +102,7 @@ class WriterIntroductionDraft(BaseModel):
     background_paragraph: str = ""
     gap_paragraph: str = ""
     objective_paragraph: str = ""
+    citation_bindings: dict[str, list[str]] = Field(default_factory=dict)
     updated_at: datetime | None = None
 
 
@@ -109,6 +110,7 @@ class WriterIntroductionDraftUpdate(BaseModel):
     background_paragraph: str = ""
     gap_paragraph: str = ""
     objective_paragraph: str = ""
+    citation_bindings: dict[str, list[str]] = Field(default_factory=dict)
 
 
 class TaskReminder(BaseModel):

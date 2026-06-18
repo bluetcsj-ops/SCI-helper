@@ -218,6 +218,7 @@ class WriterIntroductionDraftRecord(Base):
     background_paragraph: Mapped[str] = mapped_column(Text, nullable=False, default="")
     gap_paragraph: Mapped[str] = mapped_column(Text, nullable=False, default="")
     objective_paragraph: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    citation_bindings_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
         default=datetime.utcnow,

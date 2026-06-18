@@ -47,6 +47,7 @@
   - Introduction 引用使用清单已接入：前端从草稿文本解析 PMID / DOI 标记，展示引用所在段落和出现次数；重复出现只提示不阻止；有文字但无追溯标记的段落会提示人工补引用
   - Introduction 正文导出已接入：可导出 `introduction-draft.md`，内容分为正文草稿、实际使用的候选引用清单和待人工核对项目；只导出草稿中实际出现过 PMID / DOI 的引用，未使用候选引用不进入正文引用清单
   - 字段级引用映射 MVP 已接入：Alex Writer 可按背景段、研究空白段和研究目的段分别解析 PMID / DOI 追溯标记，匹配当前确认可用候选文献，显示全文核对状态、Introduction 用途状态、未匹配标记和缺少追溯标记提示；`introduction-draft.md` 新增“字段级引用映射”章节
+  - 可编辑引用绑定 MVP 已接入：Alex Writer 候选引用可手动绑定到背景段、研究空白段或研究目的段，绑定关系随 Introduction 草稿保存；字段级引用映射和 `introduction-draft.md` 同时展示自动解析与手动绑定
   - Crossref 候选引用补充已接入：PubMed 候选文献会尝试补充 Crossref/DOI 链接、期刊元数据和候选引用草稿；Crossref 失败时不阻断 PubMed 候选证据，只在局限性中提示人工复核
   - Crossref 误匹配防护已接入：已有 DOI 时要求 Crossref DOI 精确匹配；无 DOI 时按题名规范化词命中阈值保守合并，低相似度结果不自动生成候选引用草稿
   - Crossref 单条真实联网验证通过：已知 DOI `10.1016/j.radonc.2022.07.010` 返回 `https://doi.org/10.1016/j.radonc.2022.07.010` 和候选引用草稿 `Practical guidelines of online MR-guided adaptive radiotherapy. Radiotherapy and Oncology. 2022. doi:10.1016/j.radonc.2022.07.010.`
@@ -55,7 +56,7 @@
   - Vancouver 候选引用元数据增强已接入：从 Crossref 解析作者、卷、期、页码或 article number；作者超过 6 个时输出前 6 个加 `et al`，缺失字段会跳过而不是编造
   - 前端推荐依据、候选引用清单、Alex Writer 交接文本、《研究方向建议书》和 `alex-writer-outline.md` 已同步导出 Crossref/DOI 链接与候选引用草稿
   - Vancouver 候选引用清单独立导出 MVP 已接入：Mentor 候选引用清单新增“导出引用”按钮，可将“确认可用”的候选文献按 DOI / PMID / 题名去重后导出为 `references-vancouver.md`；导出内容包含候选 Vancouver、PMID、DOI、PubMed/Crossref 链接、来源课题、全文核对状态、引用用途、复核人、复核备注和待人工核对项；该文件仍是候选复核清单，不是最终投稿格式
-  - 当前仍未完成 NCBI 实际限速行为验证、正式引用格式导出、数据库级字段引用管理、可编辑引用绑定和 Crossref 真实联网批量验证；当前相关性排序、Crossref 候选元数据和人工复核字段仍不等于系统综述或正式引用质量评价
+  - 当前仍未完成 NCBI 实际限速行为验证、正式引用格式导出、数据库级正式引用库、拖拽式或批量字段引用编辑和更大样本 Crossref 真实联网验证；当前相关性排序、Crossref 候选元数据和人工复核字段仍不等于系统综述或正式引用质量评价
 - Prof. RadOnc Mentor 已补齐最小可用版本（MVP）：
   - 后端新增 `GET /api/mentor/trends`
   - 后端新增 `POST /api/mentor/recommendations`
@@ -278,6 +279,8 @@ Alex Writer Introduction 草稿验证：
 - 前端类型检查覆盖引用语义插入逻辑；插入按钮仅更新本地草稿，仍需手动保存
 - 前端类型检查覆盖引用使用清单逻辑；重复引用和无追溯段落为提示性质，不自动修改草稿
 - 前端类型检查覆盖 `introduction-draft.md` 导出逻辑；导出引用清单只包含正文草稿中实际出现的 PMID / DOI 标记
+- 可编辑引用绑定 MVP：后端 `py_compile` 和前端 `tsc --noEmit` 已通过；临时 SQLite 旧表烟测确认会自动补 `citation_bindings_json`，保存/读取时会清洗重复、空值和未知字段绑定
+- 本轮服务短跑验证：前端 Vite 返回 HTTP `200`，后端 `GET /health` 返回 `{"status":"ok","service":"Radiation Therapy SCI Workshop API","version":"0.1.0","environment":"development"}`；Codex 内置浏览器控制通道在当前 Windows 沙箱仍报权限错误，未完成真实页面点击验证
 
 ## Git 上传安全规则
 
