@@ -145,9 +145,11 @@ button {
 
 .workspace-grid {
   display: grid;
-  grid-template-columns: minmax(280px, 1.15fr) minmax(240px, 0.75fr) minmax(360px, 1.3fr);
+  grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
+  grid-auto-flow: row dense;
   gap: 20px;
   padding-top: 22px;
+  align-items: start;
 }
 
 .dashboard-band {
@@ -262,6 +264,97 @@ button {
   min-width: 0;
 }
 
+.projects-column {
+  display: contents;
+}
+
+.projects-column > .section-heading {
+  grid-column: 1 / -1;
+  order: 2;
+}
+
+.projects-column > .project-list {
+  grid-column: 1 / -1;
+  order: 3;
+}
+
+.projects-column > .access-readonly-banner {
+  grid-column: 1 / -1;
+  order: 4;
+}
+
+.agents-column {
+  grid-column: 1 / -1;
+  order: 5;
+}
+
+.workbench-main {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+  order: 6;
+}
+
+.side-workbench,
+.expert-workbench {
+  display: grid;
+  min-width: 0;
+  gap: 20px;
+  align-items: start;
+}
+
+.side-workbench > .chat-column,
+.side-workbench > .task-panel,
+.side-workbench > .rhea-monitor-panel,
+.expert-workbench > .protocol-panel,
+.expert-workbench > .data-panel,
+.expert-workbench > .mentor-panel,
+.expert-workbench > .writer-panel,
+.expert-workbench > .expert-placeholder-panel {
+  grid-column: auto;
+  grid-row: auto;
+  margin-top: 0;
+}
+
+.side-workbench > .chat-column {
+  order: 1;
+}
+
+.side-workbench > .task-panel {
+  order: 2;
+}
+
+.side-workbench > .rhea-monitor-panel {
+  order: 3;
+}
+
+.rhea-monitor-panel {
+  grid-column: 1;
+  grid-row: 7;
+}
+
+.task-panel {
+  grid-column: 1;
+  grid-row: 6;
+}
+
+.chat-column {
+  grid-column: 1;
+  grid-row: 5;
+}
+
+.protocol-panel,
+.data-panel,
+.mentor-panel,
+.writer-panel,
+.expert-placeholder-panel {
+  grid-column: 2;
+  grid-row: 5;
+  min-width: 0;
+}
+
 .section-heading {
   display: flex;
   align-items: baseline;
@@ -285,6 +378,14 @@ button {
 .agent-list {
   display: grid;
   gap: 12px;
+}
+
+.project-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.agent-list {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
 .project-card,
@@ -403,6 +504,16 @@ button {
   border-radius: 8px;
   background: #fffdf9;
   box-shadow: 0 10px 24px rgba(40, 52, 68, 0.06);
+}
+
+.workspace-grid > .rhea-monitor-panel,
+.workspace-grid > .task-panel,
+.workspace-grid > .protocol-panel,
+.workspace-grid > .data-panel,
+.workspace-grid > .writer-panel,
+.workspace-grid > .expert-placeholder-panel,
+.workspace-grid > .chat-column {
+  margin-top: 0;
 }
 
 .rhea-monitor-head {
@@ -2359,7 +2470,7 @@ button {
   display: grid;
   grid-template-columns: 1fr 128px;
   gap: 12px;
-  align-items: center;
+  align-items: start;
   padding: 12px;
   border-radius: 8px;
   background: #f7f3ec;
@@ -2394,6 +2505,8 @@ button {
 .task-item select {
   width: 100%;
   min-height: 38px;
+  align-self: start;
+  margin-top: 34px;
   border: 1px solid rgba(36, 48, 64, 0.16);
   border-radius: 8px;
   color: #243040;
@@ -2465,12 +2578,9 @@ button {
 
 .chat-column {
   display: grid;
-  grid-template-rows: auto auto minmax(360px, 1fr) auto;
-  position: sticky;
-  top: 20px;
+  grid-template-rows: auto auto minmax(220px, 1fr) auto;
   align-self: start;
-  height: calc(100vh - 40px);
-  min-height: min(680px, calc(100vh - 40px));
+  min-height: 430px;
   padding: 18px;
 }
 
@@ -2678,13 +2788,40 @@ button {
 
 @media (max-width: 1100px) {
   .workspace-grid {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr;
+  }
+
+  .projects-column > .section-heading,
+  .projects-column > .project-list,
+  .projects-column > .access-readonly-banner,
+  .agents-column,
+  .rhea-monitor-panel,
+  .task-panel,
+  .chat-column,
+  .protocol-panel,
+  .data-panel,
+  .mentor-panel,
+  .writer-panel,
+  .expert-placeholder-panel {
+    grid-column: 1 / -1;
+  }
+
+  .project-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .agent-list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .workbench-main {
+    grid-template-columns: 1fr;
   }
 
   .chat-column {
-    grid-column: 1 / -1;
     position: static;
     height: auto;
+    min-height: 560px;
   }
 
   .dashboard-band {
@@ -2721,6 +2858,9 @@ button {
 
   .workspace-grid,
   .dashboard-band,
+  .workbench-main,
+  .project-list,
+  .agent-list,
   .formal-test-checklist,
   .paired-long-grid,
   .mentor-trend-grid,

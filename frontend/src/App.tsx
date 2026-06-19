@@ -3560,6 +3560,82 @@ function App() {
                   </div>
                 ) : null}
 
+                <div className="workbench-main">
+                  <div className="side-workbench">
+                    <section className="chat-column" aria-label="角色对话">
+                      <div className="chat-head">
+                        <div>
+                          <p className="eyebrow">{selectedAgent?.role_name}</p>
+                          <h2>{selectedAgent?.name ?? "选择角色"}</h2>
+                        </div>
+                        <span className="chat-project-note">关联左侧当前项目</span>
+                      </div>
+
+                      {selectedProject ? (
+                        <div className="context-strip">
+                          <Sparkles aria-hidden="true" size={16} />
+                          <span>{selectedProject.next_milestone}</span>
+                        </div>
+                      ) : null}
+
+                      <div className="message-list">
+                        {messages.length === 0 ? (
+                          <div className="empty-chat">
+                            <MessageSquareText aria-hidden="true" size={28} />
+                            <p>{selectedAgent?.tagline}</p>
+                          </div>
+                        ) : (
+                          messages.map((message) => (
+                            <article className={`message ${message.speaker}`} key={message.id}>
+                              <span>{message.speaker === "user" ? "你" : message.agentName}</span>
+                              <p>{message.content}</p>
+                              {message.suggestedNextActions?.length ? (
+                                <ul>
+                                  {message.suggestedNextActions.map((action) => (
+                                    <li key={action}>{action}</li>
+                                  ))}
+                                </ul>
+                              ) : null}
+                              {message.speaker === "agent" && message.agentId === "study_planner" ? (
+                                <div className="message-actions">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleExtractProtocolFromMessage(message)}
+                                    disabled={extractingMessageId !== null || !canEditSelectedProject}
+                                    title="写入研究方案"
+                                  >
+                                    {extractingMessageId === message.id ? (
+                                      <Loader2 aria-hidden="true" className="spin" size={15} />
+                                    ) : (
+                                      <ClipboardCheck aria-hidden="true" size={15} />
+                                    )}
+                                    <span>写入研究方案</span>
+                                  </button>
+                                </div>
+                              ) : null}
+                            </article>
+                          ))
+                        )}
+                      </div>
+
+                      <form className="chat-form" onSubmit={handleSubmit}>
+                        <input
+                          aria-label="输入消息"
+                          value={input}
+                          onChange={(event) => setInput(event.target.value)}
+                          placeholder="输入你想推进的下一步..."
+                        />
+                        <button type="submit" disabled={isSending || !input.trim()} title="发送消息">
+                          {isSending ? (
+                            <Loader2 aria-hidden="true" className="spin" size={18} />
+                          ) : (
+                            <Send aria-hidden="true" size={18} />
+                          )}
+                          <span>发送</span>
+                        </button>
+                      </form>
+                    </section>
+
                 <section className="rhea-monitor-panel" aria-label="Rhea 监控中心">
                   <div className="rhea-monitor-head">
                     <div>
@@ -3689,6 +3765,9 @@ function App() {
                     </button>
                   ) : null}
                 </div>
+
+                  </div>
+                  <div className="expert-workbench">
 
                 {shouldShowProtocolWorkspace ? (
                 <section className="protocol-panel" aria-label="研究方案">
@@ -5684,7 +5763,12 @@ function App() {
                               ))}
                             </div>
                           ) : (
-                            <p className="writer-empty">当前字段级引用映射未发现引用质控风险。</p>
+                            <div className="writer-empty">
+                              <p>当前字段级引用映射未发现引用质控风险。</p>
+                              <small>
+                                快速处理按钮只会在“用途标记”或“绑定异常”风险出现时显示。
+                              </small>
+                            </div>
                           )}
                         </div>
                         <div className="writer-field-citation-map">
@@ -5904,6 +5988,9 @@ function App() {
                     </p>
                   </section>
                 ) : null}
+
+                  </div>
+                </div>
               </>
             ) : null}
           </section>
@@ -5936,75 +6023,6 @@ function App() {
             </div>
           </section>
 
-          <section className="chat-column" aria-label="角色对话">
-            <div className="chat-head">
-              <div>
-                <p className="eyebrow">{selectedAgent?.role_name}</p>
-                <h2>{selectedAgent?.name ?? "选择角色"}</h2>
-              </div>
-              <span className="chat-project-note">关联左侧当前项目</span>
-            </div>
-
-            {selectedProject ? (
-              <div className="context-strip">
-                <Sparkles aria-hidden="true" size={16} />
-                <span>{selectedProject.next_milestone}</span>
-              </div>
-            ) : null}
-
-            <div className="message-list">
-              {messages.length === 0 ? (
-                <div className="empty-chat">
-                  <MessageSquareText aria-hidden="true" size={28} />
-                  <p>{selectedAgent?.tagline}</p>
-                </div>
-              ) : (
-                messages.map((message) => (
-                  <article className={`message ${message.speaker}`} key={message.id}>
-                    <span>{message.speaker === "user" ? "你" : message.agentName}</span>
-                    <p>{message.content}</p>
-                    {message.suggestedNextActions?.length ? (
-                      <ul>
-                        {message.suggestedNextActions.map((action) => (
-                          <li key={action}>{action}</li>
-                        ))}
-                      </ul>
-                    ) : null}
-                    {message.speaker === "agent" && message.agentId === "study_planner" ? (
-                      <div className="message-actions">
-                        <button
-                          type="button"
-                          onClick={() => handleExtractProtocolFromMessage(message)}
-                          disabled={extractingMessageId !== null || !canEditSelectedProject}
-                          title="写入研究方案"
-                        >
-                          {extractingMessageId === message.id ? (
-                            <Loader2 aria-hidden="true" className="spin" size={15} />
-                          ) : (
-                            <ClipboardCheck aria-hidden="true" size={15} />
-                          )}
-                          <span>写入研究方案</span>
-                        </button>
-                      </div>
-                    ) : null}
-                  </article>
-                ))
-              )}
-            </div>
-
-            <form className="chat-form" onSubmit={handleSubmit}>
-              <input
-                aria-label="输入消息"
-                value={input}
-                onChange={(event) => setInput(event.target.value)}
-                placeholder="输入你想推进的下一步..."
-              />
-              <button type="submit" disabled={isSending || !input.trim()} title="发送消息">
-                {isSending ? <Loader2 aria-hidden="true" className="spin" size={18} /> : <Send aria-hidden="true" size={18} />}
-                <span>发送</span>
-              </button>
-            </form>
-          </section>
         </div>
       )}
     </main>
