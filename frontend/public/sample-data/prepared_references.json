@@ -1,0 +1,32 @@
+[
+  {
+    "id": "mimic-iv-demo-2.2",
+    "purpose": "medical_csv_demo_source",
+    "title": "MIMIC-IV Clinical Database Demo",
+    "source": "PhysioNet",
+    "version": "2.2",
+    "url": "https://physionet.org/content/mimic-iv-demo/2.2/",
+    "doi": "10.13026/dp1f-ex47",
+    "citation_note": "Use the citation shown on the PhysioNet project page when reporting this demo dataset."
+  },
+  {
+    "id": "mimic-iv-main",
+    "purpose": "dataset_family_reference",
+    "title": "MIMIC-IV, a freely accessible electronic health record dataset",
+    "journal": "Scientific Data",
+    "publication_year": 2023,
+    "url": "https://www.nature.com/articles/s41597-022-01899-x",
+    "doi": "10.1038/s41597-022-01899-x",
+    "citation_note": "Primary paper for the MIMIC-IV dataset family."
+  },
+  {
+    "id": "physionet-platform",
+    "purpose": "repository_reference",
+    "title": "PhysioNet: The Research Resource for Complex Physiologic Signals",
+    "journal": "Circulation",
+    "publication_year": 2000,
+    "url": "https://physionet.org/about/citation/",
+    "doi": "10.1161/01.CIR.101.23.e215",
+    "citation_note": "Standard citation for the PhysioNet platform."
+  }
+]

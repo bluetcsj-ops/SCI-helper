@@ -182,6 +182,13 @@ const statusLabels: Record<ItemStatus, string> = {
   done: "已完成",
 };
 
+const pipelineStatusLabels: Record<PipelineStepStatus, string> = {
+  not_started: "未开始",
+  in_progress: "进行中",
+  ready: "已就绪",
+  risk: "有风险",
+};
+
 const reminderTypeLabels: Record<ReminderType, string> = {
   due_48h: "48 小时提醒",
   due_24h: "24 小时提醒",
@@ -190,6 +197,8 @@ const reminderTypeLabels: Record<ReminderType, string> = {
 };
 
 const statusOptions: ItemStatus[] = ["not_started", "in_progress", "blocked", "done"];
+const preparedDataSamplePath = "/sample-data/mimic_iv_demo_los_sample.csv";
+const preparedDataSampleFileName = "mimic_iv_demo_los_sample.csv";
 
 const protocolFields: Array<{
   key: keyof ProjectProtocolUpdate;
@@ -600,6 +609,490 @@ interface IntroductionUsedReference {
   evidence?: MentorEvidenceItem;
 }
 
+function isLikelyIdentifierColumn(columnName: string): boolean {
+  return /(^id$|_id$|subject|hadm|patient|record|encounter|accession)/i.test(columnName);
+}
+
+function preferredNumericColumns(columns: DataQualityReport["columns"]): string[] {
+  const numericColumns = columns.filter((column) => column.inferred_type === "numeric");
+  const preferredColumns = numericColumns.filter((column) => !isLikelyIdentifierColumn(column.name));
+  return (preferredColumns.length ? preferredColumns : numericColumns)
+    .map((column) => column.name)
+    .slice(0, 2);
+}
+
+function buildPreparedReferenceReport(): MentorRecommendationResponse {
+  const retrievedAt = new Date().toISOString();
+  return {
+    profile_summary: "已加载预备 DATA 引用包，用于验证 Mentor 到 Alex Writer 的真实引用闭环。",
+    resource_diagnosis: [
+      "当前引用来自公开医学数据源和数据集主论文，适合先验证引用标记、字段绑定和导出流程。",
+      "这些引用用于产品联调，不代表当前放疗课题的最终核心文献清单。",
+    ],
+    matched_strengths: [
+      "引用包含 DOI、期刊、年份和候选 Vancouver 格式，Alex Writer 可以直接进行字段级引用质控。",
+      "CSV 样本与引用来源一致，便于同时测试数据和写作链路。",
+    ],
+    recommendations: [
+      {
+        title: "预备 DATA 真实医学数据源",
+        research_question: "公开去标识化 EHR demo 数据能否支撑当前 CSV 质控、统计草案和写作引用流程联调？",
+        why_fit: "MIMIC-IV Demo 是公开医学数据样本，文件体量小，字段结构真实，适合避免空流程演示。",
+        data_pathway: "使用 MIMIC-IV Demo 的 patients 和 admissions 表派生住院天数联调 CSV。",
+        methods_route: "先完成字段质控、描述性统计和正式检验边界检查，再交给 Alex Writer 生成 Methods/Results 草稿。",
+        statistical_plan: "以 length_of_stay_days 和 anchor_age 为数值结局，以 gender 或 admission_type 作为示例分组变量。",
+        innovation_point: "将真实公开数据源、可追溯引用和本地论文工作流打通，验证端到端产品闭环。",
+        feasibility_note: "该数据包只用于联调；正式放疗论文仍需替换为本中心伦理批准后的真实研究数据。",
+        risk_flags: [
+          "MIMIC-IV Demo 是 ICU/EHR 数据，不是放疗计划数据。",
+          "公开 demo 仍需按 PhysioNet 要求引用来源。",
+        ],
+        first_milestones: [
+          "加载预备 CSV 并生成质控报告",
+          "生成统计草案并检查正式检验条件",
+          "在 Alex Writer 中插入并保存引用标记",
+        ],
+        target_journals: ["Scientific Data", "PhysioNet", "JAMIA Open"],
+        evidence_items: [
+          {
+            source_type: "prepared_data_reference",
+            evidence_status: "public_dataset",
+            retrieved_at: retrievedAt,
+            external_url: "https://physionet.org/content/mimic-iv-demo/2.2/",
+            crossref_url: "https://doi.org/10.13026/dp1f-ex47",
+            pmid: null,
+            title: "MIMIC-IV Clinical Database Demo",
+            journal: "PhysioNet",
+            publication_year: "2024",
+            doi: "10.13026/dp1f-ex47",
+            citation_text: "MIMIC-IV Clinical Database Demo. PhysioNet. doi:10.13026/dp1f-ex47.",
+            vancouver_citation: "MIMIC-IV Clinical Database Demo. PhysioNet. doi:10.13026/dp1f-ex47.",
+            authors: [],
+            volume: null,
+            issue: null,
+            page: null,
+            publication_types: ["Dataset"],
+            review_status: "reviewed",
+            review_note: "预备 DATA 来源引用，用于联调。",
+            reviewer: "SCI helper",
+            full_text_checked: true,
+            use_in_introduction: true,
+            use_in_discussion: false,
+            search_query: "MIMIC-IV Clinical Database Demo PhysioNet",
+            evidence_summary: "MIMIC-IV Clinical Database Demo 是 PhysioNet 上的公开演示数据集，可用于产品流程联调。",
+            recommendation_signal: "适合验证 CSV 质控、统计草案和引用追溯流程。",
+            limitation: "该 demo 不是放疗专科数据，只能作为医学数据流程联调样本。",
+          },
+          {
+            source_type: "prepared_data_reference",
+            evidence_status: "public_article",
+            retrieved_at: retrievedAt,
+            external_url: "https://www.nature.com/articles/s41597-022-01899-x",
+            crossref_url: "https://doi.org/10.1038/s41597-022-01899-x",
+            pmid: null,
+            title: "MIMIC-IV, a freely accessible electronic health record dataset",
+            journal: "Scientific Data",
+            publication_year: "2023",
+            doi: "10.1038/s41597-022-01899-x",
+            citation_text:
+              "Johnson AEW, Bulgarelli L, Shen L, Gayles A, Shammout A, Horng S, et al. MIMIC-IV, a freely accessible electronic health record dataset. Scientific Data. 2023. doi:10.1038/s41597-022-01899-x.",
+            vancouver_citation:
+              "Johnson AEW, Bulgarelli L, Shen L, Gayles A, Shammout A, Horng S, et al. MIMIC-IV, a freely accessible electronic health record dataset. Sci Data. 2023;10:1. doi:10.1038/s41597-022-01899-x.",
+            authors: ["Johnson AEW", "Bulgarelli L", "Shen L", "Gayles A", "Shammout A", "Horng S"],
+            volume: "10",
+            issue: null,
+            page: "1",
+            publication_types: ["Journal Article"],
+            review_status: "reviewed",
+            review_note: "MIMIC-IV 数据集主论文。",
+            reviewer: "SCI helper",
+            full_text_checked: true,
+            use_in_introduction: true,
+            use_in_discussion: false,
+            search_query: "MIMIC-IV freely accessible electronic health record dataset",
+            evidence_summary: "该论文描述 MIMIC-IV 去标识化电子健康记录数据集的结构和开放研究用途。",
+            recommendation_signal: "适合作为公开医学 CSV 样本的数据集家族引用。",
+            limitation: "用于数据源说明，不替代具体研究问题的领域文献。",
+          },
+          {
+            source_type: "prepared_data_reference",
+            evidence_status: "public_article",
+            retrieved_at: retrievedAt,
+            external_url: "https://physionet.org/about/citation/",
+            crossref_url: "https://doi.org/10.1161/01.CIR.101.23.e215",
+            pmid: "10851218",
+            title: "PhysioNet: The Research Resource for Complex Physiologic Signals",
+            journal: "Circulation",
+            publication_year: "2000",
+            doi: "10.1161/01.CIR.101.23.e215",
+            citation_text:
+              "Goldberger AL, Amaral LAN, Glass L, Hausdorff JM, Ivanov PC, Mark RG, et al. PhysioNet: The Research Resource for Complex Physiologic Signals. Circulation. 2000. doi:10.1161/01.CIR.101.23.e215.",
+            vancouver_citation:
+              "Goldberger AL, Amaral LAN, Glass L, Hausdorff JM, Ivanov PC, Mark RG, et al. PhysioNet: The Research Resource for Complex Physiologic Signals. Circulation. 2000;101(23):e215-e220. doi:10.1161/01.CIR.101.23.e215.",
+            authors: ["Goldberger AL", "Amaral LAN", "Glass L", "Hausdorff JM", "Ivanov PC", "Mark RG"],
+            volume: "101",
+            issue: "23",
+            page: "e215-e220",
+            publication_types: ["Journal Article"],
+            review_status: "reviewed",
+            review_note: "PhysioNet 平台引用。",
+            reviewer: "SCI helper",
+            full_text_checked: true,
+            use_in_introduction: true,
+            use_in_discussion: false,
+            search_query: "PhysioNet Research Resource Complex Physiologic Signals",
+            evidence_summary: "该论文是 PhysioNet 平台的标准引用。",
+            recommendation_signal: "适合说明公开医学数据源平台来源。",
+            limitation: "平台引用需与具体数据集引用共同使用。",
+          },
+        ],
+      },
+    ],
+    next_steps: [
+      "在 Dr. Data Lin 中加载预备 CSV。",
+      "在 Alex Writer 中插入候选引用并保存草稿。",
+      "导出引用清单，确认 DOI/PMID/Vancouver 链路完整。",
+    ],
+  };
+}
+
+function buildWriterMethodsResultsDraft(
+  qualityReport: DataQualityReport | null,
+  statisticsReport: DataStatisticsReport | null,
+): WriterMethodsResultsDraft | null {
+  if (!qualityReport || !statisticsReport) {
+    return null;
+  }
+
+  const formalTestReport = statisticsReport.formal_test_report ?? null;
+  const numericLines = statisticsReport.numeric_summaries.slice(0, 6).map(
+    (summary) =>
+      `${summary.column}: n=${summary.n}, mean=${summary.mean}, SD=${summary.std_dev}, median=${summary.median}, range=${summary.min}-${summary.max}`,
+  );
+  const groupLines = statisticsReport.group_comparisons
+    .slice(0, 4)
+    .map((comparison) => comparison.interpretation);
+  const formalTestLines = formalTestReport?.results.length
+    ? formalTestReport.results.map((result) =>
+        [
+          `${result.outcome_column}: ${result.interpretation}`,
+          `检验：${result.test_name}`,
+          `P=${formatPValue(result.p_value)}`,
+          formatFormalEffectSize(result),
+          result.warnings.length ? `注意：${result.warnings.join("；")}` : null,
+        ]
+          .filter(Boolean)
+          .join("；"),
+      )
+    : ["尚未执行正式检验；Results 草稿不得编造 P 值、置信区间或显著性结论。"];
+  const chartLines = statisticsReport.chart_specs.slice(0, 5).map(
+    (chart) => `${chart.title}: ${chart.narrative}`,
+  );
+  const missingItems = [
+    qualityReport.missing_required_fields.length
+      ? `数据需求缺少字段：${qualityReport.missing_required_fields.join("、")}`
+      : null,
+    qualityReport.issues.length ? `CSV 质控仍有 ${qualityReport.issues.length} 个问题需复核。` : null,
+    qualityReport.privacy_report?.risk_level === "red"
+      ? "脱敏检查为高风险，不能进入正式统计或论文写作。"
+      : null,
+    formalTestReport ? null : "正式假设检验尚未执行；论文 Results 中只能保留描述性统计和待检验提示。",
+    statisticsReport.next_step || null,
+  ].filter(Boolean) as string[];
+
+  return {
+    methodsParagraphs: [
+      `本联调数据来自 ${qualityReport.file_name}，共 ${qualityReport.row_count} 行、${qualityReport.column_count} 列。CSV 上传后先执行字段类型识别、缺失率检查、关键字段覆盖检查和脱敏风险扫描；原始 CSV 不在系统中持久化保存。`,
+      statisticsReport.methods_draft,
+      formalTestReport
+        ? `正式检验在人工确认研究设计、终点定义、脱敏状态、缺失处理、统计假设和多重比较边界后执行；当前方法版本为 ${formalTestReport.method_version}。`
+        : "当前尚未执行正式假设检验；Methods 中应将 P 值相关分析列为待补充或预设统计计划。",
+    ],
+    resultsParagraphs: [
+      statisticsReport.results_draft,
+      numericLines.length
+        ? `描述性统计摘要：${numericLines.join("；")}。`
+        : "当前 CSV 未生成可写入 Results 的数值描述性统计。",
+      groupLines.length
+        ? `分组描述显示：${groupLines.join("；")}。`
+        : "当前未设置有效分组列，Results 暂不写入组间比较描述。",
+      formalTestReport
+        ? `正式检验摘要：${formalTestLines.join("；")}。`
+        : "正式检验尚未执行，因此 Results 草稿不报告 P 值或显著性结论。",
+    ],
+    formalTestLines,
+    chartLines,
+    missingItems,
+  };
+}
+
+function buildReviewerChecks(params: {
+  protocolHasContent: boolean;
+  protocol: ProjectProtocol | null;
+  qualityReport: DataQualityReport | null;
+  statisticsReport: DataStatisticsReport | null;
+  writerMethodsResultsDraft: WriterMethodsResultsDraft | null;
+  writerIntroductionDraftForm: WriterIntroductionDraftUpdate;
+  citationIssueCount: number;
+  candidateReferenceCount: number;
+  reminderSummary: ProjectReminderSummary | null;
+}): ReviewerCheckItem[] {
+  const {
+    protocolHasContent,
+    protocol,
+    qualityReport,
+    statisticsReport,
+    writerMethodsResultsDraft,
+    writerIntroductionDraftForm,
+    citationIssueCount,
+    candidateReferenceCount,
+    reminderSummary,
+  } = params;
+  const formalTestReport = statisticsReport?.formal_test_report ?? null;
+  const introductionHasText = introductionDraftFields.some(
+    (field) => writerIntroductionDraftForm[field].trim().length > 0,
+  );
+
+  return [
+    {
+      title: "研究方案完整性",
+      severity: protocolHasContent ? "green" : "red",
+      status: protocolHasContent ? "已形成方案" : "缺少方案",
+      detail: protocol?.research_question
+        ? `研究问题：${protocol.research_question}`
+        : "当前项目还没有可审查的研究问题、终点和统计路线。",
+      recommendation: protocolHasContent
+        ? "正式投稿前继续核对 PICO/PECO、主要终点和伦理材料是否一致。"
+        : "先由 Dr. Vera Protocol 生成并保存研究方案。",
+    },
+    {
+      title: "数据真实性与脱敏",
+      severity: qualityReport
+        ? qualityReport.privacy_report?.risk_level === "red"
+          ? "red"
+          : qualityReport.issues.length
+            ? "orange"
+            : "green"
+        : "red",
+      status: qualityReport ? `${qualityReport.row_count} 行 / ${qualityReport.column_count} 列` : "无数据报告",
+      detail: qualityReport
+        ? qualityReport.privacy_report?.summary ?? "已生成 CSV 质控报告，但未生成隐私摘要。"
+        : "尚未上传或加载可审查 CSV。",
+      recommendation: qualityReport
+        ? qualityReport.privacy_report?.risk_level === "red"
+          ? "高风险脱敏问题解决前，不应继续正式统计或写作。"
+          : qualityReport.issues.length
+            ? "先处理缺失、字段覆盖或异常值提示，再进入正式分析。"
+            : "保留审计记录，并在 Methods 中说明原始 CSV 不持久化保存。"
+        : "先在 Dr. Data Lin 中加载预备 DATA 或上传脱敏 CSV。",
+    },
+    {
+      title: "统计结果边界",
+      severity: statisticsReport ? (formalTestReport ? "green" : "orange") : "red",
+      status: statisticsReport
+        ? formalTestReport
+          ? `${formalTestReport.results.length} 项正式检验`
+          : "仅有描述性统计"
+        : "无统计草案",
+      detail: statisticsReport
+        ? formalTestReport?.audit_summary ?? statisticsReport.next_step
+        : "尚无可审查的统计草案或正式检验记录。",
+      recommendation: formalTestReport
+        ? "核对检验前确认项、组数、结局定义、多重比较和效应量解释。"
+        : "Results 中不得写 P 值或显著性结论；需要用户确认后再执行正式检验。",
+    },
+    {
+      title: "Methods / Results 一致性",
+      severity: writerMethodsResultsDraft
+        ? writerMethodsResultsDraft.missingItems.length
+          ? "orange"
+          : "green"
+        : "red",
+      status: writerMethodsResultsDraft ? "已生成草稿" : "缺少结果草稿",
+      detail: writerMethodsResultsDraft
+        ? writerMethodsResultsDraft.missingItems.slice(0, 2).join("；") || "未发现系统级阻断项。"
+        : "Alex Writer 尚未接收到 Data Lin 的统计草稿。",
+      recommendation: writerMethodsResultsDraft
+        ? "逐句核对 Results 草稿是否只引用已生成的数据与检验结果。"
+        : "先完成 Data Lin 统计草案，再返回 Alex Writer 生成 Methods / Results。",
+    },
+    {
+      title: "Introduction 引用追溯",
+      severity: candidateReferenceCount
+        ? citationIssueCount
+          ? "orange"
+          : introductionHasText
+            ? "green"
+            : "orange"
+        : "red",
+      status: candidateReferenceCount ? `${candidateReferenceCount} 条候选引用` : "无确认引用",
+      detail: citationIssueCount
+        ? `当前还有 ${citationIssueCount} 项引用质控问题。`
+        : introductionHasText
+          ? "Introduction 草稿已有可追溯引用或手动绑定。"
+          : "候选引用已存在，但 Introduction 正文仍需撰写。",
+      recommendation: citationIssueCount
+        ? "先解决 DOI/PMID、全文核对、用途标记和绑定异常。"
+        : "投稿前仍需人工核对全文和目标期刊引用格式。",
+    },
+    {
+      title: "执行风险与里程碑",
+      severity: reminderSummary?.risk_level ?? "orange",
+      status: reminderSummary
+        ? `${reminderSummary.active_count} 条提醒 / ${reminderSummary.overdue_count} 个逾期`
+        : "未读取 Rhea 监控",
+      detail: reminderSummary?.manager_note ?? "尚未生成项目执行提醒。",
+      recommendation: reminderSummary?.overdue_count
+        ? "先处理逾期任务，再进入投稿前版本冻结。"
+        : "保持 Rhea 任务状态与论文草稿进展同步。",
+    },
+  ];
+}
+
+function buildPipelineSteps(params: {
+  candidateReferenceCount: number;
+  protocolHasContent: boolean;
+  qualityReport: DataQualityReport | null;
+  statisticsReport: DataStatisticsReport | null;
+  writerMethodsResultsDraft: WriterMethodsResultsDraft | null;
+  introductionHasText: boolean;
+  reviewerChecks: ReviewerCheckItem[];
+}): PipelineStep[] {
+  const {
+    candidateReferenceCount,
+    protocolHasContent,
+    qualityReport,
+    statisticsReport,
+    writerMethodsResultsDraft,
+    introductionHasText,
+    reviewerChecks,
+  } = params;
+  const reviewerRedCount = reviewerChecks.filter((item) => item.severity === "red").length;
+  const reviewerOrangeCount = reviewerChecks.filter((item) => item.severity === "orange").length;
+
+  return [
+    {
+      id: "literature",
+      agentId: "mentor",
+      title: "选题与引用",
+      status: candidateReferenceCount ? "ready" : "not_started",
+      detail: candidateReferenceCount ? `${candidateReferenceCount} 条确认引用` : "等待 Mentor 候选引用",
+    },
+    {
+      id: "protocol",
+      agentId: "study_planner",
+      title: "研究方案",
+      status: protocolHasContent ? "ready" : "not_started",
+      detail: protocolHasContent ? "方案已形成" : "等待研究问题和终点",
+    },
+    {
+      id: "data",
+      agentId: "data_analyst",
+      title: "数据与统计",
+      status: statisticsReport
+        ? statisticsReport.formal_test_report
+          ? "ready"
+          : "in_progress"
+        : qualityReport
+          ? "in_progress"
+          : "not_started",
+      detail: statisticsReport
+        ? statisticsReport.formal_test_report
+          ? "已有正式检验"
+          : "已有统计草案"
+        : qualityReport
+          ? "已有质控报告"
+          : "等待 CSV",
+    },
+    {
+      id: "writing",
+      agentId: "writer",
+      title: "写作草稿",
+      status: writerMethodsResultsDraft || introductionHasText ? "ready" : "not_started",
+      detail: writerMethodsResultsDraft
+        ? "Methods / Results 已生成"
+        : introductionHasText
+          ? "Introduction 已开始"
+          : "等待写作素材",
+    },
+    {
+      id: "review",
+      agentId: "reviewer",
+      title: "投稿前审查",
+      status: reviewerRedCount ? "risk" : reviewerOrangeCount ? "in_progress" : "ready",
+      detail: reviewerRedCount
+        ? `${reviewerRedCount} 项高风险`
+        : reviewerOrangeCount
+          ? `${reviewerOrangeCount} 项需复核`
+          : "清单已通过",
+    },
+  ];
+}
+
+function buildProtocolQualitySummary(protocol: ProjectProtocol | null): ProtocolQualitySummary {
+  const valueFor = (key: keyof ProjectProtocolUpdate): string => protocol?.[key]?.trim() ?? "";
+  const checkText = (
+    key: keyof ProjectProtocolUpdate,
+    title: string,
+    minimumLength: number,
+    highRiskWhenMissing: boolean,
+    recommendation: string,
+  ): ProtocolQualityItem => {
+    const value = valueFor(key);
+    if (!value) {
+      return {
+        key,
+        title,
+        status: highRiskWhenMissing ? "high_risk" : "needs_input",
+        detail: "当前为空。",
+        recommendation,
+      };
+    }
+    if (value.length < minimumLength) {
+      return {
+        key,
+        title,
+        status: "needs_input",
+        detail: `已有内容，但较短，约 ${value.length} 个字符。`,
+        recommendation,
+      };
+    }
+    return {
+      key,
+      title,
+      status: "passed",
+      detail: `已有可审查内容，约 ${value.length} 个字符。`,
+      recommendation: "投稿前继续核对该项是否与数据字段、伦理材料和目标期刊要求一致。",
+    };
+  };
+  const items: ProtocolQualityItem[] = [
+    checkText("research_question", "研究问题是否明确", 20, true, "先写清对象、干预/暴露、比较和主要结局。"),
+    checkText("hypothesis", "研究假设是否存在", 20, true, "补充方向性假设，并避免写成泛泛目标。"),
+    checkText("study_type", "研究类型是否填写", 10, true, "明确回顾性/前瞻性、单中心/多中心、配对/独立样本等设计。"),
+    checkText("primary_endpoint", "主要终点是否明确", 10, true, "指定一个最能回答研究问题的主要终点。"),
+    checkText("inclusion_criteria", "纳入标准是否完整", 20, true, "写清病例来源、时间范围、治疗方式和最低数据要求。"),
+    checkText("exclusion_criteria", "排除标准是否完整", 20, false, "列出缺失关键数据、重复病例、质控不可复核等排除条件。"),
+    checkText("data_requirements", "数据需求是否可执行", 30, true, "列出必需字段、来源系统、导出格式和脱敏要求。"),
+    checkText("statistical_plan", "统计路线是否存在", 30, true, "说明描述性统计、组间比较、配对/多重比较和显著性边界。"),
+    checkText("experiment_workflow", "实验流程是否可复现", 30, false, "补充数据导出、清洗、质控、统计、图表和审稿复核顺序。"),
+    checkText("rhea_milestones", "Rhea 里程碑是否可监控", 20, false, "拆成可执行节点，并写清每个节点的交付物。"),
+  ];
+  const passedCount = items.filter((item) => item.status === "passed").length;
+  const needsInputCount = items.filter((item) => item.status === "needs_input").length;
+  const highRiskCount = items.filter((item) => item.status === "high_risk").length;
+  const completionPercent = Math.round((passedCount / items.length) * 100);
+  const nextItem = items.find((item) => item.status === "high_risk") ?? items.find((item) => item.status === "needs_input");
+
+  return {
+    completionPercent,
+    passedCount,
+    needsInputCount,
+    highRiskCount,
+    nextAction: nextItem ? `${nextItem.title}：${nextItem.recommendation}` : "方案质量检查已通过，下一步可生成 Rhea 执行计划。",
+    items,
+  };
+}
+
 interface IntroductionFieldCitationMap {
   field: IntroductionDraftField;
   label: string;
@@ -643,6 +1136,67 @@ interface MentorDedupedCandidateReference {
   cardTitles: string[];
   duplicateCount: number;
   evidence: MentorEvidenceItem;
+}
+
+interface WriterMethodsResultsDraft {
+  methodsParagraphs: string[];
+  resultsParagraphs: string[];
+  formalTestLines: string[];
+  chartLines: string[];
+  missingItems: string[];
+}
+
+interface CsvProcessingDefaults {
+  report: DataQualityReport;
+  groupColumn: string;
+  outcomeColumns: string[];
+}
+
+interface WorkflowSummary {
+  source: "prepared" | "restored" | "manual";
+  fileName: string;
+  rowCount: number;
+  columnCount: number;
+  chartCount: number;
+  saved: boolean;
+  message: string;
+}
+
+type ReviewerCheckSeverity = "green" | "orange" | "red";
+type PipelineStepStatus = "not_started" | "in_progress" | "ready" | "risk";
+type ProtocolQualityStatus = "passed" | "needs_input" | "high_risk";
+
+interface ReviewerCheckItem {
+  title: string;
+  severity: ReviewerCheckSeverity;
+  status: string;
+  detail: string;
+  recommendation: string;
+}
+
+interface PipelineStep {
+  id: string;
+  agentId: AgentId;
+  title: string;
+  status: PipelineStepStatus;
+  detail: string;
+}
+
+interface ProtocolQualityItem {
+  key: string;
+  title: string;
+  status: ProtocolQualityStatus;
+  detail: string;
+  recommendation: string;
+}
+
+interface ProtocolQualitySummary {
+  completionPercent: number;
+  passedCount: number;
+  needsInputCount: number;
+  highRiskCount: number;
+  nextAction: string;
+  items: ProtocolQualityItem[];
 }
 
 function buildCitationTrace(evidence: MentorEvidenceItem): string {
@@ -1153,6 +1707,8 @@ function App() {
   const [qualityReport, setQualityReport] = useState<DataQualityReport | null>(null);
   const [statisticsReport, setStatisticsReport] = useState<DataStatisticsReport | null>(null);
   const [uploadedCsvFile, setUploadedCsvFile] = useState<File | null>(null);
+  const [workflowStatus, setWorkflowStatus] = useState<string | null>(null);
+  const [workflowSummary, setWorkflowSummary] = useState<WorkflowSummary | null>(null);
   const [selectedGroupColumn, setSelectedGroupColumn] = useState("");
   const [selectedOutcomeColumns, setSelectedOutcomeColumns] = useState<string[]>([]);
   const [selectedChartStyle, setSelectedChartStyle] = useState<ChartStyleId>("journalBlue");
@@ -1227,8 +1783,13 @@ function App() {
   const shouldShowProtocolWorkspace = selectedAgentId === "study_planner";
   const shouldShowDataWorkspace = selectedAgentId === "data_analyst";
   const shouldShowWriterWorkspace = selectedAgentId === "writer";
+  const shouldShowReviewerWorkspace = selectedAgentId === "reviewer";
 
   const protocolHasContent = useMemo(() => hasProtocolContent(protocol), [protocol]);
+  const protocolQualitySummary = useMemo(
+    () => buildProtocolQualitySummary(protocol),
+    [protocol],
+  );
   const pendingMentorProtocolUpdate = useMemo(
     () =>
       pendingMentorProtocolCard
@@ -1366,6 +1927,11 @@ function App() {
     };
   }, [mentorCandidateReferences, protocol]);
 
+  const writerMethodsResultsDraft = useMemo(
+    () => buildWriterMethodsResultsDraft(qualityReport, statisticsReport),
+    [qualityReport, statisticsReport],
+  );
+
   const numericColumnOptions = useMemo(() => {
     return qualityReport?.columns.filter((column) => column.inferred_type === "numeric") ?? [];
   }, [qualityReport]);
@@ -1392,6 +1958,9 @@ function App() {
   const introductionCitationUsages = useMemo(
     () => extractIntroductionCitationUsages(writerIntroductionDraftForm),
     [writerIntroductionDraftForm],
+  );
+  const introductionHasText = introductionDraftFields.some(
+    (field) => writerIntroductionDraftForm[field].trim().length > 0,
   );
   const introductionSectionsWithoutCitation = useMemo(() => {
     const citationBindings = normalizeIntroductionCitationBindings(
@@ -1424,6 +1993,52 @@ function App() {
   const introductionCitationQualityIssues = useMemo(
     () => buildIntroductionCitationQualityIssues(introductionFieldCitationMaps),
     [introductionFieldCitationMaps],
+  );
+  const reviewerChecks = useMemo(
+    () =>
+      buildReviewerChecks({
+        protocolHasContent,
+        protocol,
+        qualityReport,
+        statisticsReport,
+        writerMethodsResultsDraft,
+        writerIntroductionDraftForm,
+        citationIssueCount: introductionCitationQualityIssues.length,
+        candidateReferenceCount: mentorCandidateReferences.length,
+        reminderSummary,
+      }),
+    [
+      protocolHasContent,
+      protocol,
+      qualityReport,
+      statisticsReport,
+      writerMethodsResultsDraft,
+      writerIntroductionDraftForm,
+      introductionCitationQualityIssues.length,
+      mentorCandidateReferences.length,
+      reminderSummary,
+    ],
+  );
+  const pipelineSteps = useMemo(
+    () =>
+      buildPipelineSteps({
+        candidateReferenceCount: mentorCandidateReferences.length,
+        protocolHasContent,
+        qualityReport,
+        statisticsReport,
+        writerMethodsResultsDraft,
+        introductionHasText,
+        reviewerChecks,
+      }),
+    [
+      mentorCandidateReferences.length,
+      protocolHasContent,
+      qualityReport,
+      statisticsReport,
+      writerMethodsResultsDraft,
+      introductionHasText,
+      reviewerChecks,
+    ],
   );
   const formalTestReport = statisticsReport?.formal_test_report ?? null;
   const isFormalTestReady = useMemo(() => {
@@ -2411,6 +3026,144 @@ function App() {
     }
   }
 
+  function handleDownloadMethodsResultsDraft() {
+    if (!writerMethodsResultsDraft) {
+      return;
+    }
+
+    const content = [
+      "# Methods / Results 草稿",
+      "",
+      `导出时间：${new Date().toLocaleString("zh-CN")}`,
+      selectedProject ? `关联项目：${selectedProject.name} / ${selectedProject.title}` : "关联项目：未指定",
+      protocol?.research_question ? `研究问题：${protocol.research_question}` : "研究问题：待补充",
+      qualityReport ? `数据文件：${qualityReport.file_name}` : "数据文件：待补充",
+      "",
+      "## Methods",
+      ...writerMethodsResultsDraft.methodsParagraphs.flatMap((paragraph) => [paragraph, ""]),
+      "## Results",
+      ...writerMethodsResultsDraft.resultsParagraphs.flatMap((paragraph) => [paragraph, ""]),
+      "## 正式检验摘要",
+      ...writerMethodsResultsDraft.formalTestLines.map((line) => `- ${line}`),
+      "",
+      "## 图表与展示建议",
+      ...(writerMethodsResultsDraft.chartLines.length
+        ? writerMethodsResultsDraft.chartLines.map((line) => `- ${line}`)
+        : ["- 暂无可展示图表摘要。"]),
+      "",
+      "## 待补充 / 不可编造",
+      ...(writerMethodsResultsDraft.missingItems.length
+        ? writerMethodsResultsDraft.missingItems.map((item) => `- ${item}`)
+        : ["- 当前没有系统识别出的阻断项；正式投稿前仍需人工复核数据、统计和引用。"]),
+      "",
+      "## 使用边界",
+      "- 本草稿来自 Data Lin 的结构化质控和统计结果，不等同于最终论文正文。",
+      "- 未执行正式检验时，不得添加 P 值、置信区间或显著性表述。",
+      "- 正式论文需要用真实课题数据、伦理信息和目标期刊格式重新核对。",
+      "",
+    ].join("\n");
+
+    const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    try {
+      link.href = url;
+      link.download = "methods-results-draft.md";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  function handleDownloadReviewerReport() {
+    const highRiskCount = reviewerChecks.filter((item) => item.severity === "red").length;
+    const reviewNeededCount = reviewerChecks.filter((item) => item.severity === "orange").length;
+    const passedCount = reviewerChecks.filter((item) => item.severity === "green").length;
+    const content = [
+      "# 投稿前审稿清单",
+      "",
+      `导出时间：${new Date().toLocaleString("zh-CN")}`,
+      selectedProject ? `关联项目：${selectedProject.name} / ${selectedProject.title}` : "关联项目：未指定",
+      protocol?.research_question ? `研究问题：${protocol.research_question}` : "研究问题：待补充",
+      "",
+      "## 总览",
+      `- 高风险：${highRiskCount}`,
+      `- 需复核：${reviewNeededCount}`,
+      `- 已通过：${passedCount}`,
+      "",
+      "## 检查项",
+      ...reviewerChecks.flatMap((item, index) => [
+        `### ${index + 1}. ${item.title}`,
+        `- 状态：${item.status}`,
+        `- 风险：${riskLabels[item.severity]}`,
+        `- 细节：${item.detail}`,
+        `- 建议：${item.recommendation}`,
+        "",
+      ]),
+      "## 使用边界",
+      "- 该清单是规则型投稿前自查，不代表真实同行评审意见。",
+      "- 正式投稿前仍需人工复核伦理、统计、引用、图表和目标期刊格式。",
+      "",
+    ].join("\n");
+
+    const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    try {
+      link.href = url;
+      link.download = "pre-submission-review.md";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  function handleDownloadProtocolQualityCheck() {
+    const content = [
+      "# 方案质量检查",
+      "",
+      `导出时间：${new Date().toLocaleString("zh-CN")}`,
+      selectedProject ? `关联项目：${selectedProject.name} / ${selectedProject.title}` : "关联项目：未指定",
+      "",
+      "## 总览",
+      `- 完成度：${protocolQualitySummary.completionPercent}%`,
+      `- 已通过：${protocolQualitySummary.passedCount}`,
+      `- 需补充：${protocolQualitySummary.needsInputCount}`,
+      `- 高风险：${protocolQualitySummary.highRiskCount}`,
+      `- 下一步：${protocolQualitySummary.nextAction}`,
+      "",
+      "## 检查项",
+      ...protocolQualitySummary.items.flatMap((item, index) => [
+        `### ${index + 1}. ${item.title}`,
+        `- 状态：${item.status === "passed" ? "已通过" : item.status === "high_risk" ? "高风险" : "需补充"}`,
+        `- 细节：${item.detail}`,
+        `- 建议：${item.recommendation}`,
+        "",
+      ]),
+      "## 使用边界",
+      "- 本检查为规则型完整性检查，不替代医学、伦理或统计专家审查。",
+      "- 正式研究方案仍需根据本中心数据、伦理审批和目标期刊要求人工复核。",
+      "",
+    ].join("\n");
+
+    const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    try {
+      link.href = url;
+      link.download = "protocol-quality-check.md";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const trimmedInput = input.trim();
@@ -2701,23 +3454,18 @@ function App() {
     });
   }
 
-  async function handleCsvUpload(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-
-    if (!file || !selectedProjectId || isCsvUploading || !canEditSelectedProject) {
-      return;
+  async function processCsvFile(file: File): Promise<CsvProcessingDefaults | null> {
+    if (!selectedProjectId || isCsvUploading || !canEditSelectedProject) {
+      return null;
     }
 
     setIsCsvUploading(true);
     setError(null);
 
     try {
+      setWorkflowStatus("正在生成质控报告...");
       const report = await uploadDataQualityReport(selectedProjectId, file);
-      const numericDefaults = report.columns
-        .filter((column) => column.inferred_type === "numeric")
-        .map((column) => column.name)
-        .slice(0, 2);
+      const numericDefaults = preferredNumericColumns(report.columns);
       const groupDefault =
         report.columns.find(
           (column) =>
@@ -2731,17 +3479,151 @@ function App() {
       setUploadedCsvFile(file);
       setQualityReport(report);
       setStatisticsReport(null);
+      setWorkflowSummary({
+        source: file.name === preparedDataSampleFileName ? "prepared" : "manual",
+        fileName: report.file_name,
+        rowCount: report.row_count,
+        columnCount: report.column_count,
+        chartCount: 0,
+        saved: false,
+        message: "已生成质控报告，下一步可生成统计草案。",
+      });
       setSelectedOutcomeColumns(numericDefaults);
       setSelectedGroupColumn(groupDefault);
       resetPairedFormalTestSettings();
       setFormalTestConfirmation(createFormalTestConfirmation(currentUser?.display_name ?? ""));
       setSelectedAgentId("data_analyst");
       await refreshDataAuditLogs(selectedProjectId);
+      setWorkflowStatus("质控报告已生成。");
+      return {
+        report,
+        groupColumn: groupDefault,
+        outcomeColumns: numericDefaults,
+      };
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "CSV 质量检查失败。");
+      setWorkflowStatus(null);
+      return null;
     } finally {
       setIsCsvUploading(false);
     }
+  }
+
+  async function handleCsvUpload(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+
+    if (!file) {
+      return;
+    }
+
+    await processCsvFile(file);
+  }
+
+  async function handleLoadPreparedData() {
+    if (isCsvUploading || !canEditSelectedProject) {
+      return;
+    }
+
+    setError(null);
+
+    try {
+      setWorkflowStatus("正在加载预备 DATA...");
+      const response = await fetch(preparedDataSamplePath);
+      if (!response.ok) {
+        throw new Error(`预备 DATA 读取失败：${response.status}`);
+      }
+      const csvText = await response.text();
+      const file = new File([csvText], preparedDataSampleFileName, { type: "text/csv" });
+      await processCsvFile(file);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "预备 DATA 加载失败。");
+    }
+  }
+
+  async function saveAnalysisRecordFromReports(
+    fileName: string,
+    quality: DataQualityReport,
+    statistics: DataStatisticsReport | null,
+  ): Promise<DataAnalysisRecord | null> {
+    if (!selectedProjectId || !canEditSelectedProject) {
+      return null;
+    }
+
+    const savedRecord = await saveDataAnalysisRecord(selectedProjectId, {
+      file_name: fileName,
+      quality_report: quality,
+      statistics_report: statistics,
+    });
+    setAnalysisRecords((current) => [
+      savedRecord,
+      ...current.filter((record) => record.id !== savedRecord.id),
+    ]);
+    return savedRecord;
+  }
+
+  async function handleRunPreparedDataWorkflow() {
+    if (!selectedProjectId || isCsvUploading || isStatisticsLoading || !canEditSelectedProject) {
+      return;
+    }
+
+    setError(null);
+
+    try {
+      const response = await fetch(preparedDataSamplePath);
+      if (!response.ok) {
+        throw new Error(`预备 DATA 读取失败：${response.status}`);
+      }
+      const csvText = await response.text();
+      const file = new File([csvText], preparedDataSampleFileName, { type: "text/csv" });
+      const defaults = await processCsvFile(file);
+      if (!defaults) {
+        return;
+      }
+      if (!defaults.outcomeColumns.length) {
+        setSelectedAgentId("data_analyst");
+        setError("预备 DATA 已完成质控，但没有可用于统计草案的数值结局列。");
+        return;
+      }
+
+      setWorkflowStatus("正在生成统计草案...");
+      setIsStatisticsLoading(true);
+      const statistics = await uploadDataStatisticsReport(
+        selectedProjectId,
+        file,
+        defaults.groupColumn,
+        defaults.outcomeColumns,
+      );
+      setStatisticsReport(statistics);
+      setFormalTestConfirmation(createFormalTestConfirmation(currentUser?.display_name ?? ""));
+      setWorkflowStatus("正在保存分析记录...");
+      const savedRecord = await saveAnalysisRecordFromReports(file.name, defaults.report, statistics);
+      await refreshDataAuditLogs(selectedProjectId);
+      setWorkflowSummary({
+        source: "prepared",
+        fileName: defaults.report.file_name,
+        rowCount: defaults.report.row_count,
+        columnCount: defaults.report.column_count,
+        chartCount: statistics.chart_specs.length,
+        saved: Boolean(savedRecord),
+        message: savedRecord
+          ? "预备 DATA 联调已完成并保存，可在已保存报告中恢复。"
+          : "预备 DATA 联调已完成，但未保存分析记录。",
+      });
+      setWorkflowStatus("已切换到 Alex Writer。");
+      setSelectedAgentId("writer");
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "预备 DATA 联调流程失败。");
+      setWorkflowStatus(null);
+    } finally {
+      setIsStatisticsLoading(false);
+    }
+  }
+
+  function handleLoadPreparedReferences() {
+    const report = buildPreparedReferenceReport();
+    setMentorRecommendationReport(applyMentorEvidenceReviews(report, mentorEvidenceReviews));
+    setSelectedAgentId("mentor");
   }
 
   function handleOutcomeColumnToggle(columnName: string) {
@@ -2768,6 +3650,7 @@ function App() {
     setError(null);
 
     try {
+      setWorkflowStatus("正在生成统计草案...");
       const report = await uploadDataStatisticsReport(
         selectedProjectId,
         uploadedCsvFile,
@@ -2775,11 +3658,24 @@ function App() {
         selectedOutcomeColumns,
       );
       setStatisticsReport(report);
+      if (qualityReport) {
+        setWorkflowSummary({
+          source: uploadedCsvFile.name === preparedDataSampleFileName ? "prepared" : "manual",
+          fileName: qualityReport.file_name,
+          rowCount: qualityReport.row_count,
+          columnCount: qualityReport.column_count,
+          chartCount: report.chart_specs.length,
+          saved: false,
+          message: "统计草案已生成，保存后可在分析记录中恢复。",
+        });
+      }
       setFormalTestConfirmation(createFormalTestConfirmation(currentUser?.display_name ?? ""));
       setSelectedAgentId("data_analyst");
       await refreshDataAuditLogs(selectedProjectId);
+      setWorkflowStatus("统计草案已生成。");
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "统计草案生成失败。");
+      setWorkflowStatus(null);
     } finally {
       setIsStatisticsLoading(false);
     }
@@ -3250,18 +4146,21 @@ function App() {
     setError(null);
 
     try {
-      const savedRecord = await saveDataAnalysisRecord(selectedProjectId, {
-        file_name: qualityReport.file_name,
-        quality_report: qualityReport,
-        statistics_report: statisticsReport,
+      await saveAnalysisRecordFromReports(qualityReport.file_name, qualityReport, statisticsReport);
+      setWorkflowSummary({
+        source: uploadedCsvFile?.name === preparedDataSampleFileName ? "prepared" : "manual",
+        fileName: qualityReport.file_name,
+        rowCount: qualityReport.row_count,
+        columnCount: qualityReport.column_count,
+        chartCount: statisticsReport?.chart_specs.length ?? 0,
+        saved: true,
+        message: "分析记录已保存，可在已保存报告中恢复。",
       });
-      setAnalysisRecords((current) => [
-        savedRecord,
-        ...current.filter((record) => record.id !== savedRecord.id),
-      ]);
+      setWorkflowStatus("分析记录已保存。");
       await refreshDataAuditLogs(selectedProjectId);
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "分析记录保存失败。");
+      setWorkflowStatus(null);
     } finally {
       setIsAnalysisRecordSaving(false);
     }
@@ -3280,7 +4179,19 @@ function App() {
       record.statistics_report?.formal_test_report?.confirmation ??
         createFormalTestConfirmation(currentUser?.display_name ?? ""),
     );
-    setSelectedAgentId("data_analyst");
+    setWorkflowSummary({
+      source: "restored",
+      fileName: record.file_name,
+      rowCount: record.row_count,
+      columnCount: record.column_count,
+      chartCount: record.chart_count,
+      saved: true,
+      message: record.statistics_report
+        ? "已从保存记录恢复统计草案，并切换到 Alex Writer。"
+        : "已从保存记录恢复质控报告。",
+    });
+    setWorkflowStatus(record.statistics_report ? "已恢复到 Alex Writer。" : "已恢复分析记录。");
+    setSelectedAgentId(record.statistics_report ? "writer" : "data_analyst");
   }
 
   function handleDownloadChartSvg(chart: ChartSpec) {
@@ -3560,6 +4471,37 @@ function App() {
                   </div>
                 ) : null}
 
+                <section className="pipeline-panel" aria-label="论文流程总览">
+                  <div className="pipeline-head">
+                    <div>
+                      <p className="eyebrow">论文流程总览</p>
+                      <h3>从选题到投稿前审查</h3>
+                    </div>
+                    <span>
+                      {pipelineSteps.filter((step) => step.status === "ready").length} / {pipelineSteps.length} 已就绪
+                    </span>
+                  </div>
+                  <div className="pipeline-step-list">
+                    {pipelineSteps.map((step, index) => (
+                      <button
+                        className={`pipeline-step status-${step.status} ${
+                          selectedAgentId === step.agentId ? "selected" : ""
+                        }`}
+                        type="button"
+                        key={step.id}
+                        onClick={() => setSelectedAgentId(step.agentId)}
+                      >
+                        <span className="pipeline-step-index">{index + 1}</span>
+                        <div>
+                          <strong>{step.title}</strong>
+                          <small>{step.detail}</small>
+                        </div>
+                        <em>{pipelineStatusLabels[step.status]}</em>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+
                 <div className="workbench-main">
                   <div className="side-workbench">
                     <section className="chat-column" aria-label="角色对话">
@@ -3831,6 +4773,43 @@ function App() {
                       <span>正在读取研究方案...</span>
                     </div>
                   ) : (
+                    <>
+                    <section className="protocol-quality-panel">
+                      <div className="protocol-quality-head">
+                        <div>
+                          <p className="eyebrow">方案质量检查</p>
+                          <h4>{protocolQualitySummary.completionPercent}% 完成</h4>
+                          <small>{protocolQualitySummary.nextAction}</small>
+                        </div>
+                        <button type="button" onClick={handleDownloadProtocolQualityCheck}>
+                          <Download aria-hidden="true" size={15} />
+                          <span>导出检查</span>
+                        </button>
+                      </div>
+                      <div className="protocol-quality-metrics">
+                        <span>已通过 {protocolQualitySummary.passedCount}</span>
+                        <span>需补充 {protocolQualitySummary.needsInputCount}</span>
+                        <span>高风险 {protocolQualitySummary.highRiskCount}</span>
+                      </div>
+                      <div className="protocol-quality-list">
+                        {protocolQualitySummary.items.map((item) => (
+                          <article className={`protocol-quality-item status-${item.status}`} key={item.key}>
+                            <div>
+                              <strong>{item.title}</strong>
+                              <small>{item.detail}</small>
+                            </div>
+                            <span>
+                              {item.status === "passed"
+                                ? "已通过"
+                                : item.status === "high_risk"
+                                  ? "高风险"
+                                  : "需补充"}
+                            </span>
+                            {item.status !== "passed" ? <p>{item.recommendation}</p> : null}
+                          </article>
+                        ))}
+                      </div>
+                    </section>
                     <div className="protocol-sections">
                       {protocolSections.map((section) => {
                         const isOpen = openProtocolSections[section.id];
@@ -3873,6 +4852,7 @@ function App() {
                         );
                       })}
                     </div>
+                    </>
                   )}
 
                   <div className="plan-draft-panel">
@@ -4048,7 +5028,50 @@ function App() {
                         onChange={handleCsvUpload}
                       />
                     </label>
+                    <button
+                      className="prepared-data-button"
+                      type="button"
+                      onClick={handleLoadPreparedData}
+                      disabled={isCsvUploading || isStatisticsLoading || !canEditSelectedProject}
+                    >
+                      {isCsvUploading ? (
+                        <Loader2 aria-hidden="true" className="spin" size={16} />
+                      ) : (
+                        <FileText aria-hidden="true" size={16} />
+                      )}
+                      <span>加载预备 DATA</span>
+                    </button>
+                    <button
+                      className="prepared-workflow-button"
+                      type="button"
+                      onClick={handleRunPreparedDataWorkflow}
+                      disabled={isCsvUploading || isStatisticsLoading || !canEditSelectedProject}
+                    >
+                      {isCsvUploading || isStatisticsLoading ? (
+                        <Loader2 aria-hidden="true" className="spin" size={16} />
+                      ) : (
+                        <Sparkles aria-hidden="true" size={16} />
+                      )}
+                      <span>{isCsvUploading || isStatisticsLoading ? "联调中" : "一键联调到 Writer"}</span>
+                    </button>
                   </div>
+
+                  {workflowStatus || workflowSummary ? (
+                    <div className="workflow-status-panel">
+                      {workflowStatus ? <strong>{workflowStatus}</strong> : null}
+                      {workflowSummary ? (
+                        <div className="workflow-summary-row">
+                          <span>{workflowSummary.fileName}</span>
+                          <span>
+                            {workflowSummary.rowCount} 行 / {workflowSummary.columnCount} 列
+                          </span>
+                          <span>{workflowSummary.chartCount} 张图</span>
+                          <span>{workflowSummary.saved ? "已保存" : "未保存"}</span>
+                        </div>
+                      ) : null}
+                      {workflowSummary ? <p>{workflowSummary.message}</p> : null}
+                    </div>
+                  ) : null}
 
                   {qualityReport ? (
                     <div className="data-report">
@@ -4890,7 +5913,7 @@ function App() {
                               </small>
                             </div>
                             <button type="button" onClick={() => handleRestoreAnalysisRecord(record)}>
-                              恢复
+                              {record.statistics_report ? "恢复到 Writer" : "恢复"}
                             </button>
                           </article>
                         ))}
@@ -5016,6 +6039,13 @@ function App() {
                     ) : null}
 
                     <form className="mentor-form" onSubmit={handleMentorSubmit}>
+                      <div className="mentor-prepared-row">
+                        <p>需要真实引用联调时，可先加载预备 DATA 的公开数据源引用。</p>
+                        <button type="button" onClick={handleLoadPreparedReferences}>
+                          <BookOpenCheck aria-hidden="true" size={15} />
+                          <span>加载预备引用</span>
+                        </button>
+                      </div>
                       <div className="mentor-form-grid">
                         <label>
                           <span>设备与治疗平台</span>
@@ -5551,6 +6581,14 @@ function App() {
                           <Download aria-hidden="true" size={15} />
                           <span>导出正文</span>
                         </button>
+                        <button
+                          type="button"
+                          onClick={handleDownloadMethodsResultsDraft}
+                          disabled={!writerMethodsResultsDraft}
+                        >
+                          <Download aria-hidden="true" size={15} />
+                          <span>导出结果</span>
+                        </button>
                         <FileText aria-hidden="true" size={20} />
                       </div>
                     </div>
@@ -5592,6 +6630,81 @@ function App() {
                         )}
                       </section>
                     </div>
+
+                    <section className="writer-methods-results-card">
+                      <div className="mentor-section-head">
+                        <strong>Methods / Results 草稿</strong>
+                        <span>{writerMethodsResultsDraft ? "来自 Data Lin" : "等待统计结果"}</span>
+                      </div>
+                      {writerMethodsResultsDraft ? (
+                        <>
+                        {workflowSummary ? (
+                          <div className="writer-source-strip">
+                            <span>{workflowSummary.fileName}</span>
+                            <span>
+                              {workflowSummary.rowCount} 行 / {workflowSummary.columnCount} 列
+                            </span>
+                            <span>{workflowSummary.saved ? "来自已保存记录" : "尚未保存"}</span>
+                            <span>
+                              {workflowSummary.source === "restored"
+                                ? "已恢复"
+                                : workflowSummary.source === "prepared"
+                                  ? "预备 DATA"
+                                  : "手动 CSV"}
+                            </span>
+                          </div>
+                        ) : null}
+                        <div className="writer-methods-results-layout">
+                          <article>
+                            <strong>Methods</strong>
+                            {writerMethodsResultsDraft.methodsParagraphs.map((paragraph) => (
+                              <p key={paragraph}>{paragraph}</p>
+                            ))}
+                          </article>
+                          <article>
+                            <strong>Results</strong>
+                            {writerMethodsResultsDraft.resultsParagraphs.map((paragraph) => (
+                              <p key={paragraph}>{paragraph}</p>
+                            ))}
+                          </article>
+                          <article>
+                            <strong>正式检验</strong>
+                            <ul>
+                              {writerMethodsResultsDraft.formalTestLines.map((line) => (
+                                <li key={line}>{line}</li>
+                              ))}
+                            </ul>
+                          </article>
+                          <article>
+                            <strong>待补充</strong>
+                            <ul>
+                              {(writerMethodsResultsDraft.missingItems.length
+                                ? writerMethodsResultsDraft.missingItems
+                                : ["当前没有系统识别出的阻断项；正式投稿前仍需人工复核。"]
+                              ).map((item) => (
+                                <li key={item}>{item}</li>
+                              ))}
+                            </ul>
+                          </article>
+                          {writerMethodsResultsDraft.chartLines.length ? (
+                            <article className="writer-methods-results-wide">
+                              <strong>图表摘要</strong>
+                              <ul>
+                                {writerMethodsResultsDraft.chartLines.map((line) => (
+                                  <li key={line}>{line}</li>
+                                ))}
+                              </ul>
+                            </article>
+                          ) : null}
+                        </div>
+                        </>
+                      ) : (
+                        <p className="writer-empty">
+                          先在 Dr. Data Lin 中加载预备 DATA 或上传脱敏 CSV，并生成统计草案；这里会整理 Methods
+                          和 Results 写作草稿。
+                        </p>
+                      )}
+                    </section>
 
                     <section className="writer-draft-card">
                       <div className="mentor-section-head">
@@ -5973,10 +7086,67 @@ function App() {
                   </section>
                 ) : null}
 
+                {shouldShowReviewerWorkspace ? (
+                  <section className="reviewer-panel" aria-label="Rev. Dr. Helena Skov 审稿工作区">
+                    <div className="reviewer-head">
+                      <div>
+                        <p className="eyebrow">Rev. Dr. Helena Skov</p>
+                        <h3>投稿前审稿清单</h3>
+                        <small>规则型自查：科学性、数据、统计、写作和引用边界。</small>
+                      </div>
+                      <button type="button" onClick={handleDownloadReviewerReport}>
+                        <Download aria-hidden="true" size={15} />
+                        <span>导出清单</span>
+                      </button>
+                    </div>
+
+                    <div className="reviewer-summary-grid">
+                      <article className="risk-red">
+                        <span>高风险</span>
+                        <strong>{reviewerChecks.filter((item) => item.severity === "red").length}</strong>
+                      </article>
+                      <article className="risk-orange">
+                        <span>需复核</span>
+                        <strong>{reviewerChecks.filter((item) => item.severity === "orange").length}</strong>
+                      </article>
+                      <article className="risk-green">
+                        <span>已通过</span>
+                        <strong>{reviewerChecks.filter((item) => item.severity === "green").length}</strong>
+                      </article>
+                    </div>
+
+                    <div className="reviewer-check-list">
+                      {reviewerChecks.map((item) => (
+                        <article className={`reviewer-check-item risk-${item.severity}`} key={item.title}>
+                          <div className="reviewer-check-head">
+                            <div>
+                              <span className={`status-badge risk-${item.severity}`}>
+                                {riskLabels[item.severity]}
+                              </span>
+                              <strong>{item.title}</strong>
+                            </div>
+                            <small>{item.status}</small>
+                          </div>
+                          <p>{item.detail}</p>
+                          <em>{item.recommendation}</em>
+                        </article>
+                      ))}
+                    </div>
+
+                    <section className="reviewer-boundary-note">
+                      <strong>审稿边界</strong>
+                      <p>
+                        这是投稿前规则自查，不替代真实同行评审。红色项目应先处理；橙色项目进入正式投稿前需人工复核。
+                      </p>
+                    </section>
+                  </section>
+                ) : null}
+
                 {!shouldShowMentorWorkspace &&
                 !shouldShowProtocolWorkspace &&
                 !shouldShowDataWorkspace &&
-                !shouldShowWriterWorkspace ? (
+                !shouldShowWriterWorkspace &&
+                !shouldShowReviewerWorkspace ? (
                   <section className="expert-placeholder-panel" aria-label="专家功能提示">
                     <div>
                       <p className="eyebrow">{selectedAgent?.role_name ?? "专家功能"}</p>
