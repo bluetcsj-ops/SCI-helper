@@ -1433,6 +1433,78 @@ button {
   background: #eef8f1;
 }
 
+.reviewer-deep-comments {
+  display: grid;
+  gap: 12px;
+  border: 1px solid rgba(47, 113, 151, 0.14);
+  border-radius: 8px;
+  padding: 14px;
+  background: #f7fbfd;
+}
+
+.reviewer-deep-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.reviewer-deep-head h4 {
+  margin: 0;
+  color: #22354a;
+  font-size: 18px;
+  line-height: 1.3;
+}
+
+.reviewer-deep-head button {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid rgba(47, 113, 151, 0.22);
+  border-radius: 8px;
+  padding: 0 10px;
+  color: #24546f;
+  background: #ffffff;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.reviewer-deep-comments > p {
+  margin: 0;
+  color: #4f6074;
+  line-height: 1.55;
+}
+
+.reviewer-deep-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.reviewer-deep-grid article {
+  display: grid;
+  gap: 8px;
+  border-radius: 8px;
+  padding: 12px;
+  background: #ffffff;
+}
+
+.reviewer-deep-grid strong {
+  color: #22354a;
+}
+
+.reviewer-deep-grid ul,
+.reviewer-deep-grid ol {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+  color: #4f6074;
+  line-height: 1.45;
+}
+
 .reviewer-check-list {
   display: grid;
   gap: 10px;
@@ -3513,6 +3585,7 @@ button {
   .writer-draft-grid,
   .mentor-preview-grid,
   .reviewer-summary-grid,
+  .reviewer-deep-grid,
   .mentor-preview-actions {
     grid-template-columns: 1fr;
   }
@@ -3546,6 +3619,7 @@ button {
   .data-audit-head,
   .chart-preview-head,
   .reviewer-head,
+  .reviewer-deep-head,
   .reviewer-check-head,
   .stat-guidance-head,
   .formal-test-head,

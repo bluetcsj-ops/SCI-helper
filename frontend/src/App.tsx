@@ -949,6 +949,102 @@ function buildReviewerChecks(params: {
   ];
 }
 
+function buildReviewerDeepComments(params: {
+  reviewerChecks: ReviewerCheckItem[];
+  protocol: ProjectProtocol | null;
+  qualityReport: DataQualityReport | null;
+  statisticsReport: DataStatisticsReport | null;
+  writerMethodsResultsDraft: WriterMethodsResultsDraft | null;
+  introductionHasText: boolean;
+  citationIssueCount: number;
+  candidateReferenceCount: number;
+  reminderSummary: ProjectReminderSummary | null;
+}): ReviewerDeepComments {
+  const {
+    reviewerChecks,
+    protocol,
+    qualityReport,
+    statisticsReport,
+    writerMethodsResultsDraft,
+    introductionHasText,
+    citationIssueCount,
+    candidateReferenceCount,
+    reminderSummary,
+  } = params;
+  const redChecks = reviewerChecks.filter((item) => item.severity === "red");
+  const orangeChecks = reviewerChecks.filter((item) => item.severity === "orange");
+  const formalTestReport = statisticsReport?.formal_test_report ?? null;
+  const decision = redChecks.length
+    ? "暂不建议进入投稿版本冻结"
+    : orangeChecks.length
+      ? "可以进入投稿前修改轮，但需要人工复核"
+      : "可以准备投稿前最终人工审查";
+  const summary = redChecks.length
+    ? `当前仍有 ${redChecks.length} 项高风险问题，会影响研究方案、数据、统计或写作证据链的可信度。`
+    : orangeChecks.length
+      ? `当前主流程已经跑通，但还有 ${orangeChecks.length} 项需要人工复核，建议完成修改后再冻结稿件。`
+      : "当前规则型审查未发现阻断项，可以进入目标期刊格式、伦理材料和全文一致性的最终人工复核。";
+  const majorConcerns = redChecks.length
+    ? redChecks.map((item) => `${item.title}：${item.recommendation}`)
+    : [
+        protocol?.research_question
+          ? `研究问题已经形成，但仍需确认主要终点、数据字段和统计路线均直接服务于该问题：${protocol.research_question}`
+          : "未发现高风险项，但研究问题仍需在最终稿中保持单一、可检验、可复现。",
+      ];
+  const minorConcerns = orangeChecks.length
+    ? orangeChecks.map((item) => `${item.title}：${item.recommendation}`)
+    : ["未发现明显的次要风险项；建议继续核对术语、缩写、图表标题和目标期刊格式。"];
+  const methodsResultsSuggestions = [
+    qualityReport
+      ? `Methods 中应说明数据来自 ${qualityReport.file_name}，样本量为 ${qualityReport.row_count} 行、${qualityReport.column_count} 列，并说明原始 CSV 不在系统中持久化保存。`
+      : "Methods 仍缺少可审查的数据来源、样本量和字段说明。",
+    statisticsReport
+      ? formalTestReport
+        ? `Results 可引用正式检验结果，但需要逐项核对 ${formalTestReport.results.length} 个检验的适用条件、效应量和多重比较边界。`
+        : "Results 目前只能写描述性统计，不应加入 P 值、置信区间或显著性结论。"
+      : "Results 仍缺少统计草案，建议先回到 Dr. Data Lin 完成数据质控和统计摘要。",
+    writerMethodsResultsDraft
+      ? writerMethodsResultsDraft.missingItems.length
+        ? `Writer 草稿仍提示 ${writerMethodsResultsDraft.missingItems.length} 个待补充项，应逐项处理后再进入终稿。`
+        : "Writer 的 Methods / Results 草稿已形成，可以进入逐句一致性核对。"
+      : "Alex Writer 尚未生成 Methods / Results 草稿，Reviewer 只能进行框架级审查。",
+  ];
+  const introductionSuggestions = [
+    candidateReferenceCount
+      ? `Introduction 已有 ${candidateReferenceCount} 条候选引用，建议逐条确认 DOI/PMID、用途标记和全文核对状态。`
+      : "Introduction 缺少可追溯候选引用，应先由 Mentor 加载或生成引用清单。",
+    citationIssueCount
+      ? `当前仍有 ${citationIssueCount} 项引用质控问题，需优先处理后再导出正文。`
+      : "当前未发现系统级引用绑定异常，正式投稿前仍需按目标期刊格式人工核对。",
+    introductionHasText
+      ? "Introduction 已有正文基础，建议检查背景、研究空白和研究目的之间是否自然衔接。"
+      : "Introduction 正文仍未充分形成，建议先完成背景、研究空白和目的段落。",
+  ];
+  const revisionPriorities = [
+    redChecks[0]?.recommendation ??
+      orangeChecks[0]?.recommendation ??
+      "先完成目标期刊格式、伦理材料、图表编号和全文交叉引用核对。",
+    statisticsReport
+      ? formalTestReport
+        ? "复核正式检验结果是否与研究假设、分组定义和主要终点一致。"
+        : "如需要推断性结论，先完成正式检验人工确认；否则在稿件中明确当前仅为描述性分析。"
+      : "先完成 Data Lin 统计草案，再让 Writer 和 Reviewer 读取同一份结果。",
+    reminderSummary?.overdue_count
+      ? "处理 Rhea 标记的逾期任务，避免执行风险进入投稿前版本。"
+      : "保持 Rhea 里程碑、Writer 草稿和 Reviewer 清单同步更新。",
+  ];
+
+  return {
+    decision,
+    summary,
+    majorConcerns,
+    minorConcerns,
+    methodsResultsSuggestions,
+    introductionSuggestions,
+    revisionPriorities,
+  };
+}
+
 function buildPipelineSteps(params: {
   candidateReferenceCount: number;
   protocolHasContent: boolean;
@@ -1172,6 +1268,16 @@ interface ReviewerCheckItem {
   status: string;
   detail: string;
   recommendation: string;
+}
+
+interface ReviewerDeepComments {
+  decision: string;
+  summary: string;
+  majorConcerns: string[];
+  minorConcerns: string[];
+  methodsResultsSuggestions: string[];
+  introductionSuggestions: string[];
+  revisionPriorities: string[];
 }
 
 interface PipelineStep {
@@ -2014,6 +2120,31 @@ function App() {
       statisticsReport,
       writerMethodsResultsDraft,
       writerIntroductionDraftForm,
+      introductionCitationQualityIssues.length,
+      mentorCandidateReferences.length,
+      reminderSummary,
+    ],
+  );
+  const reviewerDeepComments = useMemo(
+    () =>
+      buildReviewerDeepComments({
+        reviewerChecks,
+        protocol,
+        qualityReport,
+        statisticsReport,
+        writerMethodsResultsDraft,
+        introductionHasText,
+        citationIssueCount: introductionCitationQualityIssues.length,
+        candidateReferenceCount: mentorCandidateReferences.length,
+        reminderSummary,
+      }),
+    [
+      reviewerChecks,
+      protocol,
+      qualityReport,
+      statisticsReport,
+      writerMethodsResultsDraft,
+      introductionHasText,
       introductionCitationQualityIssues.length,
       mentorCandidateReferences.length,
       reminderSummary,
@@ -3114,6 +3245,53 @@ function App() {
     try {
       link.href = url;
       link.download = "pre-submission-review.md";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  function handleDownloadReviewerDeepComments() {
+    const content = [
+      "# Reviewer 深度审稿意见",
+      "",
+      `导出时间：${new Date().toLocaleString("zh-CN")}`,
+      selectedProject ? `关联项目：${selectedProject.name} / ${selectedProject.title}` : "关联项目：未指定",
+      protocol?.research_question ? `研究问题：${protocol.research_question}` : "研究问题：待补充",
+      "",
+      "## 总体判断",
+      `- 结论：${reviewerDeepComments.decision}`,
+      `- 摘要：${reviewerDeepComments.summary}`,
+      "",
+      "## Major concerns",
+      ...reviewerDeepComments.majorConcerns.map((item) => `- ${item}`),
+      "",
+      "## Minor concerns",
+      ...reviewerDeepComments.minorConcerns.map((item) => `- ${item}`),
+      "",
+      "## Methods / Results 修改建议",
+      ...reviewerDeepComments.methodsResultsSuggestions.map((item) => `- ${item}`),
+      "",
+      "## Introduction 与引用建议",
+      ...reviewerDeepComments.introductionSuggestions.map((item) => `- ${item}`),
+      "",
+      "## 下一轮修改优先级",
+      ...reviewerDeepComments.revisionPriorities.map((item, index) => `${index + 1}. ${item}`),
+      "",
+      "## 使用边界",
+      "- 这是规则型深度审稿意见，用于流程联调和投稿前自查，不替代真实同行评审或统计专家审查。",
+      "- 正式投稿前仍需人工复核伦理、数据来源、统计方法、引用格式、图表和目标期刊要求。",
+      "",
+    ].join("\n");
+
+    const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    try {
+      link.href = url;
+      link.download = "reviewer-deep-comments.md";
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -7185,6 +7363,54 @@ function App() {
                         <strong>{reviewerChecks.filter((item) => item.severity === "green").length}</strong>
                       </article>
                     </div>
+
+                    <section className="reviewer-deep-comments">
+                      <div className="reviewer-deep-head">
+                        <div>
+                          <p className="eyebrow">Deep review comments</p>
+                          <h4>{reviewerDeepComments.decision}</h4>
+                        </div>
+                        <button type="button" onClick={handleDownloadReviewerDeepComments}>
+                          <FileText aria-hidden="true" size={15} />
+                          <span>导出深度意见</span>
+                        </button>
+                      </div>
+                      <p>{reviewerDeepComments.summary}</p>
+                      <div className="reviewer-deep-grid">
+                        <article>
+                          <strong>Major concerns</strong>
+                          <ul>
+                            {reviewerDeepComments.majorConcerns.map((item) => (
+                              <li key={item}>{item}</li>
+                            ))}
+                          </ul>
+                        </article>
+                        <article>
+                          <strong>Minor concerns</strong>
+                          <ul>
+                            {reviewerDeepComments.minorConcerns.map((item) => (
+                              <li key={item}>{item}</li>
+                            ))}
+                          </ul>
+                        </article>
+                        <article>
+                          <strong>Methods / Results</strong>
+                          <ul>
+                            {reviewerDeepComments.methodsResultsSuggestions.map((item) => (
+                              <li key={item}>{item}</li>
+                            ))}
+                          </ul>
+                        </article>
+                        <article>
+                          <strong>下一轮优先级</strong>
+                          <ol>
+                            {reviewerDeepComments.revisionPriorities.map((item) => (
+                              <li key={item}>{item}</li>
+                            ))}
+                          </ol>
+                        </article>
+                      </div>
+                    </section>
 
                     <div className="reviewer-check-list">
                       {reviewerChecks.map((item) => (
