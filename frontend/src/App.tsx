@@ -4500,6 +4500,77 @@ function App() {
                       </button>
                     ))}
                   </div>
+                  <div className="pipeline-action-strip" aria-label="主流程快捷操作">
+                    <div>
+                      <strong>主流程快捷操作</strong>
+                      <span>
+                        先加载公开引用和预备 DATA，再一键联调到 Writer，最后进入 Reviewer 做投稿前检查。
+                      </span>
+                    </div>
+                    <div className="pipeline-action-buttons">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedAgentId("mentor");
+                          handleLoadPreparedReferences();
+                        }}
+                        disabled={!canEditSelectedProject}
+                      >
+                        <BookOpenCheck aria-hidden="true" size={15} />
+                        <span>加载预备引用</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedAgentId("data_analyst");
+                          void handleLoadPreparedData();
+                        }}
+                        disabled={isCsvUploading || isStatisticsLoading || !canEditSelectedProject}
+                      >
+                        {isCsvUploading ? (
+                          <Loader2 aria-hidden="true" className="spin" size={15} />
+                        ) : (
+                          <FileText aria-hidden="true" size={15} />
+                        )}
+                        <span>加载预备 DATA</span>
+                      </button>
+                      <button
+                        className="primary"
+                        type="button"
+                        onClick={() => {
+                          setSelectedAgentId("data_analyst");
+                          void handleRunPreparedDataWorkflow();
+                        }}
+                        disabled={isCsvUploading || isStatisticsLoading || !canEditSelectedProject}
+                      >
+                        {isCsvUploading || isStatisticsLoading ? (
+                          <Loader2 aria-hidden="true" className="spin" size={15} />
+                        ) : (
+                          <Sparkles aria-hidden="true" size={15} />
+                        )}
+                        <span>{isCsvUploading || isStatisticsLoading ? "联调中" : "一键联调到 Writer"}</span>
+                      </button>
+                      <button type="button" onClick={() => setSelectedAgentId("writer")}>
+                        <FileText aria-hidden="true" size={15} />
+                        <span>查看 Writer</span>
+                      </button>
+                      <button type="button" onClick={() => setSelectedAgentId("reviewer")}>
+                        <ShieldCheck aria-hidden="true" size={15} />
+                        <span>查看 Reviewer</span>
+                      </button>
+                    </div>
+                    {workflowStatus || workflowSummary ? (
+                      <div className="pipeline-action-status">
+                        {workflowStatus ? <strong>{workflowStatus}</strong> : null}
+                        {workflowSummary ? (
+                          <span>
+                            {workflowSummary.fileName} · {workflowSummary.rowCount} 行 /{" "}
+                            {workflowSummary.columnCount} 列 · {workflowSummary.saved ? "已保存" : "未保存"}
+                          </span>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
                 </section>
 
                 <div className="workbench-main">

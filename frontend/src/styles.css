@@ -507,6 +507,75 @@ button {
   background: #c43f3f;
 }
 
+.pipeline-action-strip {
+  display: grid;
+  gap: 10px;
+  border: 1px solid rgba(47, 113, 151, 0.16);
+  border-radius: 8px;
+  padding: 12px;
+  background: #f5fbfd;
+}
+
+.pipeline-action-strip > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.pipeline-action-strip strong {
+  color: #22354a;
+  font-size: 13px;
+}
+
+.pipeline-action-strip span {
+  color: #4f6074;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.pipeline-action-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pipeline-action-buttons button {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid rgba(47, 113, 151, 0.22);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: #24546f;
+  background: #ffffff;
+  font-weight: 900;
+}
+
+.pipeline-action-buttons button.primary {
+  border-color: rgba(191, 96, 13, 0.3);
+  color: #ffffff;
+  background: linear-gradient(135deg, #d97706, #c4511a);
+}
+
+.pipeline-action-buttons button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.pipeline-action-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  border-top: 1px solid rgba(47, 113, 151, 0.14);
+  padding-top: 10px;
+}
+
+.pipeline-action-status strong {
+  color: #2d6e52;
+}
+
 .section-heading span {
   color: #667085;
   font-size: 13px;
