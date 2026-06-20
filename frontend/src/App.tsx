@@ -1676,6 +1676,75 @@ function buildReviewerDeepComments(params: {
   };
 }
 
+function buildReviewerResponseDraft(params: {
+  reviewerChecks: ReviewerCheckItem[];
+  reviewerDeepComments: ReviewerDeepComments;
+  protocolDataConsistencyCheck: ProtocolDataConsistencyCheck;
+  submissionPackageChecklist: SubmissionPackageChecklist;
+}): ReviewerResponseDraft {
+  const {
+    reviewerChecks,
+    reviewerDeepComments,
+    protocolDataConsistencyCheck,
+    submissionPackageChecklist,
+  } = params;
+  const highRiskChecks = reviewerChecks.filter((item) => item.severity === "red");
+  const reviewChecks = reviewerChecks.filter((item) => item.severity === "orange");
+  const majorResponses = (highRiskChecks.length ? highRiskChecks : reviewerDeepComments.majorConcerns.map((concern) => ({
+    title: "Major concern",
+    recommendation: concern,
+    detail: concern,
+    status: "Drafted",
+    severity: "orange" as ReviewerCheckSeverity,
+  }))).slice(0, 5).map(
+    (item, index) =>
+      `Response ${index + 1}: Thank you for raising this important point regarding ${item.title}. We will revise the manuscript by addressing the issue as follows: ${item.recommendation} [Insert exact manuscript location and revised text].`,
+  );
+  const minorResponses = (reviewChecks.length ? reviewChecks : reviewerDeepComments.minorConcerns.map((concern) => ({
+    title: "Minor concern",
+    recommendation: concern,
+    detail: concern,
+    status: "Drafted",
+    severity: "orange" as ReviewerCheckSeverity,
+  }))).slice(0, 5).map(
+    (item, index) =>
+      `Response ${index + 1}: We appreciate this suggestion. We will clarify ${item.title} and revise the relevant wording: ${item.recommendation} [Insert section/page/line after revision].`,
+  );
+  const methodsDataResponses = [
+    ...reviewerDeepComments.methodsResultsSuggestions.slice(0, 3),
+    ...protocolDataConsistencyCheck.items
+      .filter((item) => item.status !== "passed")
+      .slice(0, 3)
+      .map((item) => `${item.title}: ${item.recommendation}`),
+  ].map(
+    (item, index) =>
+      `Methods/Data response ${index + 1}: ${item} We will update the Methods, Results, or supplementary material accordingly and ensure that the revised claim is traceable to the verified data output.`,
+  );
+  const manuscriptChanges = [
+    ...reviewerDeepComments.revisionPriorities.slice(0, 4),
+    ...submissionPackageChecklist.items
+      .filter((item) => item.status !== "ready")
+      .slice(0, 4)
+      .map((item) => `${item.title}: ${item.detail}`),
+  ];
+  const manualPlaceholders = [
+    "Paste the exact reviewer comment above each response.",
+    "Add page and line numbers after manuscript revision.",
+    "Replace generic wording with the exact revised sentence or paragraph.",
+    "Confirm that all statistical and ethical statements are approved before final response submission.",
+  ];
+
+  return {
+    openingParagraph:
+      "We thank the reviewers and editor for their careful evaluation of our manuscript. We have revised the manuscript accordingly and provide a point-by-point response below. Reviewer comments should be pasted verbatim before each response in the final response letter.",
+    majorResponses,
+    minorResponses,
+    methodsDataResponses,
+    manuscriptChanges: Array.from(new Set(manuscriptChanges)).slice(0, 8),
+    manualPlaceholders,
+  };
+}
+
 function buildPipelineSteps(params: {
   candidateReferenceCount: number;
   protocolHasContent: boolean;
@@ -2239,6 +2308,15 @@ interface ReviewerDeepComments {
   methodsResultsSuggestions: string[];
   introductionSuggestions: string[];
   revisionPriorities: string[];
+}
+
+interface ReviewerResponseDraft {
+  openingParagraph: string;
+  majorResponses: string[];
+  minorResponses: string[];
+  methodsDataResponses: string[];
+  manuscriptChanges: string[];
+  manualPlaceholders: string[];
 }
 
 interface PipelineStep {
@@ -3314,6 +3392,16 @@ function App() {
       journalTemplateReadiness,
       reviewerChecks,
     ],
+  );
+  const reviewerResponseDraft = useMemo(
+    () =>
+      buildReviewerResponseDraft({
+        reviewerChecks,
+        reviewerDeepComments,
+        protocolDataConsistencyCheck,
+        submissionPackageChecklist,
+      }),
+    [reviewerChecks, reviewerDeepComments, protocolDataConsistencyCheck, submissionPackageChecklist],
   );
   const pipelineSteps = useMemo(
     () =>
@@ -4744,6 +4832,60 @@ function App() {
     try {
       link.href = url;
       link.download = "reviewer-deep-comments.md";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  function handleDownloadReviewerResponseDraft() {
+    const content = [
+      "# Response to Reviewers 草稿",
+      "",
+      `导出时间：${new Date().toLocaleString("zh-CN")}`,
+      selectedProject ? `关联项目：${selectedProject.name} / ${selectedProject.title}` : "关联项目：未指定",
+      "",
+      "## Opening",
+      reviewerResponseDraft.openingParagraph,
+      "",
+      "## Major responses",
+      ...reviewerResponseDraft.majorResponses.flatMap((item, index) => [
+        `### Major response ${index + 1}`,
+        item,
+        "",
+      ]),
+      "## Minor responses",
+      ...reviewerResponseDraft.minorResponses.flatMap((item, index) => [
+        `### Minor response ${index + 1}`,
+        item,
+        "",
+      ]),
+      "## Methods / Data responses",
+      ...reviewerResponseDraft.methodsDataResponses.flatMap((item, index) => [
+        `### Methods/Data response ${index + 1}`,
+        item,
+        "",
+      ]),
+      "## Manuscript changes checklist",
+      ...reviewerResponseDraft.manuscriptChanges.map((item) => `- ${item}`),
+      "",
+      "## Manual placeholders",
+      ...reviewerResponseDraft.manualPlaceholders.map((item) => `- ${item}`),
+      "",
+      "## 使用边界",
+      "- 该草稿是基于系统自查生成的回复模板，不是对真实审稿意见的最终回复。",
+      "- 正式 Response to Reviewers 必须逐条粘贴审稿人原文，并人工确认页码、行号和修改内容。",
+      "",
+    ].join("\n");
+
+    const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    try {
+      link.href = url;
+      link.download = "response-to-reviewers-draft.md";
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -9528,6 +9670,54 @@ function App() {
                               <li key={item}>{item}</li>
                             ))}
                           </ol>
+                        </article>
+                      </div>
+                    </section>
+
+                    <section className="reviewer-response-panel">
+                      <div className="reviewer-deep-head">
+                        <div>
+                          <p className="eyebrow">Response to Reviewers</p>
+                          <h4>逐条回复草稿</h4>
+                        </div>
+                        <button type="button" onClick={handleDownloadReviewerResponseDraft}>
+                          <FileText aria-hidden="true" size={15} />
+                          <span>导出回复</span>
+                        </button>
+                      </div>
+                      <p>{reviewerResponseDraft.openingParagraph}</p>
+                      <div className="reviewer-response-grid">
+                        <article>
+                          <strong>Major responses</strong>
+                          <ol>
+                            {reviewerResponseDraft.majorResponses.map((item) => (
+                              <li key={item}>{item}</li>
+                            ))}
+                          </ol>
+                        </article>
+                        <article>
+                          <strong>Minor responses</strong>
+                          <ol>
+                            {reviewerResponseDraft.minorResponses.map((item) => (
+                              <li key={item}>{item}</li>
+                            ))}
+                          </ol>
+                        </article>
+                        <article>
+                          <strong>Methods / Data responses</strong>
+                          <ol>
+                            {reviewerResponseDraft.methodsDataResponses.map((item) => (
+                              <li key={item}>{item}</li>
+                            ))}
+                          </ol>
+                        </article>
+                        <article>
+                          <strong>Manuscript changes</strong>
+                          <ul>
+                            {reviewerResponseDraft.manuscriptChanges.map((item) => (
+                              <li key={item}>{item}</li>
+                            ))}
+                          </ul>
                         </article>
                       </div>
                     </section>

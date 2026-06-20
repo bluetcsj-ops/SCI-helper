@@ -1862,6 +1862,49 @@ button {
   line-height: 1.45;
 }
 
+.reviewer-response-panel {
+  display: grid;
+  gap: 12px;
+  border: 1px solid rgba(47, 113, 151, 0.14);
+  border-radius: 8px;
+  padding: 14px;
+  background: #f8fbff;
+}
+
+.reviewer-response-panel > p {
+  margin: 0;
+  color: #4f6074;
+  line-height: 1.55;
+}
+
+.reviewer-response-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.reviewer-response-grid article {
+  display: grid;
+  gap: 8px;
+  border-radius: 8px;
+  padding: 12px;
+  background: #ffffff;
+}
+
+.reviewer-response-grid strong {
+  color: #22354a;
+}
+
+.reviewer-response-grid ul,
+.reviewer-response-grid ol {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+  color: #4f6074;
+  line-height: 1.45;
+}
+
 .reviewer-check-list {
   display: grid;
   gap: 10px;
@@ -4080,6 +4123,7 @@ button {
   .reviewer-summary-grid,
   .submission-summary-grid,
   .reviewer-deep-grid,
+  .reviewer-response-grid,
   .mentor-preview-actions {
     grid-template-columns: 1fr;
   }
