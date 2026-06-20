@@ -756,6 +756,106 @@ function buildPreparedReferenceReport(): MentorRecommendationResponse {
   };
 }
 
+function buildDataAnalysisPlanSuggestion(params: {
+  protocol: ProjectProtocol | null;
+  qualityReport: DataQualityReport | null;
+  statisticsReport: DataStatisticsReport | null;
+}): DataAnalysisPlanSuggestion {
+  const { protocol, qualityReport, statisticsReport } = params;
+
+  if (!qualityReport) {
+    return {
+      readinessLabel: "等待数据",
+      mainAnalyses: ["先加载预备 DATA 或上传脱敏 CSV，生成字段类型、缺失率和隐私风险报告。"],
+      optionalAnalyses: [],
+      discouragedAnalyses: ["在没有 CSV 质控报告前，不建议选择统计方法或撰写 Results。"],
+      manualConfirmations: ["确认数据来源、纳入排除标准、伦理审批和脱敏状态。"],
+      detectedDesign: protocol?.study_type?.trim() || "尚未识别",
+      candidateGroupColumns: [],
+      candidateOutcomeColumns: [],
+    };
+  }
+
+  const numericColumns = qualityReport.columns
+    .filter((column) => column.inferred_type === "numeric" && column.missing_percent < 40)
+    .map((column) => column.name);
+  const categoricalColumns = qualityReport.columns
+    .filter(
+      (column) =>
+        column.inferred_type !== "numeric" &&
+        column.inferred_type !== "empty" &&
+        column.unique_count > 1 &&
+        column.unique_count <= 12 &&
+        column.missing_percent < 40,
+    )
+    .map((column) => column.name);
+  const highMissingColumns = qualityReport.columns
+    .filter((column) => column.missing_percent >= 40)
+    .map((column) => column.name);
+  const privacyRisk = qualityReport.privacy_report?.risk_level ?? "green";
+  const formalTestReport = statisticsReport?.formal_test_report ?? null;
+  const detectedDesign =
+    protocol?.study_type?.trim() ||
+    (categoricalColumns.length && numericColumns.length ? "分组观察性分析候选" : "描述性分析候选");
+  const mainAnalyses = [
+    numericColumns.length
+      ? `描述性统计：优先汇总 ${numericColumns.slice(0, 4).join("、")} 的 n、均值、标准差、中位数和范围。`
+      : "描述性统计：当前未识别到低缺失数值列，先复核字段类型。",
+    categoricalColumns.length
+      ? `分组比较候选：可用 ${categoricalColumns.slice(0, 3).join("、")} 作为分组变量，比较主要数值结局。`
+      : "分组比较候选：当前缺少低缺失、低水平数的分类分组变量。",
+    statisticsReport
+      ? formalTestReport
+        ? `正式检验已生成：复核 ${formalTestReport.results.length} 项检验的适用条件、效应量和多重比较边界。`
+        : "已有统计草案但未执行正式检验：Results 只能保留描述性结论和待检验提示。"
+      : "生成统计草案：先选择一个分组列和 1-3 个数值结局列，生成可写入 Writer 的统计摘要。",
+  ];
+  const optionalAnalyses = [
+    numericColumns.length >= 2 ? "相关性探索：可在数值结局之间做散点图或相关系数候选，但需先确认临床意义。" : null,
+    categoricalColumns.length >= 2
+      ? "分层/亚组探索：可考虑按第二个分类字段做亚组描述，但不建议在样本量不足时做过多比较。"
+      : null,
+    qualityReport.row_count >= 50 && numericColumns.length && categoricalColumns.length
+      ? "回归模型候选：样本量和字段结构允许初步讨论线性/逻辑回归，但需后续统计专家确认。"
+      : null,
+  ].filter(Boolean) as string[];
+  const discouragedAnalyses = [
+    qualityReport.row_count < 30 ? "样本量较小，不建议做复杂多变量模型或过多亚组比较。" : null,
+    highMissingColumns.length
+      ? `不建议直接使用高缺失字段作为主终点或核心协变量：${highMissingColumns.slice(0, 5).join("、")}。`
+      : null,
+    privacyRisk === "red" ? "隐私风险为高风险时，不建议继续正式统计或写作输出。" : null,
+    formalTestReport ? null : "正式检验前不建议报告 P 值、置信区间或显著性判断。",
+  ].filter(Boolean) as string[];
+  const manualConfirmations = [
+    "确认主要终点和次要终点是否已经在研究方案中锁定。",
+    "确认分组变量不是患者 ID、住院 ID 或其他不可解释的标识符。",
+    "确认缺失值处理策略、异常值处理策略和多重比较边界。",
+    privacyRisk === "green" ? "确认脱敏检查记录可随审计链路保留。" : "先处理脱敏与隐私风险后再进入正式分析。",
+    protocol?.statistical_plan?.trim()
+      ? `对照方案中的统计路线：${protocol.statistical_plan}`
+      : "补充 Project Protocol 中的统计路线，避免 Data Lin 与论文方案脱节。",
+  ];
+  const readinessLabel = privacyRisk === "red"
+    ? "隐私阻断"
+    : statisticsReport
+      ? formalTestReport
+        ? "可进入结果复核"
+        : "可进入正式检验确认"
+      : "可生成统计草案";
+
+  return {
+    readinessLabel,
+    mainAnalyses,
+    optionalAnalyses,
+    discouragedAnalyses,
+    manualConfirmations,
+    detectedDesign,
+    candidateGroupColumns: categoricalColumns.slice(0, 6),
+    candidateOutcomeColumns: numericColumns.slice(0, 6),
+  };
+}
+
 function buildWriterMethodsResultsDraft(
   qualityReport: DataQualityReport | null,
   statisticsReport: DataStatisticsReport | null,
@@ -1873,6 +1973,17 @@ interface DraftVersionSnapshot {
   nextActions: string[];
 }
 
+interface DataAnalysisPlanSuggestion {
+  readinessLabel: string;
+  mainAnalyses: string[];
+  optionalAnalyses: string[];
+  discouragedAnalyses: string[];
+  manualConfirmations: string[];
+  detectedDesign: string;
+  candidateGroupColumns: string[];
+  candidateOutcomeColumns: string[];
+}
+
 const journalSubmissionTemplates: JournalSubmissionTemplate[] = [
   {
     id: "medical_physics",
@@ -2723,6 +2834,11 @@ function App() {
   const pairedColumnOptions = useMemo(() => {
     return qualityReport?.columns.filter((column) => column.inferred_type !== "empty") ?? [];
   }, [qualityReport]);
+
+  const dataAnalysisPlanSuggestion = useMemo(
+    () => buildDataAnalysisPlanSuggestion({ protocol, qualityReport, statisticsReport }),
+    [protocol, qualityReport, statisticsReport],
+  );
 
   const privacyReport = qualityReport?.privacy_report ?? null;
   const hasBlockingPrivacyRisk = privacyReport?.risk_level === "red";
@@ -5608,6 +5724,58 @@ function App() {
     URL.revokeObjectURL(url);
   }
 
+  function handleDownloadAnalysisPlanSuggestion() {
+    const content = [
+      "# Data Lin 自主分析计划建议",
+      "",
+      `导出时间：${new Date().toLocaleString("zh-CN")}`,
+      selectedProject ? `关联项目：${selectedProject.name} / ${selectedProject.title}` : "关联项目：未指定",
+      qualityReport ? `数据文件：${qualityReport.file_name}` : "数据文件：待补充",
+      "",
+      "## 总体判断",
+      `- 状态：${dataAnalysisPlanSuggestion.readinessLabel}`,
+      `- 识别设计：${dataAnalysisPlanSuggestion.detectedDesign}`,
+      "",
+      "## 推荐主分析",
+      ...dataAnalysisPlanSuggestion.mainAnalyses.map((item) => `- ${item}`),
+      "",
+      "## 可选补充分析",
+      ...(dataAnalysisPlanSuggestion.optionalAnalyses.length
+        ? dataAnalysisPlanSuggestion.optionalAnalyses.map((item) => `- ${item}`)
+        : ["- 暂无"]),
+      "",
+      "## 不建议当前执行",
+      ...(dataAnalysisPlanSuggestion.discouragedAnalyses.length
+        ? dataAnalysisPlanSuggestion.discouragedAnalyses.map((item) => `- ${item}`)
+        : ["- 暂无系统识别的阻断性分析。"]),
+      "",
+      "## 候选变量",
+      `- 分组变量候选：${dataAnalysisPlanSuggestion.candidateGroupColumns.join("、") || "暂无"}`,
+      `- 结局变量候选：${dataAnalysisPlanSuggestion.candidateOutcomeColumns.join("、") || "暂无"}`,
+      "",
+      "## 人工确认点",
+      ...dataAnalysisPlanSuggestion.manualConfirmations.map((item) => `- ${item}`),
+      "",
+      "## 使用边界",
+      "- 该计划是规则型分析建议，不替代统计专家判断。",
+      "- 高级模型、回归、生存分析和混合效应模型需要后续独立验证。",
+      "",
+    ].join("\n");
+
+    const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    try {
+      link.href = url;
+      link.download = "analysis-plan-suggestion.md";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+
   function handleDownloadReproducibleScript() {
     const scriptAsset = statisticsReport?.reproducible_script;
     if (!scriptAsset) {
@@ -6414,6 +6582,69 @@ function App() {
                       {workflowSummary ? <p>{workflowSummary.message}</p> : null}
                     </div>
                   ) : null}
+
+                  <section className="analysis-plan-panel">
+                    <div className="analysis-plan-head">
+                      <div>
+                        <p className="eyebrow">Data Lin analysis planner</p>
+                        <h4>自主分析计划</h4>
+                        <small>{dataAnalysisPlanSuggestion.detectedDesign}</small>
+                      </div>
+                      <button type="button" onClick={handleDownloadAnalysisPlanSuggestion}>
+                        <Download aria-hidden="true" size={15} />
+                        <span>导出计划</span>
+                      </button>
+                    </div>
+                    <div className="analysis-plan-status">
+                      <span>{dataAnalysisPlanSuggestion.readinessLabel}</span>
+                      <span>
+                        分组候选 {dataAnalysisPlanSuggestion.candidateGroupColumns.length}
+                      </span>
+                      <span>
+                        结局候选 {dataAnalysisPlanSuggestion.candidateOutcomeColumns.length}
+                      </span>
+                    </div>
+                    <div className="analysis-plan-grid">
+                      <article>
+                        <strong>推荐主分析</strong>
+                        <ul>
+                          {dataAnalysisPlanSuggestion.mainAnalyses.map((item) => (
+                            <li key={item}>{item}</li>
+                          ))}
+                        </ul>
+                      </article>
+                      <article>
+                        <strong>可选补充分析</strong>
+                        <ul>
+                          {(dataAnalysisPlanSuggestion.optionalAnalyses.length
+                            ? dataAnalysisPlanSuggestion.optionalAnalyses
+                            : ["暂无补充分析建议。"]
+                          ).map((item) => (
+                            <li key={item}>{item}</li>
+                          ))}
+                        </ul>
+                      </article>
+                      <article>
+                        <strong>不建议当前执行</strong>
+                        <ul>
+                          {(dataAnalysisPlanSuggestion.discouragedAnalyses.length
+                            ? dataAnalysisPlanSuggestion.discouragedAnalyses
+                            : ["暂无系统识别的阻断性分析。"]
+                          ).map((item) => (
+                            <li key={item}>{item}</li>
+                          ))}
+                        </ul>
+                      </article>
+                      <article>
+                        <strong>人工确认点</strong>
+                        <ul>
+                          {dataAnalysisPlanSuggestion.manualConfirmations.map((item) => (
+                            <li key={item}>{item}</li>
+                          ))}
+                        </ul>
+                      </article>
+                    </div>
+                  </section>
 
                   {qualityReport ? (
                     <div className="data-report">
