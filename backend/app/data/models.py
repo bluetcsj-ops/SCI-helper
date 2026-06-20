@@ -249,6 +249,30 @@ class DataStatisticsReport(BaseModel):
     next_step: str
 
 
+class AdvancedModelCandidate(BaseModel):
+    model_id: str
+    model_name: str
+    readiness: str
+    outcome_column: str | None = None
+    required_fields: list[str] = Field(default_factory=list)
+    available_fields: list[str] = Field(default_factory=list)
+    missing_fields: list[str] = Field(default_factory=list)
+    assumptions: list[str] = Field(default_factory=list)
+    cautions: list[str] = Field(default_factory=list)
+    methods_template: str
+    results_template: str
+
+
+class AdvancedModelPlan(BaseModel):
+    project_id: str
+    file_name: str
+    row_count: int
+    generated_from_protocol: bool
+    recommended_model_id: str | None = None
+    candidates: list[AdvancedModelCandidate] = Field(default_factory=list)
+    next_step: str
+
+
 class DataAnalysisRecordCreate(BaseModel):
     file_name: str
     quality_report: DataQualityReport

@@ -229,6 +229,47 @@ export type WriterIntroductionDraftUpdate = Omit<
   "project_id" | "updated_at"
 >;
 
+export interface WriterDraftVersionCreate {
+  title: string;
+  introduction: WriterIntroductionDraftUpdate;
+  derived_sections: Record<string, string>;
+  metadata: Record<string, string | number | boolean | null>;
+}
+
+export interface WriterDraftVersion {
+  id: number;
+  project_id: string;
+  version_label: string;
+  title: string;
+  introduction: WriterIntroductionDraftUpdate;
+  derived_sections: Record<string, string>;
+  metadata: Record<string, string | number | boolean | null>;
+  created_at: string;
+  restored_at?: string | null;
+}
+
+export type ReviewerCommentType = "major" | "minor" | "editorial";
+
+export type ReviewerCommentStatus = "draft" | "addressing" | "resolved" | "deferred";
+
+export interface ReviewerCommentThread {
+  id: number;
+  project_id: string;
+  reviewer_label: string;
+  comment_type: ReviewerCommentType;
+  status: ReviewerCommentStatus;
+  comment_text: string;
+  response_draft: string;
+  manuscript_change: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export type ReviewerCommentThreadUpdate = Omit<
+  ReviewerCommentThread,
+  "id" | "project_id" | "created_at" | "updated_at"
+>;
+
 export interface TaskReminder {
   id: number;
   project_id: string;
@@ -499,6 +540,30 @@ export interface DataStatisticsReport {
   reproducible_script?: ReproducibleAnalysisScript | null;
   methods_draft: string;
   results_draft: string;
+  next_step: string;
+}
+
+export interface AdvancedModelCandidate {
+  model_id: string;
+  model_name: string;
+  readiness: string;
+  outcome_column?: string | null;
+  required_fields: string[];
+  available_fields: string[];
+  missing_fields: string[];
+  assumptions: string[];
+  cautions: string[];
+  methods_template: string;
+  results_template: string;
+}
+
+export interface AdvancedModelPlan {
+  project_id: string;
+  file_name: string;
+  row_count: number;
+  generated_from_protocol: boolean;
+  recommended_model_id?: string | null;
+  candidates: AdvancedModelCandidate[];
   next_step: string;
 }
 

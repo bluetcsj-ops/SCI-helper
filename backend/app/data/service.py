@@ -15,6 +15,8 @@ except ImportError:  # pragma: no cover - optional precision dependency
     scipy_stats = None
 
 from app.data.models import (
+    AdvancedModelCandidate,
+    AdvancedModelPlan,
     CategoricalLevel,
     CategoricalSummary,
     ChartDataPoint,
@@ -350,7 +352,255 @@ class DataWorkspaceService:
                 numeric_summaries=numeric_summaries,
                 group_comparisons=group_comparisons,
             ),
-            next_step="确认分组变量和主要终点后，再进入正式统计检验、图表生成和结果段落写作。",
+            next_step=(
+                "Confirm the grouping variable and primary outcome before proceeding to formal "
+                "statistical testing, figure generation, and Results drafting."
+            ),
+        )
+
+    def build_advanced_model_plan(
+        self,
+        project: Project,
+        protocol: ProjectProtocol,
+        file_name: str,
+        content: bytes,
+        group_column: str | None = None,
+        outcome_columns: list[str] | None = None,
+    ) -> AdvancedModelPlan:
+        headers, rows = self._parse_csv(content)
+        if not rows:
+            raise ValueError("CSV file is empty.")
+
+        columns = [self._analyze_column(header, rows) for header in headers]
+        numeric_columns = [column.name for column in columns if column.inferred_type == "numeric"]
+        if not numeric_columns:
+            raise ValueError("CSV file has no numeric column suitable for advanced model planning.")
+        categorical_columns = [
+            column.name
+            for column in columns
+            if column.inferred_type != "numeric" and 1 < column.unique_count <= 12
+        ]
+        selected_outcomes = [
+            column for column in (outcome_columns or []) if column in numeric_columns
+        ] or numeric_columns[:3]
+        clean_group_column = group_column if group_column in categorical_columns else None
+        text_blob = " ".join(
+            [
+                protocol.research_question,
+                protocol.primary_endpoint,
+                protocol.secondary_endpoints,
+                protocol.statistical_plan,
+                protocol.data_requirements,
+            ]
+        ).lower()
+        has_time_signal = any(token in text_blob for token in ["survival", "time-to-event", "follow-up", "death", "event"])
+        repeated_signal = any(token in text_blob for token in ["repeated", "longitudinal", "mixed", "patient-level", "fraction"])
+        candidate_pool = self._build_advanced_model_candidates(
+            selected_outcomes=selected_outcomes,
+            numeric_columns=numeric_columns,
+            categorical_columns=categorical_columns,
+            group_column=clean_group_column,
+            has_time_signal=has_time_signal,
+            repeated_signal=repeated_signal,
+        )
+        recommended = next((candidate for candidate in candidate_pool if candidate.readiness == "ready"), None)
+        return AdvancedModelPlan(
+            project_id=project.id,
+            file_name=file_name,
+            row_count=len(rows),
+            generated_from_protocol=bool(text_blob.strip()),
+            recommended_model_id=recommended.model_id if recommended else None,
+            candidates=candidate_pool,
+            next_step=(
+                "Use this model plan as a pre-analysis checklist. Do not report regression, "
+                "survival, or mixed-effects estimates until the model is fitted and reviewed in "
+                "a validated statistical environment."
+            ),
+        )
+
+    def _build_advanced_model_candidates(
+        self,
+        selected_outcomes: list[str],
+        numeric_columns: list[str],
+        categorical_columns: list[str],
+        group_column: str | None,
+        has_time_signal: bool,
+        repeated_signal: bool,
+    ) -> list[AdvancedModelCandidate]:
+        primary_outcome = selected_outcomes[0] if selected_outcomes else None
+        covariates = [
+            column
+            for column in [*numeric_columns[:4], *categorical_columns[:4]]
+            if column != primary_outcome and column != group_column
+        ][:5]
+        candidates = [
+            self._linear_regression_candidate(primary_outcome, covariates, group_column),
+            self._logistic_regression_candidate(primary_outcome, covariates, group_column),
+            self._cox_model_candidate(primary_outcome, covariates, has_time_signal),
+            self._mixed_effects_candidate(primary_outcome, covariates, group_column, repeated_signal),
+        ]
+        return candidates
+
+    def _linear_regression_candidate(
+        self,
+        outcome: str | None,
+        covariates: list[str],
+        group_column: str | None,
+    ) -> AdvancedModelCandidate:
+        missing = []
+        if not outcome:
+            missing.append("continuous outcome")
+        if not covariates and not group_column:
+            missing.append("at least one predictor or grouping variable")
+        available = [value for value in [outcome, group_column, *covariates] if value]
+        readiness = "ready" if not missing else "needs_fields"
+        return AdvancedModelCandidate(
+            model_id="linear_regression",
+            model_name="Multivariable linear regression",
+            readiness=readiness,
+            outcome_column=outcome,
+            required_fields=["continuous outcome", "predictors/covariates"],
+            available_fields=available,
+            missing_fields=missing,
+            assumptions=[
+                "Continuous outcome with approximately linear relationships.",
+                "Residual diagnostics and influential observations must be reviewed.",
+                "Collinearity among covariates should be checked before final reporting.",
+            ],
+            cautions=[
+                "This plan does not fit the model or generate coefficients.",
+                "Do not report beta estimates, confidence intervals, or P values until model fitting is completed.",
+            ],
+            methods_template=(
+                f"A multivariable linear regression model will be considered for {outcome or '[outcome]'} "
+                f"using covariates: {', '.join(covariates) if covariates else '[covariates]'}. "
+                "Model diagnostics will include residual assessment, influential-point review, and collinearity checks."
+            ),
+            results_template=(
+                "Regression coefficients, 95% confidence intervals, and P values should be reported only after "
+                "the model is fitted and diagnostics are reviewed."
+            ),
+        )
+
+    def _logistic_regression_candidate(
+        self,
+        outcome: str | None,
+        covariates: list[str],
+        group_column: str | None,
+    ) -> AdvancedModelCandidate:
+        missing = ["binary outcome confirmation"]
+        if not outcome:
+            missing.append("outcome column")
+        if not covariates and not group_column:
+            missing.append("at least one predictor or grouping variable")
+        available = [value for value in [outcome, group_column, *covariates] if value]
+        return AdvancedModelCandidate(
+            model_id="logistic_regression",
+            model_name="Binary logistic regression",
+            readiness="review" if outcome else "needs_fields",
+            outcome_column=outcome,
+            required_fields=["binary outcome", "predictors/covariates"],
+            available_fields=available,
+            missing_fields=missing,
+            assumptions=[
+                "Outcome must be explicitly coded as binary.",
+                "Events per variable should be sufficient for the planned covariate count.",
+                "Separation and sparse categories should be checked.",
+            ],
+            cautions=[
+                "Current CSV type inference cannot prove that the outcome is binary.",
+                "Odds ratios should not be reported until model fitting and coding review are complete.",
+            ],
+            methods_template=(
+                f"If {outcome or '[outcome]'} is confirmed as binary, a logistic regression model will be "
+                f"considered using covariates: {', '.join(covariates) if covariates else '[covariates]'}. "
+                "Adjusted odds ratios with confidence intervals will be reported after coding and sparsity checks."
+            ),
+            results_template=(
+                "Adjusted odds ratios and 95% confidence intervals should be reported after outcome coding, "
+                "event counts, and model convergence are verified."
+            ),
+        )
+
+    def _cox_model_candidate(
+        self,
+        outcome: str | None,
+        covariates: list[str],
+        has_time_signal: bool,
+    ) -> AdvancedModelCandidate:
+        missing = []
+        if not has_time_signal:
+            missing.extend(["time-to-event endpoint", "event indicator"])
+        if not covariates:
+            missing.append("covariates")
+        return AdvancedModelCandidate(
+            model_id="cox_ph",
+            model_name="Cox proportional hazards model",
+            readiness="review" if has_time_signal else "needs_fields",
+            outcome_column=outcome,
+            required_fields=["follow-up time", "event indicator", "covariates"],
+            available_fields=covariates,
+            missing_fields=missing,
+            assumptions=[
+                "Follow-up time and event indicator must be explicitly available.",
+                "Proportional hazards assumptions must be checked.",
+                "Censoring mechanism should be described in the Methods.",
+            ],
+            cautions=[
+                "The current model plan does not infer survival endpoints from arbitrary column names.",
+                "Hazard ratios require validated survival-model fitting.",
+            ],
+            methods_template=(
+                "If follow-up time and event status are available, a Cox proportional hazards model will be "
+                "considered. Proportional hazards assumptions and censoring definitions must be reviewed before reporting."
+            ),
+            results_template=(
+                "Hazard ratios with 95% confidence intervals should be reported only after time-to-event fields, "
+                "event coding, censoring, and proportional hazards assumptions are verified."
+            ),
+        )
+
+    def _mixed_effects_candidate(
+        self,
+        outcome: str | None,
+        covariates: list[str],
+        group_column: str | None,
+        repeated_signal: bool,
+    ) -> AdvancedModelCandidate:
+        missing = []
+        if not outcome:
+            missing.append("continuous outcome")
+        if not group_column:
+            missing.append("cluster / subject / patient identifier")
+        if not repeated_signal:
+            missing.append("repeated-measures design confirmation")
+        readiness = "review" if outcome and group_column else "needs_fields"
+        return AdvancedModelCandidate(
+            model_id="mixed_effects",
+            model_name="Linear mixed-effects model",
+            readiness=readiness,
+            outcome_column=outcome,
+            required_fields=["continuous outcome", "cluster identifier", "fixed-effect covariates"],
+            available_fields=[value for value in [outcome, group_column, *covariates] if value],
+            missing_fields=missing,
+            assumptions=[
+                "Repeated observations or clustered data structure must be confirmed.",
+                "Random-effects structure should be pre-specified.",
+                "Convergence and residual diagnostics must be reviewed.",
+            ],
+            cautions=[
+                "The grouping column may represent a category rather than a subject-level random effect.",
+                "Mixed-effects results require validated model fitting and convergence review.",
+            ],
+            methods_template=(
+                f"If repeated or clustered measurements are confirmed, a linear mixed-effects model will be "
+                f"considered for {outcome or '[outcome]'}, with {group_column or '[cluster id]'} as the "
+                "candidate random-effect grouping variable and pre-specified fixed effects."
+            ),
+            results_template=(
+                "Fixed-effect estimates, random-effect variance components, and model diagnostics should be "
+                "reported only after convergence and model specification are reviewed."
+            ),
         )
 
     def build_formal_test_report(
@@ -864,15 +1114,19 @@ class DataWorkspaceService:
         groups: list[GroupStatistic],
     ) -> str:
         if len(groups) < 2:
-            return f"{column_name} 在 {group_column} 下可用分组不足，暂不形成比较结论。"
+            return (
+                f"{column_name} had too few usable groups under {group_column}; no comparative "
+                "interpretation is generated at this stage."
+            )
 
         lowest = min(groups, key=lambda group: group.mean)
         highest = max(groups, key=lambda group: group.mean)
         mean_gap = round(highest.mean - lowest.mean, 4)
         return (
-            f"{column_name} 按 {group_column} 分组后，均值最高组为 {highest.group_value}"
-            f"（{highest.mean}），最低组为 {lowest.group_value}（{lowest.mean}），"
-            f"均值差约 {mean_gap}。该结果只是描述性比较，尚未进行显著性检验。"
+            f"For {column_name} grouped by {group_column}, the highest mean was observed in "
+            f"{highest.group_value} ({highest.mean}) and the lowest mean in {lowest.group_value} "
+            f"({lowest.mean}), with an approximate mean difference of {mean_gap}. This is a "
+            "descriptive comparison only; formal significance testing has not yet been applied."
         )
 
     def _build_distribution_check(
@@ -3544,11 +3798,13 @@ if __name__ == "__main__":
         issue_count: int,
         missing_required_fields: list[str],
     ) -> str:
-        missing_text = "、".join(missing_required_fields[:5]) if missing_required_fields else "暂无"
+        missing_text = ", ".join(missing_required_fields[:5]) if missing_required_fields else "none"
         return (
-            f"{project.name} 上传的数据表包含 {row_count} 行、{column_count} 列。"
-            f"当前质控发现 {issue_count} 个需要处理的问题，缺少的关键字段为：{missing_text}。"
-            "在进入结果段落写作前，建议先完成字段补齐、缺失原因记录和主要终点列确认。"
+            f"The uploaded dataset for {project.name} contains {row_count} rows and "
+            f"{column_count} columns. The current quality-control review identified "
+            f"{issue_count} issue(s), and the missing key field(s) are: {missing_text}. "
+            "Before drafting the Results section, complete field reconciliation, document "
+            "the reasons for missingness, and confirm the primary outcome column."
         )
 
     def _build_methods_draft(
@@ -3557,13 +3813,22 @@ if __name__ == "__main__":
         selected_outcomes: list[str],
         group_column: str | None,
     ) -> str:
-        outcome_text = "、".join(selected_outcomes)
-        group_text = f"按 {group_column} 进行分组描述。" if group_column else "未指定分组变量。"
-        planned_tests = protocol.statistical_plan.strip() or "后续根据变量分布和研究设计选择合适的统计检验。"
+        outcome_text = ", ".join(selected_outcomes)
+        group_text = (
+            f"Descriptive summaries were stratified by {group_column}. "
+            if group_column
+            else "No grouping variable was specified. "
+        )
+        planned_tests = (
+            protocol.statistical_plan.strip()
+            or "Formal statistical tests will be selected according to variable distribution and study design."
+        )
         return (
-            f"对数值变量（{outcome_text}）进行描述性统计，报告样本量、均值、标准差、"
-            f"中位数、最小值和最大值。{group_text}"
-            f"本阶段仅生成探索性统计草案，不报告 P 值。正式统计计划：{planned_tests}"
+            f"Descriptive statistics were generated for the numeric outcome variable(s) "
+            f"({outcome_text}), including sample size, mean, standard deviation, median, "
+            f"minimum, and maximum. {group_text}"
+            f"At this stage, the workflow generates an exploratory statistical draft only "
+            f"and does not report P values. Planned formal statistical approach: {planned_tests}"
         )
 
     def _build_results_draft(
@@ -3575,15 +3840,15 @@ if __name__ == "__main__":
     ) -> str:
         first_summary = numeric_summaries[0]
         group_sentence = (
-            f" 分组描述提示：{group_comparisons[0].interpretation}"
+            f" Grouped descriptive interpretation: {group_comparisons[0].interpretation}"
             if group_comparisons
             else ""
         )
         return (
-            f"{project.name} 当前 CSV 纳入 {row_count} 条记录。"
-            f"{first_summary.column} 的可用样本量为 {first_summary.n}，"
-            f"均值为 {first_summary.mean}，标准差为 {first_summary.std_dev}，"
-            f"中位数为 {first_summary.median}，范围为 {first_summary.min} 至 {first_summary.max}。"
+            f"The current CSV for {project.name} included {row_count} records. "
+            f"For {first_summary.column}, the available sample size was {first_summary.n}, "
+            f"with mean {first_summary.mean}, standard deviation {first_summary.std_dev}, "
+            f"median {first_summary.median}, and range {first_summary.min} to {first_summary.max}."
             f"{group_sentence}"
         )
 

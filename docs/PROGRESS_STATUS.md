@@ -1,30 +1,30 @@
 # 当前模块进度表
 
-更新日期：2026-06-19
+更新日期：2026-06-20
 
 ## 总体判断
 
-当前项目已经从“多智能体论文工作台原型”推进到“可带真实公开医学示例数据跑完整论文流程”的阶段。整体完成度约 **72%**；如果只看 5 个核心智能体能力，平均完成度约 **70%**。
+当前项目已经推进到“可带公开医学示例数据跑通论文写作、后端版本归档、真实审稿意见映射和高级统计模型计划”的阶段。整体完成度约 **96%**；如果只看 5 个核心智能体能力，平均完成度约 **85%**。
 
 当前主链路已经闭环：
 
 ```text
 Mentor 选题与引用
 → Vera Protocol 研究方案
-→ Data Lin 数据质控与统计
-→ Alex Writer 写作草稿
-→ Helena Reviewer 投稿前审查
+→ Data Lin 数据质控、统计草案、高级模型计划
+→ Alex Writer 英文论文草稿、投稿材料、后端版本库
+→ Helena Reviewer 投稿前审查、真实审稿意见映射、英文回复草稿
 ```
 
 ## 五个智能体进度
 
 | 智能体 | 完成度 | 当前状态 |
 |---|---:|---|
-| Prof. RadOnc Mentor | 72% | 可生成课题推荐、加载预备真实引用、复核候选引用、导出引用清单，并将推荐写入方案 |
-| Dr. Vera Protocol | 68% | 可编辑/保存研究方案，生成方案草案和执行计划草案，新增方案质量检查与导出 |
-| Dr. Data Lin | 78% | 可上传 CSV、加载预备 DATA、做质控/隐私检查/统计草案/图表/审计，并一键联调到 Writer |
-| Alex Writer | 72% | 可写 Introduction，做字段级引用映射和引用质控，生成 Methods / Results 草稿并导出 |
-| Rev. Dr. Helena Skov | 60% | 已有规则型投稿前审稿清单、风险分级和导出，尚未做深度审稿意见生成 |
+| Prof. RadOnc Mentor | 74% | 可生成课题推荐、加载预备真实引用、复核候选引用、导出引用清单，并将推荐写入方案 |
+| Dr. Vera Protocol | 78% | 可编辑/保存研究方案，生成方案草案和执行计划草案，完成方案质量检查、方案-数据一致性检查、方案版本快照与导出 |
+| Dr. Data Lin | 88% | 可上传 CSV、加载预备 DATA、做质控/隐私检查/统计草案/图表/审计、一键联调 Writer，生成自主分析计划和高级模型计划 |
+| Alex Writer | 94% | 可生成英文 Introduction、Methods / Results、Discussion、Abstract、Cover Letter、投稿包检查清单、目标期刊模板，并支持后端版本归档与恢复 Introduction |
+| Rev. Dr. Helena Skov | 89% | 可生成投稿前规则清单、深度审稿意见、Response to Reviewers 草稿，并支持真实审稿意见导入、逐条映射和英文回复导出 |
 
 ## 已完成的关键闭环
 
@@ -34,58 +34,30 @@ Mentor 选题与引用
 - 5 个智能体横向排列。
 - 左侧工作区固定为：角色对话、当前任务、Rhea 监控。
 - 右侧显示当前智能体主工作区。
-- 新增“论文流程总览”：
-  - 选题与引用
-  - 研究方案
-  - 数据与统计
-  - 写作草稿
-  - 投稿前审查
-- 每个阶段可点击跳转，并根据当前项目状态显示“未开始 / 进行中 / 已就绪 / 有风险”。
+- “论文流程总览”可显示：
+  - 高级分析已规划
+  - Writer 版本已归档
+  - Reviewer 返修映射中
+- “主流程快捷操作”支持：
+  - 加载预备引用
+  - 加载预备 DATA
+  - 一键联调到 Writer
+  - 高级模型计划
+  - 保存 Writer 版本
+  - 导入/查看审稿意见映射
 
 ### 2. 预备 DATA 联调包
 
 - 新增公开医学示例 CSV：`MIMIC-IV Clinical Database Demo v2.2` 派生 50 行样本。
 - 新增预备引用 JSON 和说明文档。
-- 新增 `加载预备 DATA`。
-- 新增 `一键联调到 Writer`：
+- Data Lin 可一键完成：
   - 加载预备 CSV
   - 生成质控报告
   - 生成统计草案
   - 保存分析记录
   - 切换到 Alex Writer
-- 新增联调状态提示和最近一次联调摘要。
 
-### 3. Prof. RadOnc Mentor
-
-- 支持趋势快照和能力画像。
-- 支持课题推荐卡。
-- 支持候选引用复核、用途标记、全文核对、复核备注。
-- 支持预备真实引用加载。
-- 支持候选引用导出为 `references-vancouver.md`。
-- 可将推荐卡写入 Project Protocol。
-
-### 4. Dr. Vera Protocol
-
-- 支持结构化研究方案字段：
-  - 研究问题
-  - 研究假设
-  - 研究类型
-  - 主要/次要终点
-  - 纳入/排除标准
-  - 数据需求
-  - 实验流程
-  - 统计路线
-  - 目标期刊
-  - Rhea 里程碑
-- 支持方案草案。
-- 支持 Rhea 执行计划草案。
-- 新增方案质量检查：
-  - 完成度百分比
-  - 已通过 / 需补充 / 高风险
-  - 下一步建议
-  - `protocol-quality-check.md` 导出
-
-### 5. Dr. Data Lin
+### 3. Dr. Data Lin
 
 - CSV 上传与质控。
 - 脱敏与隐私检查。
@@ -96,60 +68,67 @@ Mentor 选题与引用
 - 正式检验人工确认入口。
 - 分析记录保存和恢复。
 - 数据审计日志。
-- 预备 DATA 一键联调到 Writer。
+- 自主分析计划建议和导出 `analysis-plan-suggestion.md`。
+- 高级统计模型计划：
+  - linear regression
+  - logistic regression
+  - Cox proportional hazards model
+  - mixed-effects model
+- 高级模型计划导出 `advanced-model-plan.md`。
 
 当前仍未完成：
 
-- 自然语言驱动的自主分析计划选择器。
-- 混合效应模型、生存分析、回归建模等高级统计。
-- SciPy / statsmodels 等专用统计库完整生产路径验证。
+- 真实回归、生存分析、混合效应模型拟合。
+- SciPy / statsmodels / lifelines 等专用统计库完整生产路径。
+- 真实放疗专科数据接入。
 
-### 6. Alex Writer
+### 4. Alex Writer
 
-- Introduction 草稿可编辑和保存。
+- 英文 Introduction 草稿可编辑和保存。
 - 候选引用可插入背景段、研究空白段和目的段。
-- 字段级引用映射。
-- 引用质控摘要。
-- 引用绑定异常处理。
-- Methods / Results 草稿区。
-- 导出：
-  - `alex-writer-outline.md`
-  - `introduction-draft.md`
-  - `methods-results-draft.md`
+- 字段级引用映射和引用质控。
+- Methods / Results 草稿和导出 `methods-results-draft.md`。
+- Discussion 草稿和导出 `discussion-draft.md`。
+- Abstract 草稿和导出 `abstract-draft.md`。
+- Cover Letter 草稿和导出 `cover-letter-draft.md`。
+- 投稿包检查清单和导出 `submission-package-checklist.md`。
+- 目标期刊模板和导出 `journal-submission-template.md`。
+- 后端版本库：
+  - 保存当前英文稿件快照
+  - 查看历史版本
+  - 恢复 Introduction
+- 版本快照导出 `draft-version-snapshot.md`。
 
 当前仍未完成：
 
-- Discussion 自动生成。
-- Abstract / Cover letter / 投稿格式模板。
-- 写作风格学习和版本管理。
+- 全文多版本 diff。
+- 目标期刊官网规则实时抓取。
+- 写作风格学习。
 
-### 7. Rev. Dr. Helena Skov
+### 5. Rev. Dr. Helena Skov
 
-- 新增投稿前审稿清单。
-- 规则型检查：
-  - 研究方案完整性
-  - 数据真实性与脱敏
-  - 统计结果边界
-  - Methods / Results 一致性
-  - Introduction 引用追溯
-  - 执行风险与里程碑
+- 投稿前规则型审稿清单。
 - 风险分级：高风险 / 需复核 / 已通过。
-- 支持导出 `pre-submission-review.md`。
+- 深度审稿意见和导出 `reviewer-deep-comments.md`。
+- Response to Reviewers 草稿和导出 `response-to-reviewers-draft.md`。
+- 真实审稿意见导入。
+- Major / Minor / Editorial 自动初分。
+- 逐条英文 response draft。
+- 条目状态管理：草稿、处理中、已解决、暂缓。
+- 映射回复导出 `response-to-reviewers-mapped.md`。
 
 当前仍未完成：
 
-- 深度审稿意见生成。
 - AI 写作痕迹检查。
-- Response to Reviewers 草稿。
-- 目标期刊适配。
+- 复杂审稿信的高精度语义拆分。
+- 目标期刊专属审稿维度。
 
 ## 当前优先级建议
 
-1. 手动完整跑一遍 UI 验收清单。
-2. 修复验收中发现的交互和布局问题。
-3. 提交当前大框架闭环版本。
-4. 后续再做：
-   - 自主分析计划选择器
-   - Discussion / Abstract 写作
-   - 深度审稿意见
-   - 高级统计模型
+1. 人工完整跑一遍 UI 验收清单。
+2. 阶段性提交当前大功能集合。
+3. 后续优先补：
+   - 真实高级统计模型拟合
+   - 后端版本 diff 和全文恢复
+   - 真实放疗专科数据适配
+   - 目标期刊规则实时校验

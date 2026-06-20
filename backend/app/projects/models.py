@@ -113,6 +113,51 @@ class WriterIntroductionDraftUpdate(BaseModel):
     citation_bindings: dict[str, list[str]] = Field(default_factory=dict)
 
 
+class WriterDraftVersionCreate(BaseModel):
+    title: str = ""
+    introduction: WriterIntroductionDraftUpdate
+    derived_sections: dict[str, str] = Field(default_factory=dict)
+    metadata: dict[str, str | int | float | bool | None] = Field(default_factory=dict)
+
+
+class WriterDraftVersion(BaseModel):
+    id: int
+    project_id: str
+    version_label: str
+    title: str
+    introduction: WriterIntroductionDraftUpdate
+    derived_sections: dict[str, str] = Field(default_factory=dict)
+    metadata: dict[str, str | int | float | bool | None] = Field(default_factory=dict)
+    created_at: datetime
+    restored_at: datetime | None = None
+
+
+class ReviewerCommentImportRequest(BaseModel):
+    raw_text: str
+
+
+class ReviewerCommentThreadUpdate(BaseModel):
+    reviewer_label: str = "Reviewer"
+    comment_type: str = "major"
+    status: str = "draft"
+    comment_text: str
+    response_draft: str = ""
+    manuscript_change: str = ""
+
+
+class ReviewerCommentThread(BaseModel):
+    id: int
+    project_id: str
+    reviewer_label: str
+    comment_type: str
+    status: str
+    comment_text: str
+    response_draft: str
+    manuscript_change: str
+    created_at: datetime
+    updated_at: datetime
+
+
 class TaskReminder(BaseModel):
     id: int
     project_id: str

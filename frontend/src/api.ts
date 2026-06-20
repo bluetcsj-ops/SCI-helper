@@ -1,5 +1,6 @@
 import type {
   AgentProfile,
+  AdvancedModelPlan,
   ChatRequest,
   ChatResponse,
   DataAuditLog,
@@ -22,7 +23,11 @@ import type {
   ProjectProtocol,
   ProjectProtocolUpdate,
   ProjectReminderSummary,
+  ReviewerCommentThread,
+  ReviewerCommentThreadUpdate,
   UserProfile,
+  WriterDraftVersion,
+  WriterDraftVersionCreate,
   WriterIntroductionDraft,
   WriterIntroductionDraftUpdate,
 } from "./types";
@@ -108,6 +113,63 @@ export function saveWriterIntroductionDraft(
     method: "PUT",
     body: JSON.stringify(payload),
   });
+}
+
+export function getWriterDraftVersions(projectId: string): Promise<WriterDraftVersion[]> {
+  return request<WriterDraftVersion[]>(`/api/projects/${projectId}/writer/versions`);
+}
+
+export function createWriterDraftVersion(
+  projectId: string,
+  payload: WriterDraftVersionCreate,
+): Promise<WriterDraftVersion> {
+  return request<WriterDraftVersion>(`/api/projects/${projectId}/writer/versions`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function restoreWriterDraftVersion(
+  projectId: string,
+  versionId: number,
+): Promise<WriterIntroductionDraft> {
+  return request<WriterIntroductionDraft>(
+    `/api/projects/${projectId}/writer/versions/${versionId}/restore`,
+    {
+      method: "POST",
+    },
+  );
+}
+
+export function getReviewerCommentThreads(projectId: string): Promise<ReviewerCommentThread[]> {
+  return request<ReviewerCommentThread[]>(`/api/projects/${projectId}/reviewer/comment-threads`);
+}
+
+export function importReviewerCommentThreads(
+  projectId: string,
+  rawText: string,
+): Promise<ReviewerCommentThread[]> {
+  return request<ReviewerCommentThread[]>(
+    `/api/projects/${projectId}/reviewer/comment-threads/import`,
+    {
+      method: "POST",
+      body: JSON.stringify({ raw_text: rawText }),
+    },
+  );
+}
+
+export function updateReviewerCommentThread(
+  projectId: string,
+  threadId: number,
+  payload: ReviewerCommentThreadUpdate,
+): Promise<ReviewerCommentThread> {
+  return request<ReviewerCommentThread>(
+    `/api/projects/${projectId}/reviewer/comment-threads/${threadId}`,
+    {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    },
+  );
 }
 
 export function getCurrentUser(): Promise<UserProfile> {
@@ -250,6 +312,39 @@ export async function uploadDataStatisticsReport(
   }
 
   return response.json() as Promise<DataStatisticsReport>;
+}
+
+export async function uploadAdvancedModelPlan(
+  projectId: string,
+  file: File,
+  groupColumn: string,
+  outcomeColumns: string[],
+): Promise<AdvancedModelPlan> {
+  const params = new URLSearchParams({ file_name: file.name });
+  if (groupColumn) {
+    params.set("group_column", groupColumn);
+  }
+  if (outcomeColumns.length) {
+    params.set("outcome_columns", outcomeColumns.join(","));
+  }
+
+  const response = await fetch(
+    `${API_BASE_URL}/api/projects/${projectId}/data/model-plan?${params.toString()}`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": file.type || "text/csv",
+      },
+      body: file,
+    },
+  );
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text || `Request failed with status ${response.status}`);
+  }
+
+  return response.json() as Promise<AdvancedModelPlan>;
 }
 
 export async function uploadFormalTestReport(

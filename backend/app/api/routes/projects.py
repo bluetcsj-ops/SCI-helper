@@ -8,14 +8,21 @@ from app.projects.models import (
     ProjectProtocol,
     ProjectProtocolExtractRequest,
     ProjectProtocolUpdate,
+    ReviewerCommentImportRequest,
+    ReviewerCommentThread,
+    ReviewerCommentThreadUpdate,
     TaskStatusUpdate,
+    WriterDraftVersion,
+    WriterDraftVersionCreate,
     WriterIntroductionDraft,
     WriterIntroductionDraftUpdate,
 )
 from app.projects.plan_drafts import project_plan_draft_repository
 from app.projects.plan_generator import project_plan_generator
 from app.projects.repository import project_repository
+from app.projects.reviewer_comments import reviewer_comment_repository
 from app.projects.writer_drafts import writer_introduction_draft_repository
+from app.projects.writer_versions import writer_draft_version_repository
 from app.protocols.extractor import protocol_extractor
 from app.protocols.repository import protocol_repository
 from app.users.dependencies import ensure_project_access, get_current_user
@@ -184,6 +191,113 @@ def save_writer_introduction_draft(
         raise HTTPException(status_code=404, detail="Project not found")
     ensure_project_access(project_id, current_user, ProjectAccessLevel.editor)
     return writer_introduction_draft_repository.save_draft(project_id=project_id, payload=request)
+
+
+@router.get("/{project_id}/writer/versions", response_model=list[WriterDraftVersion])
+def list_writer_draft_versions(
+    project_id: str,
+    current_user: UserProfile = Depends(get_current_user),
+) -> list[WriterDraftVersion]:
+    project = project_repository.get_project(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    ensure_project_access(project_id, current_user, ProjectAccessLevel.viewer)
+    return writer_draft_version_repository.list_versions(project_id)
+
+
+@router.post("/{project_id}/writer/versions", response_model=WriterDraftVersion)
+def create_writer_draft_version(
+    project_id: str,
+    request: WriterDraftVersionCreate,
+    current_user: UserProfile = Depends(get_current_user),
+) -> WriterDraftVersion:
+    project = project_repository.get_project(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    ensure_project_access(project_id, current_user, ProjectAccessLevel.editor)
+    return writer_draft_version_repository.create_version(project_id=project_id, payload=request)
+
+
+@router.get("/{project_id}/writer/versions/{version_id}", response_model=WriterDraftVersion)
+def get_writer_draft_version(
+    project_id: str,
+    version_id: int,
+    current_user: UserProfile = Depends(get_current_user),
+) -> WriterDraftVersion:
+    project = project_repository.get_project(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    ensure_project_access(project_id, current_user, ProjectAccessLevel.viewer)
+
+    version = writer_draft_version_repository.get_version(project_id, version_id)
+    if version is None:
+        raise HTTPException(status_code=404, detail="Writer version not found")
+    return version
+
+
+@router.post(
+    "/{project_id}/writer/versions/{version_id}/restore",
+    response_model=WriterIntroductionDraft,
+)
+def restore_writer_draft_version(
+    project_id: str,
+    version_id: int,
+    current_user: UserProfile = Depends(get_current_user),
+) -> WriterIntroductionDraft:
+    project = project_repository.get_project(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    ensure_project_access(project_id, current_user, ProjectAccessLevel.editor)
+
+    restored_draft = writer_draft_version_repository.restore_version(project_id, version_id)
+    if restored_draft is None:
+        raise HTTPException(status_code=404, detail="Writer version not found")
+    return restored_draft
+
+
+@router.get("/{project_id}/reviewer/comment-threads", response_model=list[ReviewerCommentThread])
+def list_reviewer_comment_threads(
+    project_id: str,
+    current_user: UserProfile = Depends(get_current_user),
+) -> list[ReviewerCommentThread]:
+    project = project_repository.get_project(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    ensure_project_access(project_id, current_user, ProjectAccessLevel.viewer)
+    return reviewer_comment_repository.list_threads(project_id)
+
+
+@router.post("/{project_id}/reviewer/comment-threads/import", response_model=list[ReviewerCommentThread])
+def import_reviewer_comment_threads(
+    project_id: str,
+    request: ReviewerCommentImportRequest,
+    current_user: UserProfile = Depends(get_current_user),
+) -> list[ReviewerCommentThread]:
+    project = project_repository.get_project(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    ensure_project_access(project_id, current_user, ProjectAccessLevel.editor)
+    if not request.raw_text.strip():
+        raise HTTPException(status_code=400, detail="Reviewer comment text is required")
+    return reviewer_comment_repository.import_threads(project_id, request.raw_text)
+
+
+@router.put("/{project_id}/reviewer/comment-threads/{thread_id}", response_model=ReviewerCommentThread)
+def update_reviewer_comment_thread(
+    project_id: str,
+    thread_id: int,
+    request: ReviewerCommentThreadUpdate,
+    current_user: UserProfile = Depends(get_current_user),
+) -> ReviewerCommentThread:
+    project = project_repository.get_project(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    ensure_project_access(project_id, current_user, ProjectAccessLevel.editor)
+
+    updated_thread = reviewer_comment_repository.update_thread(project_id, thread_id, request)
+    if updated_thread is None:
+        raise HTTPException(status_code=404, detail="Reviewer comment thread not found")
+    return updated_thread
 
 
 @router.get("/{project_id}/plan/drafts", response_model=list[ProjectPlanDraft])

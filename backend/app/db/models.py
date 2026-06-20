@@ -225,3 +225,37 @@ class WriterIntroductionDraftRecord(Base):
         onupdate=datetime.utcnow,
         nullable=False,
     )
+
+
+class WriterDraftVersionRecord(Base):
+    __tablename__ = "writer_draft_versions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), nullable=False)
+    version_label: Mapped[str] = mapped_column(String(64), nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    introduction_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    derived_sections_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    metadata_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    restored_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class ReviewerCommentThreadRecord(Base):
+    __tablename__ = "reviewer_comment_threads"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), nullable=False)
+    reviewer_label: Mapped[str] = mapped_column(String(120), nullable=False, default="Reviewer")
+    comment_type: Mapped[str] = mapped_column(String(32), nullable=False, default="major")
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="draft")
+    comment_text: Mapped[str] = mapped_column(Text, nullable=False)
+    response_draft: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    manuscript_change: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False,
+    )

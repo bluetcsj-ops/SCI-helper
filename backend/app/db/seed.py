@@ -10,10 +10,12 @@ from app.db.models import (
     ProjectAccessRecord,
     ProjectPlanDraftRecord,
     ProjectProtocolRecord,
+    ReviewerCommentThreadRecord,
     ProjectRecord,
     TaskRecord,
     TaskReminderRecord,
     UserRecord,
+    WriterDraftVersionRecord,
     WriterIntroductionDraftRecord,
 )
 from app.db.session import Base, SessionLocal, engine
@@ -87,10 +89,12 @@ __all__ = [
     "ProjectAccessRecord",
     "ProjectPlanDraftRecord",
     "ProjectProtocolRecord",
+    "ReviewerCommentThreadRecord",
     "ProjectRecord",
     "TaskRecord",
     "TaskReminderRecord",
     "UserRecord",
+    "WriterDraftVersionRecord",
     "WriterIntroductionDraftRecord",
     "initialize_database",
 ]

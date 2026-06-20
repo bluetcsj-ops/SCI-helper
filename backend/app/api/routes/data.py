@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from app.data.models import (
+    AdvancedModelPlan,
     DataAuditLog,
     DataAnalysisRecord,
     DataAnalysisRecordCreate,
@@ -295,5 +296,48 @@ async def create_data_statistics_report(
             raw_data_saved=False,
         )
         return report
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/{project_id}/data/model-plan", response_model=AdvancedModelPlan)
+async def create_data_model_plan(
+    project_id: str,
+    request: Request,
+    file_name: str = Query(default="uploaded.csv"),
+    group_column: str | None = Query(default=None),
+    outcome_columns: str = Query(default=""),
+    current_user: UserProfile = Depends(get_current_user),
+) -> AdvancedModelPlan:
+    project = project_repository.get_project(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    ensure_project_access(project_id, current_user, ProjectAccessLevel.editor)
+
+    content = await request.body()
+    if not content:
+        raise HTTPException(status_code=400, detail="CSV file is required")
+
+    protocol = protocol_repository.get_protocol(project_id)
+    selected_outcomes = [
+        column.strip()
+        for column in outcome_columns.split(",")
+        if column.strip()
+    ]
+    try:
+        privacy_report = data_workspace_service.build_privacy_report_for_csv(content)
+        if privacy_report.risk_level.value == "red":
+            raise HTTPException(
+                status_code=400,
+                detail="CSV 含疑似直接身份标识。请先完成脱敏，再生成高级模型计划。",
+            )
+        return data_workspace_service.build_advanced_model_plan(
+            project=project,
+            protocol=protocol,
+            file_name=file_name,
+            content=content,
+            group_column=group_column,
+            outcome_columns=selected_outcomes,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

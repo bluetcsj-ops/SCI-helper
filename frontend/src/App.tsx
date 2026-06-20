@@ -22,6 +22,7 @@ import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
 
 import {
   applyProjectPlanDraft,
+  createWriterDraftVersion,
   dismissProjectReminder,
   draftProjectProtocol,
   extractProjectProtocol,
@@ -40,14 +41,20 @@ import {
   getProjectProtocol,
   getProjectReminders,
   getProjects,
+  getReviewerCommentThreads,
+  getWriterDraftVersions,
   getWriterIntroductionDraft,
+  importReviewerCommentThreads,
   refreshProjectReminders,
+  restoreWriterDraftVersion,
   saveDataAnalysisRecord,
   saveMentorEvidenceReview,
   saveProjectProtocol,
   saveWriterIntroductionDraft,
   sendChat,
   updateTaskStatus,
+  updateReviewerCommentThread,
+  uploadAdvancedModelPlan,
   uploadDataQualityReport,
   uploadDataStatisticsReport,
   uploadFormalTestReport,
@@ -55,6 +62,7 @@ import {
 import type {
   AgentId,
   AgentProfile,
+  AdvancedModelPlan,
   ChartSpec,
   ChatMessage,
   DataAuditLog,
@@ -81,8 +89,13 @@ import type {
   ProjectProtocolUpdate,
   ProjectReminderSummary,
   ReminderType,
+  ReviewerCommentStatus,
+  ReviewerCommentThread,
+  ReviewerCommentThreadUpdate,
+  ReviewerCommentType,
   RiskLevel,
   UserProfile,
+  WriterDraftVersion,
   WriterIntroductionDraft,
   WriterIntroductionDraftUpdate,
 } from "./types";
@@ -112,6 +125,19 @@ const projectAccessLabels: Record<ProjectAccessLevel, string> = {
   viewer: "只读",
   editor: "可编辑",
   owner: "负责人",
+};
+
+const reviewerCommentTypeLabels: Record<ReviewerCommentType, string> = {
+  major: "Major",
+  minor: "Minor",
+  editorial: "Editorial",
+};
+
+const reviewerCommentStatusLabels: Record<ReviewerCommentStatus, string> = {
+  draft: "草稿",
+  addressing: "处理中",
+  resolved: "已解决",
+  deferred: "暂缓",
 };
 
 const dataAuditActionLabels: Record<string, string> = {
@@ -876,49 +902,55 @@ function buildWriterMethodsResultsDraft(
     ? formalTestReport.results.map((result) =>
         [
           `${result.outcome_column}: ${result.interpretation}`,
-          `检验：${result.test_name}`,
+          `Test: ${result.test_name}`,
           `P=${formatPValue(result.p_value)}`,
           formatFormalEffectSize(result),
-          result.warnings.length ? `注意：${result.warnings.join("；")}` : null,
+          result.warnings.length ? `Warnings: ${result.warnings.join("; ")}` : null,
         ]
           .filter(Boolean)
-          .join("；"),
+          .join("; "),
       )
-    : ["尚未执行正式检验；Results 草稿不得编造 P 值、置信区间或显著性结论。"];
+    : [
+        "Formal hypothesis testing has not yet been performed; the Results section must not invent P values, confidence intervals, or significance claims.",
+      ];
   const chartLines = statisticsReport.chart_specs.slice(0, 5).map(
     (chart) => `${chart.title}: ${chart.narrative}`,
   );
   const missingItems = [
     qualityReport.missing_required_fields.length
-      ? `数据需求缺少字段：${qualityReport.missing_required_fields.join("、")}`
+      ? `The data requirement is missing field(s): ${qualityReport.missing_required_fields.join(", ")}.`
       : null,
-    qualityReport.issues.length ? `CSV 质控仍有 ${qualityReport.issues.length} 个问题需复核。` : null,
+    qualityReport.issues.length
+      ? `The CSV quality report still contains ${qualityReport.issues.length} issue(s) requiring review.`
+      : null,
     qualityReport.privacy_report?.risk_level === "red"
-      ? "脱敏检查为高风险，不能进入正式统计或论文写作。"
+      ? "The privacy screen is high risk; the dataset should not proceed to formal analysis or manuscript writing."
       : null,
-    formalTestReport ? null : "正式假设检验尚未执行；论文 Results 中只能保留描述性统计和待检验提示。",
+    formalTestReport
+      ? null
+      : "Formal hypothesis testing has not yet been performed; the manuscript Results should remain descriptive.",
     statisticsReport.next_step || null,
   ].filter(Boolean) as string[];
 
   return {
     methodsParagraphs: [
-      `本联调数据来自 ${qualityReport.file_name}，共 ${qualityReport.row_count} 行、${qualityReport.column_count} 列。CSV 上传后先执行字段类型识别、缺失率检查、关键字段覆盖检查和脱敏风险扫描；原始 CSV 不在系统中持久化保存。`,
+      `The current workflow used ${qualityReport.file_name}, which contained ${qualityReport.row_count} rows and ${qualityReport.column_count} columns. After CSV upload, the pipeline performed field type inference, missingness review, required-field coverage checks, and privacy-risk screening. The original CSV file was not persistently stored by the writing workflow.`,
       statisticsReport.methods_draft,
       formalTestReport
-        ? `正式检验在人工确认研究设计、终点定义、脱敏状态、缺失处理、统计假设和多重比较边界后执行；当前方法版本为 ${formalTestReport.method_version}。`
-        : "当前尚未执行正式假设检验；Methods 中应将 P 值相关分析列为待补充或预设统计计划。",
+        ? `Formal testing was performed only after manual confirmation of the study design, endpoint definitions, de-identification status, missing-data handling, statistical assumptions, and multiplicity boundaries. The current method version is ${formalTestReport.method_version}.`
+        : "Formal hypothesis testing has not yet been performed; P-value-based analyses should be described only as planned or pending analyses.",
     ],
     resultsParagraphs: [
       statisticsReport.results_draft,
       numericLines.length
-        ? `描述性统计摘要：${numericLines.join("；")}。`
-        : "当前 CSV 未生成可写入 Results 的数值描述性统计。",
+        ? `Descriptive statistics were summarized as follows: ${numericLines.join("; ")}.`
+        : "The current CSV did not generate numeric descriptive statistics suitable for the Results section.",
       groupLines.length
-        ? `分组描述显示：${groupLines.join("；")}。`
-        : "当前未设置有效分组列，Results 暂不写入组间比较描述。",
+        ? `The grouped descriptive summaries indicated: ${groupLines.join("; ")}.`
+        : "No valid grouping column was selected; between-group comparisons should not be described in the Results section.",
       formalTestReport
-        ? `正式检验摘要：${formalTestLines.join("；")}。`
-        : "正式检验尚未执行，因此 Results 草稿不报告 P 值或显著性结论。",
+        ? `Formal testing summary: ${formalTestLines.join("; ")}.`
+        : "Formal testing has not yet been performed; therefore, this draft does not report P values or statistical significance.",
     ],
     formalTestLines,
     chartLines,
@@ -952,7 +984,7 @@ function buildWriterDiscussionDraft(params: {
   const formalTestReport = statisticsReport.formal_test_report ?? null;
   const numericFindings = statisticsReport.numeric_summaries.slice(0, 3).map(
     (summary) =>
-      `${summary.column} 的描述性结果为 n=${summary.n}，均值 ${summary.mean}，中位数 ${summary.median}，范围 ${summary.min}-${summary.max}。`,
+      `${summary.column} had n=${summary.n}, mean ${summary.mean}, median ${summary.median}, and range ${summary.min}-${summary.max}.`,
   );
   const groupFindings = statisticsReport.group_comparisons
     .slice(0, 2)
@@ -968,55 +1000,57 @@ function buildWriterDiscussionDraft(params: {
 
   const interpretationParagraphs = [
     protocol?.research_question
-      ? `本研究的 Discussion 应围绕研究问题展开：${protocol.research_question}。当前结果应被解释为对该问题的初步回答，而不是泛化到所有放疗场景的最终结论。`
-      : "本研究的 Discussion 仍需先补齐清晰研究问题，再围绕主要终点解释结果。",
+      ? `The Discussion should be organized around the study question: ${protocol.research_question}. The current results should be interpreted as preliminary evidence for this specific question rather than as a general conclusion for all radiation therapy settings.`
+      : "The Discussion still requires a clearly defined study question before the main findings can be interpreted around the primary endpoint.",
     formalTestReport
-      ? "已有正式检验结果时，Discussion 可以讨论方向、效应大小和临床意义，但仍应避免把统计显著性直接等同于临床重要性。"
-      : "当前尚未执行正式检验，Discussion 只能讨论描述性趋势、流程可行性和后续验证计划，不应写出显著性结论。",
+      ? "When formal test results are available, the Discussion may address directionality, effect size, and clinical meaning, but statistical significance should not be equated directly with clinical importance."
+      : "Because formal testing has not yet been performed, the Discussion should be limited to descriptive trends, workflow feasibility, and planned validation; it should not claim statistical significance.",
   ];
 
   const literatureContext = [
     candidateReferenceCount
-      ? `当前已有 ${candidateReferenceCount} 条候选引用，可用于把结果放回既有公开数据源、方法学或临床研究背景中。`
-      : "当前缺少可追溯候选引用，Discussion 中暂不应加入与既有研究的强比较。",
+      ? `${candidateReferenceCount} candidate reference(s) are currently available to position the findings within prior public datasets, methodological literature, or clinical research context.`
+      : "Traceable candidate references are not yet available; strong comparisons with prior studies should not be added to the Discussion.",
     citationIssueCount
-      ? `仍有 ${citationIssueCount} 项引用质控问题，应在正式写入 Discussion 前完成 DOI/PMID、用途标记和全文核对。`
-      : "引用质控未发现系统级阻断项，但正式投稿前仍需人工核对目标期刊格式。",
+      ? `${citationIssueCount} citation quality issue(s) remain; DOI/PMID checks, use labels, and full-text verification should be completed before finalizing the Discussion.`
+      : "No system-level citation blocker was detected, but the target journal reference format still requires manual verification before submission.",
   ];
 
   const clinicalMeaning = [
     qualityReport.row_count >= 30
-      ? `当前联调数据包含 ${qualityReport.row_count} 行记录，足以验证流程链路和草稿生成，但仍不能替代真实课题数据的临床推断。`
-      : `当前样本量为 ${qualityReport.row_count} 行，只适合流程联调和写作模板验证。`,
+      ? `The current handoff dataset contains ${qualityReport.row_count} records, which is sufficient for validating the workflow and draft generation but not for replacing clinical inference from the final study dataset.`
+      : `The current sample size is ${qualityReport.row_count} records, which is suitable only for workflow testing and manuscript-template validation.`,
     statisticsReport.chart_specs.length
-      ? `已有 ${statisticsReport.chart_specs.length} 个图表规格，可在 Discussion 中对应说明哪些趋势适合图形化展示。`
-      : "当前还没有图表规格，建议先补充可视化摘要再讨论结果呈现方式。",
+      ? `${statisticsReport.chart_specs.length} chart specification(s) are available and can guide which trends should be presented visually.`
+      : "No chart specification is currently available; visualization summaries should be prepared before discussing result presentation.",
   ];
 
   const limitations = [
-    "当前 Discussion 是规则型草稿，需要研究者根据真实病种、治疗技术、伦理审批和数据来源重写关键解释。",
-    "预备 DATA 只用于流程对接，不应被描述为真实放疗研究结论。",
+    "This Discussion is a rule-based draft and requires investigator revision based on the actual disease site, treatment technique, ethics approval, and data source.",
+    "The prepared DATA is used only for workflow integration and should not be described as a real radiation therapy research conclusion.",
     formalTestReport
-      ? "正式检验结果仍需人工核对适用条件、缺失值处理、分组定义和多重比较边界。"
-      : "尚未执行正式检验，因此不能报告 P 值、置信区间或显著性方向。",
+      ? "Formal test results still require manual review of applicability, missing-data handling, group definitions, and multiplicity boundaries."
+      : "Formal testing has not yet been performed; P values, confidence intervals, and significance directions must not be reported.",
     writerMethodsResultsDraft.missingItems.length
-      ? `Writer 仍提示 ${writerMethodsResultsDraft.missingItems.length} 个待补充项，Discussion 应在这些问题解决后再定稿。`
-      : "即使系统未识别阻断项，仍需人工复核 Methods、Results 和 Discussion 是否逐句一致。",
+      ? `The Writer module still reports ${writerMethodsResultsDraft.missingItems.length} unresolved item(s); the Discussion should not be finalized until these are addressed.`
+      : "Even when no system blocker is detected, Methods, Results, and Discussion must be manually checked sentence by sentence for consistency.",
   ];
 
   const futureWork = [
-    "使用真实脱敏课题数据重新跑 Data Lin 质控、统计和 Writer 草稿链路。",
-    "补充目标期刊要求下的图表、亚组分析或敏感性分析计划。",
-    reviewerDeepComments?.revisionPriorities[0] ?? "根据 Reviewer 清单完成投稿前人工复核。",
+    "Re-run the Data Lin quality-control, statistical, and Writer handoff workflow using the final de-identified study dataset.",
+    "Add journal-specific figures, subgroup analyses, or sensitivity analyses as required by the target journal and study design.",
+    reviewerDeepComments?.revisionPriorities[0] ?? "Complete manual pre-submission review according to the Reviewer checklist.",
   ];
 
   const cautionNotes = [
-    "Discussion 草稿不能代替临床专家、统计专家或真实同行评审意见。",
-    "所有结论性表述必须能回溯到已确认数据、统计输出和可核对引用。",
+    "This Discussion draft does not replace clinical expert review, statistical expert review, or real peer review.",
+    "All conclusion statements must be traceable to verified data, statistical outputs, and checkable references.",
   ];
 
   return {
-    keyFindings: keyFindings.length ? keyFindings : ["当前统计结果不足以形成主要发现，请先完成 Data Lin 分析。"],
+    keyFindings: keyFindings.length
+      ? keyFindings
+      : ["The current statistical output is insufficient for a main finding; complete Data Lin analysis first."],
     interpretationParagraphs,
     literatureContext,
     clinicalMeaning,
@@ -1750,18 +1784,24 @@ function buildPipelineSteps(params: {
   protocolHasContent: boolean;
   qualityReport: DataQualityReport | null;
   statisticsReport: DataStatisticsReport | null;
+  advancedModelPlan: AdvancedModelPlan | null;
   writerMethodsResultsDraft: WriterMethodsResultsDraft | null;
   introductionHasText: boolean;
+  writerVersionCount: number;
   reviewerChecks: ReviewerCheckItem[];
+  reviewerCommentThreadCount: number;
 }): PipelineStep[] {
   const {
     candidateReferenceCount,
     protocolHasContent,
     qualityReport,
     statisticsReport,
+    advancedModelPlan,
     writerMethodsResultsDraft,
     introductionHasText,
+    writerVersionCount,
     reviewerChecks,
+    reviewerCommentThreadCount,
   } = params;
   const reviewerRedCount = reviewerChecks.filter((item) => item.severity === "red").length;
   const reviewerOrangeCount = reviewerChecks.filter((item) => item.severity === "orange").length;
@@ -1785,14 +1825,16 @@ function buildPipelineSteps(params: {
       id: "data",
       agentId: "data_analyst",
       title: "数据与统计",
-      status: statisticsReport
-        ? statisticsReport.formal_test_report
+      status: advancedModelPlan || statisticsReport
+        ? statisticsReport?.formal_test_report
           ? "ready"
           : "in_progress"
         : qualityReport
           ? "in_progress"
           : "not_started",
-      detail: statisticsReport
+      detail: advancedModelPlan
+        ? "高级分析已规划"
+        : statisticsReport
         ? statisticsReport.formal_test_report
           ? "已有正式检验"
           : "已有统计草案"
@@ -1804,8 +1846,10 @@ function buildPipelineSteps(params: {
       id: "writing",
       agentId: "writer",
       title: "写作草稿",
-      status: writerMethodsResultsDraft || introductionHasText ? "ready" : "not_started",
-      detail: writerMethodsResultsDraft
+      status: writerVersionCount || writerMethodsResultsDraft || introductionHasText ? "ready" : "not_started",
+      detail: writerVersionCount
+        ? `版本已归档 ${writerVersionCount} 个`
+        : writerMethodsResultsDraft
         ? "Methods / Results 已生成"
         : introductionHasText
           ? "Introduction 已开始"
@@ -1816,7 +1860,9 @@ function buildPipelineSteps(params: {
       agentId: "reviewer",
       title: "投稿前审查",
       status: reviewerRedCount ? "risk" : reviewerOrangeCount ? "in_progress" : "ready",
-      detail: reviewerRedCount
+      detail: reviewerCommentThreadCount
+        ? `返修映射中 ${reviewerCommentThreadCount} 条`
+        : reviewerRedCount
         ? `${reviewerRedCount} 项高风险`
         : reviewerOrangeCount
           ? `${reviewerOrangeCount} 项需复核`
@@ -2887,6 +2933,7 @@ function App() {
   const [dataAuditLogs, setDataAuditLogs] = useState<DataAuditLog[]>([]);
   const [qualityReport, setQualityReport] = useState<DataQualityReport | null>(null);
   const [statisticsReport, setStatisticsReport] = useState<DataStatisticsReport | null>(null);
+  const [advancedModelPlan, setAdvancedModelPlan] = useState<AdvancedModelPlan | null>(null);
   const [uploadedCsvFile, setUploadedCsvFile] = useState<File | null>(null);
   const [selectedJournalTemplateId, setSelectedJournalTemplateId] =
     useState<JournalTemplateId>("medical_physics");
@@ -2928,10 +2975,25 @@ function App() {
     useState<MentorRecommendationCard | null>(null);
   const [isCsvUploading, setIsCsvUploading] = useState(false);
   const [isStatisticsLoading, setIsStatisticsLoading] = useState(false);
+  const [isAdvancedModelPlanLoading, setIsAdvancedModelPlanLoading] = useState(false);
   const [isFormalTestLoading, setIsFormalTestLoading] = useState(false);
   const [isWriterDrafting, setIsWriterDrafting] = useState(false);
   const [isWriterDraftLoading, setIsWriterDraftLoading] = useState(false);
   const [isWriterDraftSaving, setIsWriterDraftSaving] = useState(false);
+  const [writerDraftVersions, setWriterDraftVersions] = useState<WriterDraftVersion[]>([]);
+  const [selectedWriterDraftVersionId, setSelectedWriterDraftVersionId] = useState<number | null>(
+    null,
+  );
+  const [isWriterVersionLoading, setIsWriterVersionLoading] = useState(false);
+  const [isWriterVersionSaving, setIsWriterVersionSaving] = useState(false);
+  const [restoringWriterVersionId, setRestoringWriterVersionId] = useState<number | null>(null);
+  const [writerVersionNotice, setWriterVersionNotice] = useState<string | null>(null);
+  const [reviewerCommentThreads, setReviewerCommentThreads] = useState<ReviewerCommentThread[]>([]);
+  const [reviewerRawImportText, setReviewerRawImportText] = useState("");
+  const [isReviewerCommentLoading, setIsReviewerCommentLoading] = useState(false);
+  const [isReviewerCommentImporting, setIsReviewerCommentImporting] = useState(false);
+  const [updatingReviewerThreadId, setUpdatingReviewerThreadId] = useState<number | null>(null);
+  const [reviewerCommentNotice, setReviewerCommentNotice] = useState<string | null>(null);
   const [citationQualityNotice, setCitationQualityNotice] = useState<string | null>(null);
   const [updatingCitationQualityActionKey, setUpdatingCitationQualityActionKey] =
     useState<string | null>(null);
@@ -3393,6 +3455,13 @@ function App() {
       reviewerChecks,
     ],
   );
+  const selectedWriterDraftVersion = useMemo(
+    () =>
+      writerDraftVersions.find((version) => version.id === selectedWriterDraftVersionId) ??
+      writerDraftVersions[0] ??
+      null,
+    [selectedWriterDraftVersionId, writerDraftVersions],
+  );
   const reviewerResponseDraft = useMemo(
     () =>
       buildReviewerResponseDraft({
@@ -3410,18 +3479,24 @@ function App() {
         protocolHasContent,
         qualityReport,
         statisticsReport,
+        advancedModelPlan,
         writerMethodsResultsDraft,
         introductionHasText,
+        writerVersionCount: writerDraftVersions.length,
         reviewerChecks,
+        reviewerCommentThreadCount: reviewerCommentThreads.length,
       }),
     [
       mentorCandidateReferences.length,
       protocolHasContent,
       qualityReport,
       statisticsReport,
+      advancedModelPlan,
       writerMethodsResultsDraft,
       introductionHasText,
+      writerDraftVersions.length,
       reviewerChecks,
+      reviewerCommentThreads.length,
     ],
   );
   const formalTestReport = statisticsReport?.formal_test_report ?? null;
@@ -3525,6 +3600,77 @@ function App() {
     }
 
     loadProjectAccess();
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [selectedProjectId]);
+
+  useEffect(() => {
+    let isCurrent = true;
+
+    async function loadWriterDraftVersions() {
+      if (!selectedProjectId) {
+        setWriterDraftVersions([]);
+        setSelectedWriterDraftVersionId(null);
+        return;
+      }
+
+      setIsWriterVersionLoading(true);
+      try {
+        const versions = await getWriterDraftVersions(selectedProjectId);
+        if (isCurrent) {
+          setWriterDraftVersions(versions);
+          setSelectedWriterDraftVersionId(versions[0]?.id ?? null);
+        }
+      } catch (caughtError) {
+        if (isCurrent) {
+          setWriterDraftVersions([]);
+          setSelectedWriterDraftVersionId(null);
+          setError(caughtError instanceof Error ? caughtError.message : "Writer 版本记录读取失败。");
+        }
+      } finally {
+        if (isCurrent) {
+          setIsWriterVersionLoading(false);
+        }
+      }
+    }
+
+    loadWriterDraftVersions();
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [selectedProjectId]);
+
+  useEffect(() => {
+    let isCurrent = true;
+
+    async function loadReviewerCommentThreads() {
+      if (!selectedProjectId) {
+        setReviewerCommentThreads([]);
+        return;
+      }
+
+      setIsReviewerCommentLoading(true);
+      try {
+        const threads = await getReviewerCommentThreads(selectedProjectId);
+        if (isCurrent) {
+          setReviewerCommentThreads(threads);
+        }
+      } catch (caughtError) {
+        if (isCurrent) {
+          setReviewerCommentThreads([]);
+          setError(caughtError instanceof Error ? caughtError.message : "真实审稿意见读取失败。");
+        }
+      } finally {
+        if (isCurrent) {
+          setIsReviewerCommentLoading(false);
+        }
+      }
+    }
+
+    loadReviewerCommentThreads();
 
     return () => {
       isCurrent = false;
@@ -4894,6 +5040,121 @@ function App() {
     }
   }
 
+  async function handleImportReviewerComments() {
+    if (!selectedProjectId || !canEditSelectedProject || isReviewerCommentImporting) {
+      return;
+    }
+    const rawText = reviewerRawImportText.trim();
+    if (!rawText) {
+      setReviewerCommentNotice("请先粘贴真实审稿意见。");
+      return;
+    }
+
+    setIsReviewerCommentImporting(true);
+    setReviewerCommentNotice(null);
+    setError(null);
+    try {
+      const importedThreads = await importReviewerCommentThreads(selectedProjectId, rawText);
+      setReviewerCommentThreads((current) => [...current, ...importedThreads]);
+      setReviewerRawImportText("");
+      setReviewerCommentNotice(`已导入 ${importedThreads.length} 条审稿意见，并生成英文回复草稿。`);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "真实审稿意见导入失败。");
+    } finally {
+      setIsReviewerCommentImporting(false);
+    }
+  }
+
+  async function handleUpdateReviewerCommentThread(
+    threadId: number,
+    patch: Partial<ReviewerCommentThreadUpdate>,
+  ) {
+    if (!selectedProjectId || !canEditSelectedProject || updatingReviewerThreadId !== null) {
+      return;
+    }
+    const currentThread = reviewerCommentThreads.find((thread) => thread.id === threadId);
+    if (!currentThread) {
+      return;
+    }
+
+    const payload: ReviewerCommentThreadUpdate = {
+      reviewer_label: currentThread.reviewer_label,
+      comment_type: currentThread.comment_type,
+      status: currentThread.status,
+      comment_text: currentThread.comment_text,
+      response_draft: currentThread.response_draft,
+      manuscript_change: currentThread.manuscript_change,
+      ...patch,
+    };
+
+    setUpdatingReviewerThreadId(threadId);
+    setReviewerCommentNotice(null);
+    setError(null);
+    try {
+      const updatedThread = await updateReviewerCommentThread(selectedProjectId, threadId, payload);
+      setReviewerCommentThreads((current) =>
+        current.map((thread) => (thread.id === updatedThread.id ? updatedThread : thread)),
+      );
+      setReviewerCommentNotice("已保存该条审稿意见映射。");
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "审稿意见映射保存失败。");
+    } finally {
+      setUpdatingReviewerThreadId(null);
+    }
+  }
+
+  function handleDownloadMappedReviewerResponse() {
+    const content = [
+      "# Response to Reviewers - Mapped Draft",
+      "",
+      `Generated at: ${new Date().toLocaleString("zh-CN")}`,
+      selectedProject ? `Project: ${selectedProject.name} / ${selectedProject.title}` : "Project: not specified",
+      "",
+      "Dear Editor and Reviewers,",
+      "",
+      "We thank the editor and reviewers for their careful evaluation of our manuscript. We provide a point-by-point response below. Reviewer comments are reproduced as imported, followed by our planned response and manuscript-change note.",
+      "",
+      ...reviewerCommentThreads.flatMap((thread, index) => [
+        `## ${index + 1}. ${thread.reviewer_label} - ${reviewerCommentTypeLabels[thread.comment_type]}`,
+        "",
+        `Status: ${thread.status}`,
+        "",
+        "**Reviewer comment**",
+        "",
+        thread.comment_text,
+        "",
+        "**Response**",
+        "",
+        thread.response_draft || "Response pending manual drafting.",
+        "",
+        "**Manuscript change**",
+        "",
+        thread.manuscript_change || "Manuscript change pending manual confirmation.",
+        "",
+      ]),
+      "## Final manual checks",
+      "",
+      "- Paste the exact reviewer wording from the official decision letter.",
+      "- Add final manuscript page and line numbers after revision.",
+      "- Confirm that all statistical, ethics, and data-availability statements match the revised manuscript.",
+      "- Ensure that unresolved or deferred items are explicitly discussed before resubmission.",
+      "",
+    ].join("\n");
+
+    const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    try {
+      link.href = url;
+      link.download = "response-to-reviewers-mapped.md";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+
   function handleDownloadProtocolQualityCheck() {
     const content = [
       "# 方案质量检查",
@@ -5500,6 +5761,7 @@ function App() {
       return [...current, columnName].slice(0, maxOutcomeCount);
     });
     setStatisticsReport(null);
+    setAdvancedModelPlan(null);
     setFormalTestConfirmation(createFormalTestConfirmation(currentUser?.display_name ?? ""));
   }
 
@@ -5540,6 +5802,85 @@ function App() {
       setWorkflowStatus(null);
     } finally {
       setIsStatisticsLoading(false);
+    }
+  }
+
+  async function handleGenerateAdvancedModelPlan() {
+    if (!selectedProjectId || !uploadedCsvFile || isAdvancedModelPlanLoading || !canEditSelectedProject) {
+      return;
+    }
+
+    setIsAdvancedModelPlanLoading(true);
+    setError(null);
+    try {
+      const plan = await uploadAdvancedModelPlan(
+        selectedProjectId,
+        uploadedCsvFile,
+        selectedGroupColumn,
+        selectedOutcomeColumns,
+      );
+      setAdvancedModelPlan(plan);
+      setWorkflowStatus("高级模型计划已生成。");
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "高级模型计划生成失败。");
+    } finally {
+      setIsAdvancedModelPlanLoading(false);
+    }
+  }
+
+  function handleDownloadAdvancedModelPlan() {
+    if (!advancedModelPlan) {
+      return;
+    }
+
+    const content = [
+      "# Advanced Statistical Model Plan",
+      "",
+      `Generated at: ${new Date().toLocaleString("zh-CN")}`,
+      `Source file: ${advancedModelPlan.file_name}`,
+      `Rows: ${advancedModelPlan.row_count}`,
+      `Recommended model: ${advancedModelPlan.recommended_model_id ?? "manual review required"}`,
+      "",
+      "## Candidates",
+      ...advancedModelPlan.candidates.flatMap((candidate, index) => [
+        `### ${index + 1}. ${candidate.model_name}`,
+        `- Readiness: ${candidate.readiness}`,
+        `- Outcome: ${candidate.outcome_column ?? "not selected"}`,
+        `- Available fields: ${candidate.available_fields.join(", ") || "none"}`,
+        `- Missing fields: ${candidate.missing_fields.join(", ") || "none"}`,
+        "",
+        "**Assumptions**",
+        ...candidate.assumptions.map((item) => `- ${item}`),
+        "",
+        "**Cautions**",
+        ...candidate.cautions.map((item) => `- ${item}`),
+        "",
+        "**Methods template**",
+        "",
+        candidate.methods_template,
+        "",
+        "**Results template**",
+        "",
+        candidate.results_template,
+        "",
+      ]),
+      "## Next step",
+      "",
+      advancedModelPlan.next_step,
+      "",
+    ].join("\n");
+
+    const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    try {
+      link.href = url;
+      link.download = "advanced-model-plan.md";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } finally {
+      URL.revokeObjectURL(url);
     }
   }
 
@@ -5793,6 +6134,114 @@ function App() {
       setError(caughtError instanceof Error ? caughtError.message : "Introduction 草稿保存失败。");
     } finally {
       setIsWriterDraftSaving(false);
+    }
+  }
+
+  async function handleCreateWriterDraftVersion() {
+    if (!selectedProjectId || !canEditSelectedProject || isWriterVersionSaving) {
+      return;
+    }
+
+    setIsWriterVersionSaving(true);
+    setWriterVersionNotice(null);
+    setError(null);
+    try {
+      const savedVersion = await createWriterDraftVersion(selectedProjectId, {
+        title: draftVersionSnapshot.label,
+        introduction: writerIntroductionDraftForm,
+        derived_sections: {
+          "Introduction": [
+            writerIntroductionDraftForm.background_paragraph,
+            writerIntroductionDraftForm.gap_paragraph,
+            writerIntroductionDraftForm.objective_paragraph,
+          ]
+            .map((paragraph) => paragraph.trim())
+            .filter(Boolean)
+            .join("\n\n"),
+          "Methods / Results": writerMethodsResultsDraft
+            ? [
+                ...writerMethodsResultsDraft.methodsParagraphs,
+                ...writerMethodsResultsDraft.resultsParagraphs,
+                ...writerMethodsResultsDraft.formalTestLines,
+                ...writerMethodsResultsDraft.chartLines,
+              ].join("\n\n")
+            : "",
+          "Discussion": writerDiscussionDraft
+            ? [
+                ...writerDiscussionDraft.interpretationParagraphs,
+                ...writerDiscussionDraft.literatureContext,
+                ...writerDiscussionDraft.clinicalMeaning,
+                ...writerDiscussionDraft.limitations,
+                ...writerDiscussionDraft.futureWork,
+              ].join("\n\n")
+            : "",
+          "Abstract": writerAbstractDraft
+            ? [
+                writerAbstractDraft.background,
+                writerAbstractDraft.objective,
+                writerAbstractDraft.methods,
+                writerAbstractDraft.results,
+                writerAbstractDraft.conclusions,
+              ].join("\n\n")
+            : "",
+          "Cover Letter": writerCoverLetterDraft
+            ? [
+                writerCoverLetterDraft.greeting,
+                writerCoverLetterDraft.manuscriptLine,
+                ...writerCoverLetterDraft.contributionParagraphs,
+                ...writerCoverLetterDraft.transparencyStatements,
+                writerCoverLetterDraft.closingParagraph,
+              ].join("\n\n")
+            : "",
+        },
+        metadata: {
+          submission_status: draftVersionSnapshot.submissionStatus,
+          selected_journal_template: draftVersionSnapshot.selectedJournalTemplate,
+          completed_section_count: draftVersionSnapshot.completedSections.length,
+          missing_section_count: draftVersionSnapshot.missingSections.length,
+          reviewer_high_risk_count: draftVersionSnapshot.reviewerRiskCounts.high,
+          reviewer_review_count: draftVersionSnapshot.reviewerRiskCounts.review,
+          manuscript_language: "English",
+        },
+      });
+      setWriterDraftVersions((current) => [
+        savedVersion,
+        ...current.filter((version) => version.id !== savedVersion.id),
+      ]);
+      setSelectedWriterDraftVersionId(savedVersion.id);
+      setWriterVersionNotice(`已保存 ${savedVersion.version_label}，论文稿件内容按英文 SCI 草稿归档。`);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Writer 版本保存失败。");
+    } finally {
+      setIsWriterVersionSaving(false);
+    }
+  }
+
+  async function handleRestoreWriterDraftVersion(versionId: number) {
+    if (!selectedProjectId || !canEditSelectedProject || restoringWriterVersionId !== null) {
+      return;
+    }
+
+    setRestoringWriterVersionId(versionId);
+    setWriterVersionNotice(null);
+    setError(null);
+    try {
+      const restoredDraft = await restoreWriterDraftVersion(selectedProjectId, versionId);
+      setWriterIntroductionDraft(restoredDraft);
+      setWriterIntroductionDraftForm({
+        background_paragraph: restoredDraft.background_paragraph,
+        gap_paragraph: restoredDraft.gap_paragraph,
+        objective_paragraph: restoredDraft.objective_paragraph,
+        citation_bindings: normalizeIntroductionCitationBindings(restoredDraft.citation_bindings),
+      });
+      const versions = await getWriterDraftVersions(selectedProjectId);
+      setWriterDraftVersions(versions);
+      setSelectedWriterDraftVersionId(versionId);
+      setWriterVersionNotice("已恢复该版本的 Introduction 草稿；派生章节保留在历史版本中供核对。");
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Writer 版本恢复失败。");
+    } finally {
+      setRestoringWriterVersionId(null);
     }
   }
 
@@ -6468,9 +6917,44 @@ function App() {
                         <FileText aria-hidden="true" size={15} />
                         <span>查看 Writer</span>
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedAgentId("data_analyst");
+                          void handleGenerateAdvancedModelPlan();
+                        }}
+                        disabled={
+                          !canEditSelectedProject ||
+                          !uploadedCsvFile ||
+                          isAdvancedModelPlanLoading ||
+                          hasBlockingPrivacyRisk
+                        }
+                      >
+                        {isAdvancedModelPlanLoading ? (
+                          <Loader2 aria-hidden="true" className="spin" size={15} />
+                        ) : (
+                          <BarChart3 aria-hidden="true" size={15} />
+                        )}
+                        <span>{isAdvancedModelPlanLoading ? "规划中" : "高级模型计划"}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedAgentId("writer");
+                          void handleCreateWriterDraftVersion();
+                        }}
+                        disabled={!canEditSelectedProject || isWriterVersionSaving || isWriterVersionLoading}
+                      >
+                        {isWriterVersionSaving ? (
+                          <Loader2 aria-hidden="true" className="spin" size={15} />
+                        ) : (
+                          <Save aria-hidden="true" size={15} />
+                        )}
+                        <span>{isWriterVersionSaving ? "归档中" : "保存 Writer 版本"}</span>
+                      </button>
                       <button type="button" onClick={() => setSelectedAgentId("reviewer")}>
                         <ShieldCheck aria-hidden="true" size={15} />
-                        <span>查看 Reviewer</span>
+                        <span>{reviewerCommentThreads.length ? "查看返修映射" : "导入审稿意见"}</span>
                       </button>
                     </div>
                     {workflowStatus || workflowSummary ? (
@@ -7460,6 +7944,77 @@ function App() {
                                 ) : null}
                               </div>
                             ) : null}
+
+                            <section className="advanced-model-panel">
+                              <div className="advanced-model-head">
+                                <div>
+                                  <p className="eyebrow">高级模型计划</p>
+                                  <h4>回归 / 生存 / 混合模型适配</h4>
+                                  <small>先判断可用性和缺口，不自动报告模型估计值。</small>
+                                </div>
+                                <div className="advanced-model-actions">
+                                  <button
+                                    type="button"
+                                    onClick={handleGenerateAdvancedModelPlan}
+                                    disabled={
+                                      !canEditSelectedProject ||
+                                      !uploadedCsvFile ||
+                                      isAdvancedModelPlanLoading ||
+                                      hasBlockingPrivacyRisk
+                                    }
+                                  >
+                                    {isAdvancedModelPlanLoading ? (
+                                      <Loader2 aria-hidden="true" className="spin" size={15} />
+                                    ) : (
+                                      <Sparkles aria-hidden="true" size={15} />
+                                    )}
+                                    <span>{isAdvancedModelPlanLoading ? "生成中" : "生成模型计划"}</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={handleDownloadAdvancedModelPlan}
+                                    disabled={!advancedModelPlan}
+                                  >
+                                    <Download aria-hidden="true" size={15} />
+                                    <span>导出计划</span>
+                                  </button>
+                                </div>
+                              </div>
+                              {advancedModelPlan ? (
+                                <div className="advanced-model-list">
+                                  {advancedModelPlan.candidates.map((candidate) => (
+                                    <article
+                                      className={`advanced-model-card readiness-${candidate.readiness}`}
+                                      key={candidate.model_id}
+                                    >
+                                      <div>
+                                        <strong>{candidate.model_name}</strong>
+                                        <span>{candidate.readiness}</span>
+                                      </div>
+                                      <p>{candidate.methods_template}</p>
+                                      <small>
+                                        结局：{candidate.outcome_column ?? "待选择"} · 可用字段{" "}
+                                        {candidate.available_fields.length} · 缺口{" "}
+                                        {candidate.missing_fields.length}
+                                      </small>
+                                      {candidate.missing_fields.length ? (
+                                        <ul>
+                                          {candidate.missing_fields.map((field) => (
+                                            <li key={field}>{field}</li>
+                                          ))}
+                                        </ul>
+                                      ) : null}
+                                    </article>
+                                  ))}
+                                  <p className="data-empty">{advancedModelPlan.next_step}</p>
+                                </div>
+                              ) : (
+                                <p className="data-empty">
+                                  生成统计草案后，可进一步生成高级模型计划，用于判断 linear/logistic/Cox/mixed-effects
+                                  是否适合当前 CSV。
+                                </p>
+                              )}
+                            </section>
 
                             <div className="formal-test-panel">
                               <div className="formal-test-head">
@@ -9217,6 +9772,107 @@ function App() {
                       </div>
                     </section>
 
+                    <section className="writer-methods-results-card writer-version-library">
+                      <div className="mentor-section-head">
+                        <strong>后端版本库</strong>
+                        <span>
+                          {isWriterVersionLoading
+                            ? "读取中"
+                            : writerDraftVersions.length
+                              ? `${writerDraftVersions.length} 个版本`
+                              : "暂无版本"}
+                        </span>
+                      </div>
+                      <div className="writer-version-toolbar">
+                        <p>
+                          保存当前英文 SCI 稿件快照；恢复时只覆盖 Introduction，其他派生章节作为历史记录保留。
+                        </p>
+                        <button
+                          type="button"
+                          onClick={handleCreateWriterDraftVersion}
+                          disabled={
+                            !canEditSelectedProject ||
+                            isWriterVersionSaving ||
+                            isWriterVersionLoading
+                          }
+                        >
+                          {isWriterVersionSaving ? (
+                            <Loader2 aria-hidden="true" className="spin" size={15} />
+                          ) : (
+                            <Save aria-hidden="true" size={15} />
+                          )}
+                          <span>{isWriterVersionSaving ? "保存中" : "保存当前版本"}</span>
+                        </button>
+                      </div>
+                      {writerVersionNotice ? (
+                        <p className="writer-version-notice">{writerVersionNotice}</p>
+                      ) : null}
+                      {writerDraftVersions.length ? (
+                        <div className="writer-version-list">
+                          {writerDraftVersions.map((version) => {
+                            const isSelected = selectedWriterDraftVersion?.id === version.id;
+                            return (
+                              <article
+                                className={isSelected ? "is-selected" : undefined}
+                                key={version.id}
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedWriterDraftVersionId(version.id)}
+                                >
+                                  <strong>{version.version_label}</strong>
+                                  <span>{new Date(version.created_at).toLocaleString("zh-CN")}</span>
+                                </button>
+                                <p>{version.title}</p>
+                                <small>
+                                  {version.metadata.manuscript_language ?? "English"} · 已完成{" "}
+                                  {version.metadata.completed_section_count ?? 0} 节 · 缺失{" "}
+                                  {version.metadata.missing_section_count ?? 0} 节
+                                </small>
+                                {version.restored_at ? (
+                                  <small>
+                                    已恢复 {new Date(version.restored_at).toLocaleString("zh-CN")}
+                                  </small>
+                                ) : null}
+                                <button
+                                  type="button"
+                                  onClick={() => handleRestoreWriterDraftVersion(version.id)}
+                                  disabled={
+                                    !canEditSelectedProject ||
+                                    restoringWriterVersionId !== null ||
+                                    isWriterDraftLoading
+                                  }
+                                >
+                                  {restoringWriterVersionId === version.id ? (
+                                    <Loader2 aria-hidden="true" className="spin" size={15} />
+                                  ) : (
+                                    <RefreshCw aria-hidden="true" size={15} />
+                                  )}
+                                  <span>
+                                    {restoringWriterVersionId === version.id ? "恢复中" : "恢复 Introduction"}
+                                  </span>
+                                </button>
+                              </article>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <p className="writer-version-empty">
+                          还没有持久化版本。完成一轮英文稿件后点击“保存当前版本”。
+                        </p>
+                      )}
+                      {selectedWriterDraftVersion ? (
+                        <div className="writer-version-preview">
+                          <strong>{selectedWriterDraftVersion.version_label} 预览</strong>
+                          <p>
+                            {selectedWriterDraftVersion.derived_sections.Abstract ||
+                              selectedWriterDraftVersion.derived_sections.Introduction ||
+                              "该版本没有可预览的英文正文。"}
+                          </p>
+                        </div>
+                      ) : null}
+                    </section>
+
                     <section className="writer-draft-card">
                       <div className="mentor-section-head">
                         <strong>Introduction 草稿</strong>
@@ -9720,6 +10376,199 @@ function App() {
                           </ul>
                         </article>
                       </div>
+                    </section>
+
+                    <section className="reviewer-response-panel reviewer-real-comments-panel">
+                      <div className="reviewer-deep-head">
+                        <div>
+                          <p className="eyebrow">Real reviewer comments</p>
+                          <h4>真实审稿意见映射</h4>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleDownloadMappedReviewerResponse}
+                          disabled={!reviewerCommentThreads.length}
+                        >
+                          <Download aria-hidden="true" size={15} />
+                          <span>导出映射回复</span>
+                        </button>
+                      </div>
+                      <div className="reviewer-import-box">
+                        <label>
+                          <span>粘贴审稿意见原文</span>
+                          <textarea
+                            value={reviewerRawImportText}
+                            placeholder="Paste the official reviewer comments here. The interface stays Chinese, and generated responses will be in English."
+                            disabled={!canEditSelectedProject || isReviewerCommentImporting}
+                            onChange={(event) => setReviewerRawImportText(event.currentTarget.value)}
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          onClick={handleImportReviewerComments}
+                          disabled={
+                            !canEditSelectedProject ||
+                            isReviewerCommentImporting ||
+                            !reviewerRawImportText.trim()
+                          }
+                        >
+                          {isReviewerCommentImporting ? (
+                            <Loader2 aria-hidden="true" className="spin" size={15} />
+                          ) : (
+                            <Sparkles aria-hidden="true" size={15} />
+                          )}
+                          <span>{isReviewerCommentImporting ? "导入中" : "导入并生成英文回复"}</span>
+                        </button>
+                      </div>
+                      {reviewerCommentNotice ? (
+                        <p className="reviewer-comment-notice">{reviewerCommentNotice}</p>
+                      ) : null}
+                      <div className="reviewer-thread-summary">
+                        <article>
+                          <span>总条目</span>
+                          <strong>{reviewerCommentThreads.length}</strong>
+                        </article>
+                        <article>
+                          <span>已解决</span>
+                          <strong>
+                            {reviewerCommentThreads.filter((thread) => thread.status === "resolved").length}
+                          </strong>
+                        </article>
+                        <article>
+                          <span>处理中</span>
+                          <strong>
+                            {reviewerCommentThreads.filter((thread) => thread.status === "addressing").length}
+                          </strong>
+                        </article>
+                      </div>
+                      {isReviewerCommentLoading ? (
+                        <p className="writer-empty">正在读取真实审稿意见...</p>
+                      ) : reviewerCommentThreads.length ? (
+                        <div className="reviewer-thread-list">
+                          {reviewerCommentThreads.map((thread, index) => (
+                            <article key={thread.id}>
+                              <div className="reviewer-thread-head">
+                                <strong>
+                                  {index + 1}. {thread.reviewer_label}
+                                </strong>
+                                <span>{reviewerCommentTypeLabels[thread.comment_type]}</span>
+                              </div>
+                              <div className="reviewer-thread-controls">
+                                <label>
+                                  <span>类型</span>
+                                  <select
+                                    value={thread.comment_type}
+                                    disabled={!canEditSelectedProject || updatingReviewerThreadId === thread.id}
+                                    onChange={(event) =>
+                                      handleUpdateReviewerCommentThread(thread.id, {
+                                        comment_type: event.currentTarget.value as ReviewerCommentType,
+                                      })
+                                    }
+                                  >
+                                    {Object.entries(reviewerCommentTypeLabels).map(([value, label]) => (
+                                      <option key={value} value={value}>
+                                        {label}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                                <label>
+                                  <span>状态</span>
+                                  <select
+                                    value={thread.status}
+                                    disabled={!canEditSelectedProject || updatingReviewerThreadId === thread.id}
+                                    onChange={(event) =>
+                                      handleUpdateReviewerCommentThread(thread.id, {
+                                        status: event.currentTarget.value as ReviewerCommentStatus,
+                                      })
+                                    }
+                                  >
+                                    {Object.entries(reviewerCommentStatusLabels).map(([value, label]) => (
+                                      <option key={value} value={value}>
+                                        {label}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                              </div>
+                              <label>
+                                <span>Reviewer comment</span>
+                                <textarea
+                                  value={thread.comment_text}
+                                  disabled={!canEditSelectedProject || updatingReviewerThreadId === thread.id}
+                                  onBlur={(event) =>
+                                    handleUpdateReviewerCommentThread(thread.id, {
+                                      comment_text: event.currentTarget.value,
+                                    })
+                                  }
+                                  onChange={(event) =>
+                                    setReviewerCommentThreads((current) =>
+                                      current.map((item) =>
+                                        item.id === thread.id
+                                          ? { ...item, comment_text: event.currentTarget.value }
+                                          : item,
+                                      ),
+                                    )
+                                  }
+                                />
+                              </label>
+                              <label>
+                                <span>English response draft</span>
+                                <textarea
+                                  value={thread.response_draft}
+                                  disabled={!canEditSelectedProject || updatingReviewerThreadId === thread.id}
+                                  onBlur={(event) =>
+                                    handleUpdateReviewerCommentThread(thread.id, {
+                                      response_draft: event.currentTarget.value,
+                                    })
+                                  }
+                                  onChange={(event) =>
+                                    setReviewerCommentThreads((current) =>
+                                      current.map((item) =>
+                                        item.id === thread.id
+                                          ? { ...item, response_draft: event.currentTarget.value }
+                                          : item,
+                                      ),
+                                    )
+                                  }
+                                />
+                              </label>
+                              <label>
+                                <span>Manuscript change</span>
+                                <input
+                                  value={thread.manuscript_change}
+                                  disabled={!canEditSelectedProject || updatingReviewerThreadId === thread.id}
+                                  onBlur={(event) =>
+                                    handleUpdateReviewerCommentThread(thread.id, {
+                                      manuscript_change: event.currentTarget.value,
+                                    })
+                                  }
+                                  onChange={(event) =>
+                                    setReviewerCommentThreads((current) =>
+                                      current.map((item) =>
+                                        item.id === thread.id
+                                          ? { ...item, manuscript_change: event.currentTarget.value }
+                                          : item,
+                                      ),
+                                    )
+                                  }
+                                />
+                              </label>
+                              {updatingReviewerThreadId === thread.id ? (
+                                <small>保存中...</small>
+                              ) : (
+                                <small>
+                                  更新于 {new Date(thread.updated_at).toLocaleString("zh-CN")}
+                                </small>
+                              )}
+                            </article>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="writer-empty">
+                          还没有导入真实审稿意见。收到 decision letter 后粘贴到上方，即可生成英文逐条回复草稿。
+                        </p>
+                      )}
                     </section>
 
                     <div className="reviewer-check-list">
