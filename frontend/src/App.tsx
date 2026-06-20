@@ -926,6 +926,72 @@ function buildWriterDiscussionDraft(params: {
   };
 }
 
+function buildWriterAbstractDraft(params: {
+  protocol: ProjectProtocol | null;
+  qualityReport: DataQualityReport | null;
+  statisticsReport: DataStatisticsReport | null;
+  writerMethodsResultsDraft: WriterMethodsResultsDraft | null;
+  writerDiscussionDraft: WriterDiscussionDraft | null;
+  candidateReferenceCount: number;
+}): WriterAbstractDraft | null {
+  const {
+    protocol,
+    qualityReport,
+    statisticsReport,
+    writerMethodsResultsDraft,
+    writerDiscussionDraft,
+    candidateReferenceCount,
+  } = params;
+
+  if (!qualityReport || !statisticsReport || !writerMethodsResultsDraft || !writerDiscussionDraft) {
+    return null;
+  }
+
+  const formalTestReport = statisticsReport.formal_test_report ?? null;
+  const primaryNumeric = statisticsReport.numeric_summaries[0];
+  const firstFormalResult = formalTestReport?.results[0];
+  const background = candidateReferenceCount
+    ? `Radiation therapy research increasingly depends on traceable clinical data, reproducible analysis workflows, and transparent citation support. The current draft is supported by ${candidateReferenceCount} candidate references that require final manual verification.`
+    : "Radiation therapy research increasingly depends on traceable clinical data and reproducible analysis workflows, but this draft still needs verified literature support before submission.";
+  const objective = protocol?.research_question
+    ? `To evaluate the study question: ${protocol.research_question}`
+    : "To evaluate a radiation therapy research workflow using structured protocol, data quality, statistical summary, and writing-review handoff steps.";
+  const methods = [
+    `A structured CSV dataset (${qualityReport.file_name}) with ${qualityReport.row_count} rows and ${qualityReport.column_count} columns was processed through field typing, missingness review, privacy screening, and statistical summarization.`,
+    statisticsReport.methods_draft,
+  ].join(" ");
+  const results = firstFormalResult
+    ? `The main formal test result was ${firstFormalResult.interpretation}. Descriptive summaries and chart specifications were generated for reviewer and writer handoff.`
+    : primaryNumeric
+      ? `Descriptive analysis showed ${primaryNumeric.column} with n=${primaryNumeric.n}, mean ${primaryNumeric.mean}, median ${primaryNumeric.median}, and range ${primaryNumeric.min}-${primaryNumeric.max}. No formal hypothesis test has been finalized, so no significance conclusion is reported.`
+      : "Descriptive summaries were generated, but the available output is not yet sufficient for a finalized quantitative abstract result.";
+  const conclusions = formalTestReport
+    ? "The workflow can support a complete manuscript handoff from data quality review to statistical reporting, writing, and reviewer checks, but all clinical interpretation requires manual expert validation before submission."
+    : "The workflow can support manuscript drafting and process validation, but conclusions remain descriptive until formal hypothesis testing and expert review are completed.";
+  const keywords = [
+    "radiation therapy",
+    "clinical data workflow",
+    "statistical reporting",
+    protocol?.study_type?.trim() || "manuscript drafting",
+    formalTestReport ? "hypothesis testing" : "descriptive statistics",
+  ];
+  const cautionNotes = [
+    "This abstract is a structured draft generated from current workflow data and is not submission-ready.",
+    "Do not report significance claims unless formal tests have been reviewed and approved.",
+    ...writerDiscussionDraft.cautionNotes,
+  ];
+
+  return {
+    background,
+    objective,
+    methods,
+    results,
+    conclusions,
+    keywords: Array.from(new Set(keywords.map((keyword) => keyword.trim()).filter(Boolean))).slice(0, 6),
+    cautionNotes,
+  };
+}
+
 function buildReviewerChecks(params: {
   protocolHasContent: boolean;
   protocol: ProjectProtocol | null;
@@ -1349,6 +1415,16 @@ interface WriterDiscussionDraft {
   clinicalMeaning: string[];
   limitations: string[];
   futureWork: string[];
+  cautionNotes: string[];
+}
+
+interface WriterAbstractDraft {
+  background: string;
+  objective: string;
+  methods: string;
+  results: string;
+  conclusions: string;
+  keywords: string[];
   cautionNotes: string[];
 }
 
@@ -2279,6 +2355,25 @@ function App() {
       reviewerDeepComments,
       mentorCandidateReferences.length,
       introductionCitationQualityIssues.length,
+    ],
+  );
+  const writerAbstractDraft = useMemo(
+    () =>
+      buildWriterAbstractDraft({
+        protocol,
+        qualityReport,
+        statisticsReport,
+        writerMethodsResultsDraft,
+        writerDiscussionDraft,
+        candidateReferenceCount: mentorCandidateReferences.length,
+      }),
+    [
+      protocol,
+      qualityReport,
+      statisticsReport,
+      writerMethodsResultsDraft,
+      writerDiscussionDraft,
+      mentorCandidateReferences.length,
     ],
   );
   const pipelineSteps = useMemo(
@@ -3380,6 +3475,54 @@ function App() {
     try {
       link.href = url;
       link.download = "discussion-draft.md";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  function handleDownloadAbstractDraft() {
+    if (!writerAbstractDraft) {
+      return;
+    }
+
+    const content = [
+      "# Abstract 草稿",
+      "",
+      `导出时间：${new Date().toLocaleString("zh-CN")}`,
+      selectedProject ? `关联项目：${selectedProject.name} / ${selectedProject.title}` : "关联项目：未指定",
+      "",
+      "## Background",
+      writerAbstractDraft.background,
+      "",
+      "## Objective",
+      writerAbstractDraft.objective,
+      "",
+      "## Methods",
+      writerAbstractDraft.methods,
+      "",
+      "## Results",
+      writerAbstractDraft.results,
+      "",
+      "## Conclusions",
+      writerAbstractDraft.conclusions,
+      "",
+      "## Keywords",
+      writerAbstractDraft.keywords.join("; "),
+      "",
+      "## 使用边界",
+      ...writerAbstractDraft.cautionNotes.map((item) => `- ${item}`),
+      "",
+    ].join("\n");
+
+    const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    try {
+      link.href = url;
+      link.download = "abstract-draft.md";
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -7026,6 +7169,14 @@ function App() {
                           <Download aria-hidden="true" size={15} />
                           <span>导出 Discussion</span>
                         </button>
+                        <button
+                          type="button"
+                          onClick={handleDownloadAbstractDraft}
+                          disabled={!writerAbstractDraft}
+                        >
+                          <Download aria-hidden="true" size={15} />
+                          <span>导出 Abstract</span>
+                        </button>
                         <FileText aria-hidden="true" size={20} />
                       </div>
                     </div>
@@ -7208,6 +7359,53 @@ function App() {
                       ) : (
                         <p className="writer-empty">
                           先完成 Data Lin 统计草案并生成 Methods / Results；Discussion 会基于真实统计摘要、引用状态和 Reviewer 意见生成。
+                        </p>
+                      )}
+                    </section>
+
+                    <section className="writer-methods-results-card writer-abstract-card">
+                      <div className="mentor-section-head">
+                        <strong>Abstract 草稿</strong>
+                        <span>{writerAbstractDraft ? "结构化摘要" : "等待 Discussion"}</span>
+                      </div>
+                      {writerAbstractDraft ? (
+                        <div className="writer-abstract-layout">
+                          <article>
+                            <strong>Background</strong>
+                            <p>{writerAbstractDraft.background}</p>
+                          </article>
+                          <article>
+                            <strong>Objective</strong>
+                            <p>{writerAbstractDraft.objective}</p>
+                          </article>
+                          <article>
+                            <strong>Methods</strong>
+                            <p>{writerAbstractDraft.methods}</p>
+                          </article>
+                          <article>
+                            <strong>Results</strong>
+                            <p>{writerAbstractDraft.results}</p>
+                          </article>
+                          <article>
+                            <strong>Conclusions</strong>
+                            <p>{writerAbstractDraft.conclusions}</p>
+                          </article>
+                          <article>
+                            <strong>Keywords</strong>
+                            <p>{writerAbstractDraft.keywords.join("; ")}</p>
+                          </article>
+                          <article className="writer-abstract-wide">
+                            <strong>使用边界</strong>
+                            <ul>
+                              {writerAbstractDraft.cautionNotes.map((item) => (
+                                <li key={item}>{item}</li>
+                              ))}
+                            </ul>
+                          </article>
+                        </div>
+                      ) : (
+                        <p className="writer-empty">
+                          先生成 Methods / Results 和 Discussion；Abstract 会压缩已有内容，并在没有正式检验时保持保守结论。
                         </p>
                       )}
                     </section>

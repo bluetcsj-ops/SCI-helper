@@ -1353,6 +1353,46 @@ button {
   background: #fbfdff;
 }
 
+.writer-abstract-card {
+  background: #fffdf8;
+}
+
+.writer-abstract-layout {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.writer-abstract-layout article {
+  display: grid;
+  gap: 6px;
+  border-radius: 8px;
+  padding: 12px;
+  background: #ffffff;
+}
+
+.writer-abstract-layout strong {
+  color: #22354a;
+}
+
+.writer-abstract-layout p,
+.writer-abstract-layout li {
+  margin: 0;
+  color: #4f6074;
+  line-height: 1.5;
+}
+
+.writer-abstract-layout ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.writer-abstract-wide {
+  grid-column: 1 / -1;
+}
+
 .reviewer-panel {
   display: grid;
   gap: 14px;
@@ -3586,6 +3626,7 @@ button {
   .mentor-interest-list,
   .writer-outline-grid,
   .writer-methods-results-layout,
+  .writer-abstract-layout,
   .writer-draft-grid,
   .mentor-preview-grid,
   .reviewer-summary-grid,
