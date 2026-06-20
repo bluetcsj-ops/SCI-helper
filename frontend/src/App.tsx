@@ -1427,6 +1427,188 @@ function buildJournalTemplateReadiness(params: {
   };
 }
 
+function countWords(value: string): number {
+  return value.trim().split(/\s+/).filter(Boolean).length;
+}
+
+function findGuidelineNumber(text: string, patterns: RegExp[]): number | null {
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match?.[1]) {
+      const value = Number(match[1]);
+      if (Number.isFinite(value)) {
+        return value;
+      }
+    }
+  }
+  return null;
+}
+
+function buildJournalGuidelineCheck(params: {
+  sourceUrl: string;
+  guidelineText: string;
+  currentWriterSections: Record<string, string>;
+  writerAbstractDraft: WriterAbstractDraft | null;
+  writerCoverLetterDraft: WriterCoverLetterDraft | null;
+  submissionPackageChecklist: SubmissionPackageChecklist;
+  citationIssueCount: number;
+}): JournalGuidelineCheck {
+  const {
+    sourceUrl,
+    guidelineText,
+    currentWriterSections,
+    writerAbstractDraft,
+    writerCoverLetterDraft,
+    submissionPackageChecklist,
+    citationIssueCount,
+  } = params;
+  const trimmedText = guidelineText.trim();
+  const normalizedText = trimmedText.toLowerCase();
+  const hasGuidelineText = trimmedText.length > 0;
+  const abstractWordLimit = findGuidelineNumber(normalizedText, [
+    /abstract[\s\S]{0,120}?(\d{2,4})\s*words?/i,
+    /(\d{2,4})\s*words?[\s\S]{0,80}?abstract/i,
+  ]);
+  const keywordLimit = findGuidelineNumber(normalizedText, [
+    /(?:keywords?|key words?)[\s\S]{0,80}?(\d{1,2})/i,
+    /(\d{1,2})[\s\S]{0,40}(?:keywords?|key words?)/i,
+  ]);
+  const abstractText = currentWriterSections.Abstract ?? "";
+  const abstractWords = countWords(abstractText);
+  const detectedRules = [
+    abstractWordLimit ? `Abstract word limit: ${abstractWordLimit} words` : null,
+    keywordLimit ? `Keyword limit: ${keywordLimit}` : null,
+    /\bstructured abstract\b|\bbackground\b[\s\S]{0,80}\bmethods\b[\s\S]{0,80}\bresults\b/i.test(trimmedText)
+      ? "Structured abstract sections detected"
+      : null,
+    /\bethics?\b|\binstitutional review board\b|\birb\b/i.test(trimmedText)
+      ? "Ethics / IRB statement required"
+      : null,
+    /\bconflicts? of interest\b|\bcompeting interests?\b/i.test(trimmedText)
+      ? "Conflict of interest statement required"
+      : null,
+    /\bdata availability\b|\bavailability of data\b/i.test(trimmedText)
+      ? "Data availability statement required"
+      : null,
+    /\bfunding\b|\bfinancial support\b/i.test(trimmedText) ? "Funding statement required" : null,
+    /\bauthor contributions?\b|\bcontributorship\b/i.test(trimmedText)
+      ? "Author contributions required"
+      : null,
+    /\bcover letter\b/i.test(trimmedText) ? "Cover letter mentioned" : null,
+    /\btitle page\b/i.test(trimmedText) ? "Title page mentioned" : null,
+    /\bfigures?\b|\btables?\b/i.test(trimmedText) ? "Figure / table rules mentioned" : null,
+    /\breferences?\b|\bvancouver\b|\bapa\b|\bendnote\b|\bcsl\b/i.test(trimmedText)
+      ? "Reference style mentioned"
+      : null,
+  ].filter(Boolean) as string[];
+  const checks: JournalGuidelineCheckItem[] = [
+    {
+      title: "Author Guidelines 来源",
+      status: hasGuidelineText ? "ready" : "blocked",
+      guideline: sourceUrl.trim() || "No URL or source note provided.",
+      currentEvidence: hasGuidelineText
+        ? "已粘贴 Author Guidelines 文本，可进行本地规则提取。"
+        : "请粘贴目标期刊 Author Guidelines 文本或关键要求。",
+    },
+    {
+      title: "Abstract word limit",
+      status: !hasGuidelineText
+        ? "blocked"
+        : abstractWordLimit
+          ? abstractWords && abstractWords <= abstractWordLimit
+            ? "ready"
+            : abstractWords
+              ? "review"
+              : "blocked"
+          : "review",
+      guideline: abstractWordLimit
+        ? `Detected limit: ${abstractWordLimit} words.`
+        : "No explicit abstract word limit detected; confirm manually.",
+      currentEvidence: abstractWords
+        ? `Current Abstract text: ${abstractWords} words.`
+        : "No Abstract text is currently available.",
+    },
+    {
+      title: "Keywords",
+      status: !hasGuidelineText ? "blocked" : writerAbstractDraft?.keywords.length ? "review" : "blocked",
+      guideline: keywordLimit
+        ? `Detected keyword limit: ${keywordLimit}.`
+        : "No explicit keyword count detected; confirm manually.",
+      currentEvidence: writerAbstractDraft?.keywords.length
+        ? `Current keywords: ${writerAbstractDraft.keywords.join("; ")}.`
+        : "No keywords generated yet.",
+    },
+    {
+      title: "Ethics / IRB statement",
+      status: /\bethics?\b|\binstitutional review board\b|\birb\b/i.test(trimmedText)
+        ? submissionPackageChecklist.items.some((item) => item.title.includes("伦理")) ? "review" : "blocked"
+        : hasGuidelineText
+          ? "review"
+          : "blocked",
+      guideline: "Check whether the guideline requires ethics approval, consent, waiver, or IRB statement.",
+      currentEvidence: "当前投稿包仍要求人工确认伦理审批、豁免或数据使用说明。",
+    },
+    {
+      title: "Conflict / funding / data availability",
+      status: hasGuidelineText && writerCoverLetterDraft ? "review" : "blocked",
+      guideline: [
+        /\bconflicts? of interest\b|\bcompeting interests?\b/i.test(trimmedText)
+          ? "Conflict of interest detected."
+          : "Conflict rule not clearly detected.",
+        /\bfunding\b|\bfinancial support\b/i.test(trimmedText)
+          ? "Funding rule detected."
+          : "Funding rule not clearly detected.",
+        /\bdata availability\b|\bavailability of data\b/i.test(trimmedText)
+          ? "Data availability rule detected."
+          : "Data availability rule not clearly detected.",
+      ].join(" "),
+      currentEvidence: writerCoverLetterDraft
+        ? "Cover Letter includes transparency placeholders, but final statements require manual completion."
+        : "Cover Letter is not generated yet.",
+    },
+    {
+      title: "Figures / tables",
+      status: /\bfigures?\b|\btables?\b/i.test(trimmedText) ? "review" : hasGuidelineText ? "review" : "blocked",
+      guideline: /\bfigures?\b|\btables?\b/i.test(trimmedText)
+        ? "Figure or table requirements are mentioned in the pasted text."
+        : "No explicit figure/table rule detected; confirm manually.",
+      currentEvidence: "当前系统可生成图表摘要，但最终数量、分辨率、图题和补充材料规则仍需人工核对。",
+    },
+    {
+      title: "Reference style",
+      status: citationIssueCount ? "review" : hasGuidelineText ? "ready" : "blocked",
+      guideline: /\breferences?\b|\bvancouver\b|\bapa\b|\bendnote\b|\bcsl\b/i.test(trimmedText)
+        ? "Reference style language detected in pasted guideline."
+        : "Reference style not clearly detected; confirm manually.",
+      currentEvidence: citationIssueCount
+        ? `Current citation quality still has ${citationIssueCount} issue(s).`
+        : "No system-level citation blocker detected.",
+    },
+    {
+      title: "Cover letter / title page",
+      status: hasGuidelineText && writerCoverLetterDraft ? "review" : "blocked",
+      guideline: [
+        /\bcover letter\b/i.test(trimmedText) ? "Cover letter mentioned." : "Cover letter not clearly detected.",
+        /\btitle page\b/i.test(trimmedText) ? "Title page mentioned." : "Title page not clearly detected.",
+      ].join(" "),
+      currentEvidence: writerCoverLetterDraft
+        ? "Cover Letter draft exists; editor name, corresponding author, declarations, and title page fields remain manual."
+        : "Cover Letter draft is missing.",
+    },
+  ];
+  const readyCount = checks.filter((item) => item.status === "ready").length;
+  const reviewCount = checks.filter((item) => item.status === "review").length;
+  const blockedCount = checks.filter((item) => item.status === "blocked").length;
+  return {
+    sourceLabel: sourceUrl.trim() || "Pasted Author Guidelines",
+    readyCount,
+    reviewCount,
+    blockedCount,
+    detectedRules,
+    checks,
+  };
+}
+
 function buildDraftVersionSnapshot(params: {
   selectedProject: Project | null | undefined;
   writerOutlineDraft: WriterOutlineDraft | null;
@@ -2432,6 +2614,22 @@ interface JournalTemplateReadiness {
   checks: JournalTemplateCheck[];
 }
 
+interface JournalGuidelineCheckItem {
+  title: string;
+  status: SubmissionChecklistStatus;
+  guideline: string;
+  currentEvidence: string;
+}
+
+interface JournalGuidelineCheck {
+  sourceLabel: string;
+  readyCount: number;
+  reviewCount: number;
+  blockedCount: number;
+  detectedRules: string[];
+  checks: JournalGuidelineCheckItem[];
+}
+
 interface DraftVersionSnapshot {
   label: string;
   createdAt: string;
@@ -3134,6 +3332,8 @@ function App() {
   const [uploadedCsvFile, setUploadedCsvFile] = useState<File | null>(null);
   const [selectedJournalTemplateId, setSelectedJournalTemplateId] =
     useState<JournalTemplateId>("medical_physics");
+  const [journalGuidelineSourceUrl, setJournalGuidelineSourceUrl] = useState("");
+  const [journalGuidelineText, setJournalGuidelineText] = useState("");
   const [workflowStatus, setWorkflowStatus] = useState<string | null>(null);
   const [workflowSummary, setWorkflowSummary] = useState<WorkflowSummary | null>(null);
   const [selectedGroupColumn, setSelectedGroupColumn] = useState("");
@@ -3663,15 +3863,24 @@ function App() {
     [selectedWriterDraftVersionId, writerDraftVersions],
   );
   const currentWriterSections = useMemo(
-    () =>
-      buildCurrentWriterSectionMap({
+    () => {
+      const generatedSections = buildCurrentWriterSectionMap({
         writerIntroductionDraftForm,
         writerMethodsResultsDraft,
         writerDiscussionDraft,
         writerAbstractDraft,
         writerCoverLetterDraft,
-      }),
+      });
+      const editedRestoredSections = Object.fromEntries(
+        Object.entries(restoredWriterSections).filter(([, value]) => value.trim().length > 0),
+      );
+      return {
+        ...generatedSections,
+        ...editedRestoredSections,
+      };
+    },
     [
+      restoredWriterSections,
       writerIntroductionDraftForm,
       writerMethodsResultsDraft,
       writerDiscussionDraft,
@@ -3689,6 +3898,27 @@ function App() {
   const restoredCoverLetterText = restoredWriterSections["Cover Letter"]?.trim() ?? "";
   const hasRestoredWriterSections = Object.values(restoredWriterSections).some(
     (value) => value.trim().length > 0,
+  );
+  const journalGuidelineCheck = useMemo(
+    () =>
+      buildJournalGuidelineCheck({
+        sourceUrl: journalGuidelineSourceUrl,
+        guidelineText: journalGuidelineText,
+        currentWriterSections,
+        writerAbstractDraft,
+        writerCoverLetterDraft,
+        submissionPackageChecklist,
+        citationIssueCount: introductionCitationQualityIssues.length,
+      }),
+    [
+      introductionCitationQualityIssues.length,
+      currentWriterSections,
+      journalGuidelineSourceUrl,
+      journalGuidelineText,
+      submissionPackageChecklist,
+      writerAbstractDraft,
+      writerCoverLetterDraft,
+    ],
   );
   const reviewerResponseDraft = useMemo(
     () =>
@@ -5159,6 +5389,55 @@ function App() {
     try {
       link.href = url;
       link.download = "journal-submission-template.md";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  function handleDownloadJournalGuidelineCheck() {
+    const content = [
+      "# Journal Guideline Check",
+      "",
+      `Generated at: ${new Date().toLocaleString("zh-CN")}`,
+      selectedProject ? `Project: ${selectedProject.name} / ${selectedProject.title}` : "Project: not specified",
+      `Source: ${journalGuidelineCheck.sourceLabel}`,
+      "",
+      "## Summary",
+      `- Ready: ${journalGuidelineCheck.readyCount}`,
+      `- Needs manual review: ${journalGuidelineCheck.reviewCount}`,
+      `- Blocked: ${journalGuidelineCheck.blockedCount}`,
+      "",
+      "## Detected rules",
+      ...(journalGuidelineCheck.detectedRules.length
+        ? journalGuidelineCheck.detectedRules.map((item) => `- ${item}`)
+        : ["- No specific rule was detected. Paste more complete Author Guidelines text and confirm manually."]),
+      "",
+      "## Checks",
+      ...journalGuidelineCheck.checks.flatMap((item, index) => [
+        `### ${index + 1}. ${item.title}`,
+        `- Status: ${
+          item.status === "ready" ? "Ready" : item.status === "review" ? "Needs manual review" : "Blocked"
+        }`,
+        `- Guideline signal: ${item.guideline}`,
+        `- Current manuscript evidence: ${item.currentEvidence}`,
+        "",
+      ]),
+      "## Boundaries",
+      "- This is a local extraction from user-provided Author Guidelines text or source notes.",
+      "- It does not fetch or verify the live journal website.",
+      "- Final submission requirements must be confirmed in the current journal submission system.",
+      "",
+    ].join("\n");
+
+    const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    try {
+      link.href = url;
+      link.download = "journal-guideline-check.md";
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -6753,6 +7032,14 @@ function App() {
     setRestoredWriterSections({});
     setRestoredWriterVersionLabel(null);
     setWriterVersionNotice("已清除历史恢复内容，Writer 回到自动生成草稿。");
+  }
+
+  function handleUpdateRestoredWriterSection(sectionName: string, value: string) {
+    setRestoredWriterSections((current) => ({
+      ...current,
+      [sectionName]: value,
+    }));
+    setWriterVersionNotice("历史恢复内容已更新；如需长期保存，请点击保存当前版本。");
   }
 
   async function handleCopyWriterVersionSection(sectionName: string) {
@@ -10023,11 +10310,18 @@ function App() {
                         <div className="writer-restored-section">
                           <div>
                             <strong>历史版本 Methods / Results</strong>
-                            <span>需人工复核后再用于 SCI 正文</span>
+                            <span>可编辑 · 保存版本后持久化</span>
                           </div>
-                          {restoredMethodsResultsText.split(/\n{2,}/).map((paragraph) => (
-                            <p key={paragraph}>{paragraph}</p>
-                          ))}
+                          <textarea
+                            value={restoredWriterSections["Methods / Results"] ?? ""}
+                            onChange={(event) =>
+                              handleUpdateRestoredWriterSection(
+                                "Methods / Results",
+                                event.currentTarget.value,
+                              )
+                            }
+                          />
+                          <small>请人工复核当前数据、统计结果和研究方案后再用于 SCI 正文。</small>
                         </div>
                       ) : writerMethodsResultsDraft ? (
                         <>
@@ -10114,11 +10408,15 @@ function App() {
                         <div className="writer-restored-section">
                           <div>
                             <strong>历史版本 Discussion</strong>
-                            <span>需人工复核解释边界</span>
+                            <span>可编辑 · 保存版本后持久化</span>
                           </div>
-                          {restoredDiscussionText.split(/\n{2,}/).map((paragraph) => (
-                            <p key={paragraph}>{paragraph}</p>
-                          ))}
+                          <textarea
+                            value={restoredWriterSections.Discussion ?? ""}
+                            onChange={(event) =>
+                              handleUpdateRestoredWriterSection("Discussion", event.currentTarget.value)
+                            }
+                          />
+                          <small>请人工复核解释边界、局限性和当前结果是否一致。</small>
                         </div>
                       ) : writerDiscussionDraft ? (
                         <div className="writer-methods-results-layout">
@@ -10199,11 +10497,15 @@ function App() {
                         <div className="writer-restored-section">
                           <div>
                             <strong>历史版本 Abstract</strong>
-                            <span>需核对目标期刊结构</span>
+                            <span>可编辑 · 保存版本后持久化</span>
                           </div>
-                          {restoredAbstractText.split(/\n{2,}/).map((paragraph) => (
-                            <p key={paragraph}>{paragraph}</p>
-                          ))}
+                          <textarea
+                            value={restoredWriterSections.Abstract ?? ""}
+                            onChange={(event) =>
+                              handleUpdateRestoredWriterSection("Abstract", event.currentTarget.value)
+                            }
+                          />
+                          <small>请核对目标期刊摘要结构、字数和当前结果是否一致。</small>
                         </div>
                       ) : writerAbstractDraft ? (
                         <div className="writer-abstract-layout">
@@ -10262,11 +10564,15 @@ function App() {
                         <div className="writer-restored-section">
                           <div>
                             <strong>历史版本 Cover Letter</strong>
-                            <span>需补充真实编辑和通讯作者信息</span>
+                            <span>可编辑 · 保存版本后持久化</span>
                           </div>
-                          {restoredCoverLetterText.split(/\n{2,}/).map((paragraph) => (
-                            <p key={paragraph}>{paragraph}</p>
-                          ))}
+                          <textarea
+                            value={restoredWriterSections["Cover Letter"] ?? ""}
+                            onChange={(event) =>
+                              handleUpdateRestoredWriterSection("Cover Letter", event.currentTarget.value)
+                            }
+                          />
+                          <small>请补充真实编辑、通讯作者和投稿系统信息。</small>
                         </div>
                       ) : writerCoverLetterDraft ? (
                         <div className="writer-cover-letter-layout">
@@ -10426,6 +10732,88 @@ function App() {
                           </article>
                         ))}
                       </div>
+                    </section>
+
+                    <section className="writer-methods-results-card writer-guideline-check-card">
+                      <div className="mentor-section-head">
+                        <strong>目标期刊规则校验</strong>
+                        <span>
+                          {journalGuidelineCheck.blockedCount
+                            ? `${journalGuidelineCheck.blockedCount} 个阻断`
+                            : journalGuidelineCheck.reviewCount
+                              ? `${journalGuidelineCheck.reviewCount} 项复核`
+                              : "可继续"}
+                        </span>
+                      </div>
+                      <div className="journal-guideline-inputs">
+                        <label>
+                          <span>Author Guidelines URL / 来源备注</span>
+                          <input
+                            value={journalGuidelineSourceUrl}
+                            placeholder="例如 https://.../author-guidelines"
+                            onChange={(event) => setJournalGuidelineSourceUrl(event.currentTarget.value)}
+                          />
+                        </label>
+                        <label>
+                          <span>粘贴 Author Guidelines 关键文本</span>
+                          <textarea
+                            value={journalGuidelineText}
+                            placeholder="Paste target journal Author Guidelines here. The interface stays Chinese; manuscript-facing checks remain English where appropriate."
+                            onChange={(event) => setJournalGuidelineText(event.currentTarget.value)}
+                          />
+                        </label>
+                      </div>
+                      <div className="submission-summary-grid">
+                        <article className="risk-green">
+                          <span>已就绪</span>
+                          <strong>{journalGuidelineCheck.readyCount}</strong>
+                        </article>
+                        <article className="risk-orange">
+                          <span>需复核</span>
+                          <strong>{journalGuidelineCheck.reviewCount}</strong>
+                        </article>
+                        <article className="risk-red">
+                          <span>阻断项</span>
+                          <strong>{journalGuidelineCheck.blockedCount}</strong>
+                        </article>
+                      </div>
+                      <div className="journal-guideline-detected">
+                        <strong>识别到的规则</strong>
+                        {journalGuidelineCheck.detectedRules.length ? (
+                          <ul>
+                            {journalGuidelineCheck.detectedRules.map((item) => (
+                              <li key={item}>{item}</li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p>还没有识别到具体规则；请粘贴更完整的 Author Guidelines 文本。</p>
+                        )}
+                      </div>
+                      <div className="submission-checklist">
+                        {journalGuidelineCheck.checks.map((item) => (
+                          <article className={`submission-check-item status-${item.status}`} key={item.title}>
+                            <div>
+                              <span className={`status-badge risk-${
+                                item.status === "ready" ? "green" : item.status === "review" ? "orange" : "red"
+                              }`}
+                              >
+                                {item.status === "ready" ? "已就绪" : item.status === "review" ? "需复核" : "阻断"}
+                              </span>
+                              <strong>{item.title}</strong>
+                            </div>
+                            <p>{item.guideline}</p>
+                            <small>{item.currentEvidence}</small>
+                          </article>
+                        ))}
+                      </div>
+                      <button
+                        className="journal-guideline-export"
+                        type="button"
+                        onClick={handleDownloadJournalGuidelineCheck}
+                      >
+                        <Download aria-hidden="true" size={15} />
+                        <span>导出规则校验</span>
+                      </button>
                     </section>
 
                     <section className="writer-methods-results-card writer-version-card">

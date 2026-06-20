@@ -73,6 +73,10 @@ Mentor → Vera Protocol → Data Lin → Alex Writer → Reviewer
 - Cover Letter 草稿。
 - 投稿包检查清单。
 - 目标期刊模板。
+- Author Guidelines 本地规则校验：
+  - 粘贴目标期刊 URL / 来源备注和指南关键文本
+  - 提取摘要字数、关键词、伦理、利益冲突、资助、数据可用性、图表和引用格式信号
+  - 对照当前 Abstract、Cover Letter、投稿包和引用质控状态
 - 后端版本库：
   - 保存当前英文稿件快照
   - 查看版本列表
@@ -80,6 +84,7 @@ Mentor → Vera Protocol → Data Lin → Alex Writer → Reviewer
   - 查看当前稿件与历史快照的章节差异
   - 复制历史版本中的派生章节
   - 恢复全文草稿第一版：Introduction 写回后端，其他章节作为历史恢复内容优先显示
+  - 逐字段编辑历史恢复的 Methods / Results、Discussion、Abstract、Cover Letter，并可纳入新的版本快照
   - 清除历史恢复内容，回到自动生成草稿
 - Reviewer 修改提醒：
   - 按章节显示真实审稿意见的未解决修改项
@@ -94,6 +99,7 @@ Mentor → Vera Protocol → Data Lin → Alex Writer → Reviewer
   - `cover-letter-draft.md`
   - `submission-package-checklist.md`
   - `journal-submission-template.md`
+  - `journal-guideline-check.md`
   - `draft-version-snapshot.md`
 
 ### Reviewer
@@ -179,7 +185,8 @@ $env:DATABASE_URL='sqlite:///:memory:'
    - Discussion
    - Abstract
    - Cover Letter
-   - 后端版本库保存、恢复 Introduction、恢复全文草稿、版本 diff、历史章节复制和清除恢复
+   - 目标期刊规则校验
+   - 后端版本库保存、恢复 Introduction、恢复全文草稿、逐字段编辑历史恢复内容、版本 diff、历史章节复制和清除恢复
    - Reviewer 修改提醒
 7. 在 Reviewer 中检查：
    - 投稿前审稿清单
@@ -196,10 +203,10 @@ $env:DATABASE_URL='sqlite:///:memory:'
 - 当前预备 CSV 是 ICU/EHR 示例数据，不是放疗专科数据；用于流程联调，不代表正式课题数据。
 - 高级模型执行第一版已支持 linear regression；logistic regression、Cox 和 mixed-effects 仍只停留在计划/待开发阶段。
 - Linear regression 输出是探索性拟合结果，仍需要人工统计复核，不应直接作为最终 SCI 结论。
-- Writer 版本库当前恢复 Introduction；派生章节可作为历史恢复内容优先显示、预览、diff、复制和导出，但不会写回后端全文字段。
+- Writer 版本库当前恢复 Introduction；派生章节可作为历史恢复内容优先显示、逐字段编辑、预览、diff、复制、导出，并可纳入新的版本快照，但不会直接写回后端全文字段。
 - Reviewer 真实意见拆分是规则型，复杂 decision letter 仍需人工校正。
 - Reviewer 到 Writer 的章节映射支持人工修正和持久化保存，但仍需人工对照原始 decision letter 最终确认。
-- 当前期刊模板不是实时抓取官网 Author Guidelines。
+- 当前 Author Guidelines 校验第一版依赖用户粘贴文本，不自动抓取官网页面；正式投稿仍需在投稿系统中最终核对。
 - Reviewer 是规则型自查，不替代真实同行评审。
 
 ## 本地启动方式
@@ -227,5 +234,5 @@ npm.cmd run dev -- --host 127.0.0.1 --port 3000
    - logistic regression
    - survival analysis
    - mixed-effects model
-4. 做 Writer 历史恢复内容的逐字段编辑。
-5. 接入真实放疗专科样例数据。
+4. 接入真实放疗专科样例数据。
+5. 做目标期刊官网规则自动抓取。

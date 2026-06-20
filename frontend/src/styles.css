@@ -1666,6 +1666,82 @@ button {
   grid-column: 1 / -1;
 }
 
+.writer-guideline-check-card {
+  border-color: rgba(47, 126, 168, 0.18);
+}
+
+.journal-guideline-inputs {
+  display: grid;
+  gap: 12px;
+}
+
+.journal-guideline-inputs label {
+  display: grid;
+  gap: 6px;
+}
+
+.journal-guideline-inputs span {
+  color: #6d5a48;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.journal-guideline-inputs input,
+.journal-guideline-inputs textarea {
+  width: 100%;
+  border: 1px solid rgba(36, 48, 64, 0.16);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #ffffff;
+  color: #243040;
+  font: inherit;
+}
+
+.journal-guideline-inputs textarea {
+  min-height: 150px;
+  resize: vertical;
+}
+
+.journal-guideline-detected {
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(47, 126, 168, 0.14);
+  border-radius: 8px;
+  padding: 12px;
+  background: #f6fbfd;
+}
+
+.journal-guideline-detected strong {
+  color: #22354a;
+}
+
+.journal-guideline-detected ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.journal-guideline-detected li,
+.journal-guideline-detected p {
+  margin: 0;
+  color: #4f6074;
+  line-height: 1.5;
+}
+
+.journal-guideline-export {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 8px;
+  padding: 10px 14px;
+  background: #2f7ea8;
+  color: #ffffff;
+  font-weight: 800;
+  cursor: pointer;
+}
+
 .writer-version-card {
   background: #fbfbff;
 }
@@ -1812,6 +1888,24 @@ button {
   margin: 0;
   color: #4f6074;
   line-height: 1.6;
+}
+
+.writer-restored-section textarea {
+  width: 100%;
+  min-height: 220px;
+  border: 1px solid rgba(217, 119, 6, 0.22);
+  border-radius: 8px;
+  padding: 12px;
+  background: #ffffff;
+  color: #243040;
+  font: inherit;
+  line-height: 1.6;
+  resize: vertical;
+}
+
+.writer-restored-section small {
+  color: #8c4d10;
+  font-weight: 700;
 }
 
 .writer-version-preview {

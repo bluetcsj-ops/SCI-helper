@@ -23,7 +23,7 @@ Mentor 选题与引用
 | Prof. RadOnc Mentor | 74% | 可生成课题推荐、加载预备真实引用、复核候选引用、导出引用清单，并将推荐写入方案 |
 | Dr. Vera Protocol | 78% | 可编辑/保存研究方案，生成方案草案和执行计划草案，完成方案质量检查、方案-数据一致性检查、方案版本快照与导出 |
 | Dr. Data Lin | 91% | 可上传 CSV、加载预备 DATA、做质控/隐私检查/统计草案/图表/审计、一键联调 Writer，生成自主分析计划和高级模型计划，并可在人工确认后执行第一版 linear regression |
-| Alex Writer | 96% | 可生成英文 Introduction、Methods / Results、Discussion、Abstract、Cover Letter、投稿包检查清单、目标期刊模板，并支持后端版本归档、恢复 Introduction、版本差异查看、历史章节复制、全文恢复显示层和 Reviewer 修改提醒 |
+| Alex Writer | 98% | 可生成英文 Introduction、Methods / Results、Discussion、Abstract、Cover Letter、投稿包检查清单、目标期刊模板和 Author Guidelines 本地规则校验，并支持后端版本归档、恢复 Introduction、版本差异查看、历史章节复制、全文恢复逐字段编辑和 Reviewer 修改提醒 |
 | Rev. Dr. Helena Skov | 93% | 可生成投稿前规则清单、深度审稿意见、Response to Reviewers 草稿，并支持真实审稿意见导入、逐条映射、英文回复导出、返修写作清单和章节归属持久化修正 |
 
 ## 已完成的关键闭环
@@ -97,6 +97,11 @@ Mentor 选题与引用
 - Cover Letter 草稿和导出 `cover-letter-draft.md`。
 - 投稿包检查清单和导出 `submission-package-checklist.md`。
 - 目标期刊模板和导出 `journal-submission-template.md`。
+- Author Guidelines 本地规则校验：
+  - 可粘贴目标期刊 Author Guidelines URL / 来源备注和关键文本。
+  - 提取 abstract word limit、keywords、ethics / IRB、conflict of interest、funding、data availability、figures / tables、reference style 等规则信号。
+  - 与当前 Abstract、Cover Letter、投稿包和引用质控状态对照。
+  - 导出 `journal-guideline-check.md`。
 - 后端版本库：
   - 保存当前英文稿件快照
   - 查看历史版本
@@ -104,14 +109,14 @@ Mentor 选题与引用
   - 查看当前稿件与历史快照的章节差异
   - 复制历史版本中的派生章节
   - 恢复全文草稿第一版：Introduction 写回后端，其他章节作为历史恢复内容优先显示
+  - 历史恢复的 Methods / Results、Discussion、Abstract、Cover Letter 可逐字段编辑，并可纳入新的版本快照
   - 清除历史恢复内容，回到自动生成草稿
   - 导出 `writer-version-diff.md`
 - 版本快照导出 `draft-version-snapshot.md`。
 
 当前仍未完成：
 
-- 全文恢复后的逐字段编辑。
-- 目标期刊官网规则实时抓取。
+- 目标期刊官网规则自动抓取和网页解析。
 - 写作风格学习。
 
 ### 5. Rev. Dr. Helena Skov
@@ -145,4 +150,4 @@ Mentor 选题与引用
 3. 后续优先补：
    - 真实高级统计模型拟合
    - 真实放疗专科数据适配
-   - 目标期刊规则实时校验
+   - 目标期刊官网规则自动抓取
