@@ -95,6 +95,7 @@ import type {
   ReviewerCommentThread,
   ReviewerCommentThreadUpdate,
   ReviewerCommentType,
+  ReviewerRevisionSection,
   RiskLevel,
   UserProfile,
   WriterDraftVersion,
@@ -1597,6 +1598,16 @@ function buildWriterVersionSectionDiffs(
   });
 }
 
+const revisionSectionOptions = [
+  "Introduction",
+  "Methods / Results",
+  "Discussion",
+  "Abstract",
+  "Cover Letter / Submission",
+] satisfies ReviewerRevisionSection[];
+
+type RevisionSectionId = ReviewerRevisionSection;
+
 function inferReviewerRevisionSections(thread: ReviewerCommentThread): RevisionSectionId[] {
   const text = [
     thread.comment_text,
@@ -1628,24 +1639,19 @@ function inferReviewerRevisionSections(thread: ReviewerCommentThread): RevisionS
 
 function buildWriterRevisionChecklistGroups(
   threads: ReviewerCommentThread[],
+  manualSectionsByThreadId: Record<number, RevisionSectionId[]> = {},
 ): WriterRevisionSectionGroup[] {
-  const sectionOrder: RevisionSectionId[] = [
-    "Introduction",
-    "Methods / Results",
-    "Discussion",
-    "Abstract",
-    "Cover Letter / Submission",
-  ];
   const groups = new Map<RevisionSectionId, WriterRevisionChecklistItem[]>(
-    sectionOrder.map((section) => [section, []]),
+    revisionSectionOptions.map((section) => [section, []]),
   );
   threads.forEach((thread) => {
-    const sections = inferReviewerRevisionSections(thread);
+    const manualSections = manualSectionsByThreadId[thread.id];
+    const sections = manualSections?.length ? manualSections : inferReviewerRevisionSections(thread);
     sections.forEach((section) => {
       groups.get(section)?.push({ thread, sections });
     });
   });
-  return sectionOrder.map((section) => {
+  return revisionSectionOptions.map((section) => {
     const items = groups.get(section) ?? [];
     return {
       section,
@@ -2451,13 +2457,6 @@ interface WriterVersionSectionDiff {
 }
 
 type RestoredWriterSections = Record<string, string>;
-
-type RevisionSectionId =
-  | "Introduction"
-  | "Methods / Results"
-  | "Discussion"
-  | "Abstract"
-  | "Cover Letter / Submission";
 
 interface WriterRevisionChecklistItem {
   thread: ReviewerCommentThread;
@@ -3701,9 +3700,19 @@ function App() {
       }),
     [reviewerChecks, reviewerDeepComments, protocolDataConsistencyCheck, submissionPackageChecklist],
   );
-  const writerRevisionChecklistGroups = useMemo(
-    () => buildWriterRevisionChecklistGroups(reviewerCommentThreads),
+  const reviewerRevisionSectionsByThreadId = useMemo(
+    () =>
+      reviewerCommentThreads.reduce<Record<number, RevisionSectionId[]>>((sectionsByThreadId, thread) => {
+        if (thread.manual_revision_sections.length) {
+          sectionsByThreadId[thread.id] = thread.manual_revision_sections;
+        }
+        return sectionsByThreadId;
+      }, {}),
     [reviewerCommentThreads],
+  );
+  const writerRevisionChecklistGroups = useMemo(
+    () => buildWriterRevisionChecklistGroups(reviewerCommentThreads, reviewerRevisionSectionsByThreadId),
+    [reviewerCommentThreads, reviewerRevisionSectionsByThreadId],
   );
   const writerRevisionUnresolvedCount = writerRevisionChecklistGroups.reduce(
     (total, group) => total + group.unresolvedCount,
@@ -5399,6 +5408,7 @@ function App() {
       comment_text: currentThread.comment_text,
       response_draft: currentThread.response_draft,
       manuscript_change: currentThread.manuscript_change,
+      manual_revision_sections: currentThread.manual_revision_sections,
       ...patch,
     };
 
@@ -5416,6 +5426,29 @@ function App() {
     } finally {
       setUpdatingReviewerThreadId(null);
     }
+  }
+
+  function handleReviewerRevisionSectionToggle(
+    thread: ReviewerCommentThread,
+    section: RevisionSectionId,
+    checked: boolean,
+  ) {
+    const currentSections = thread.manual_revision_sections.length
+      ? thread.manual_revision_sections
+      : inferReviewerRevisionSections(thread);
+    const nextSections = checked
+      ? [...currentSections, section]
+      : currentSections.filter((currentSection) => currentSection !== section);
+    const uniqueSections = revisionSectionOptions.filter((option) => nextSections.includes(option));
+    void handleUpdateReviewerCommentThread(thread.id, {
+      manual_revision_sections: uniqueSections,
+    });
+  }
+
+  function handleResetReviewerRevisionSections(threadId: number) {
+    void handleUpdateReviewerCommentThread(threadId, {
+      manual_revision_sections: [],
+    });
   }
 
   function handleDownloadMappedReviewerResponse() {
@@ -5477,7 +5510,7 @@ function App() {
       `Generated at: ${new Date().toLocaleString("zh-CN")}`,
       selectedProject ? `Project: ${selectedProject.name} / ${selectedProject.title}` : "Project: not specified",
       "",
-      "This checklist maps imported reviewer comments to manuscript sections for manual revision tracking. Section assignment is rule-based and must be reviewed against the original decision letter.",
+      "This checklist maps imported reviewer comments to manuscript sections for manual revision tracking. Section assignment may combine rule-based detection and temporary manual correction in the interface; every section assignment must be confirmed manually against the original decision letter.",
       "",
       ...writerRevisionChecklistGroups.flatMap((group) => [
         `## ${group.section}`,
@@ -5489,6 +5522,8 @@ function App() {
               `### ${index + 1}. ${thread.reviewer_label} - ${reviewerCommentTypeLabels[thread.comment_type]}`,
               "",
               `Status: ${reviewerCommentStatusLabels[thread.status]}`,
+              `Section assignment: ${thread.manual_revision_sections.length ? `manual (${thread.manual_revision_sections.join(", ")})` : `automatic (${inferReviewerRevisionSections(thread).join(", ")})`}`,
+              "Manual confirmation required: yes",
               "",
               "**Reviewer comment**",
               "",
@@ -11228,7 +11263,13 @@ function App() {
                         <p className="writer-empty">正在读取真实审稿意见...</p>
                       ) : reviewerCommentThreads.length ? (
                         <div className="reviewer-thread-list">
-                          {reviewerCommentThreads.map((thread, index) => (
+                          {reviewerCommentThreads.map((thread, index) => {
+                            const manualSections = thread.manual_revision_sections;
+                            const selectedRevisionSections = manualSections.length
+                              ? manualSections
+                              : inferReviewerRevisionSections(thread);
+                            const hasManualRevisionSections = Boolean(manualSections.length);
+                            return (
                             <article key={thread.id}>
                               <div className="reviewer-thread-head">
                                 <strong>
@@ -11273,6 +11314,46 @@ function App() {
                                     ))}
                                   </select>
                                 </label>
+                              </div>
+                              <div className="reviewer-section-map">
+                                <div className="reviewer-section-map-head">
+                                  <span>影响章节</span>
+                                  <small>{hasManualRevisionSections ? "人工修正" : "自动识别"}</small>
+                                </div>
+                                <div className="reviewer-section-options">
+                                  {revisionSectionOptions.map((section) => (
+                                    <label key={section}>
+                                      <input
+                                        type="checkbox"
+                                        checked={selectedRevisionSections.includes(section)}
+                                        disabled={
+                                          !canEditSelectedProject ||
+                                          updatingReviewerThreadId === thread.id
+                                        }
+                                        onChange={(event) =>
+                                          handleReviewerRevisionSectionToggle(
+                                            thread,
+                                            section,
+                                            event.currentTarget.checked,
+                                          )
+                                        }
+                                      />
+                                      <span>{section}</span>
+                                    </label>
+                                  ))}
+                                </div>
+                                {hasManualRevisionSections ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleResetReviewerRevisionSections(thread.id)}
+                                    disabled={
+                                      !canEditSelectedProject ||
+                                      updatingReviewerThreadId === thread.id
+                                    }
+                                  >
+                                    恢复自动识别
+                                  </button>
+                                ) : null}
                               </div>
                               <label>
                                 <span>Reviewer comment</span>
@@ -11345,7 +11426,8 @@ function App() {
                                 </small>
                               )}
                             </article>
-                          ))}
+                            );
+                          })}
                         </div>
                       ) : (
                         <p className="writer-empty">

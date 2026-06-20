@@ -252,6 +252,7 @@ class ReviewerCommentThreadRecord(Base):
     comment_text: Mapped[str] = mapped_column(Text, nullable=False)
     response_draft: Mapped[str] = mapped_column(Text, nullable=False, default="")
     manuscript_change: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    manual_revision_sections_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,

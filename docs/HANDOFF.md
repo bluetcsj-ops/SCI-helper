@@ -8,12 +8,12 @@
 
 ## 当前状态
 
-当前 `main` 分支在上一轮已提交 Writer 版本库、Reviewer 映射和高级模型计划。本轮新增未提交改动主要是 Data Lin 高级模型执行第一版：
+当前 `main` 分支已提交 Data Lin 高级模型执行第一版，以及 Writer / Reviewer 返修写作清单阶段成果。本轮新增未提交改动主要是 Reviewer 返修清单章节归属持久化编辑：
 
-- 人工确认后执行 multivariable linear regression。
-- 输出英文 Methods / Results 草稿、系数表、R-squared、adjusted R-squared 和模型警示项。
-- 将线性回归结果带入 Alex Writer 的 Methods / Results 草稿。
-- 新增模型结果导出 `advanced-linear-model-fit.md`。
+- 每条真实审稿意见可人工修正影响章节，并通过后端字段持久化保存。
+- Reviewer 返修写作清单和 Writer 修改提醒同步读取人工修正后的章节归属。
+- 导出 `writer-revision-checklist.md` 时写入最终章节归属，并提示章节归属需人工确认。
+- 旧 SQLite 表会在仓库层自动补 `manual_revision_sections_json` 列。
 
 当前整体完成度约 **97%**。主链路已经闭环：
 
@@ -83,6 +83,7 @@ Mentor → Vera Protocol → Data Lin → Alex Writer → Reviewer
   - 清除历史恢复内容，回到自动生成草稿
 - Reviewer 修改提醒：
   - 按章节显示真实审稿意见的未解决修改项
+  - 读取 Reviewer 侧持久化修正后的章节归属
   - 不自动改写论文正文
 - 导出：
   - `alex-writer-outline.md`
@@ -107,6 +108,7 @@ Mentor → Vera Protocol → Data Lin → Alex Writer → Reviewer
 - 风险分级。
 - 返修写作清单：
   - 按章节聚合真实审稿意见
+  - 支持人工修正并持久化保存每条意见的影响章节
   - 显示状态、response draft 和 manuscript change
   - 导出 `writer-revision-checklist.md`
 - 导出：
@@ -185,6 +187,7 @@ $env:DATABASE_URL='sqlite:///:memory:'
    - Response to Reviewers
    - 真实审稿意见导入
    - 逐条英文回复草稿
+   - 返修清单章节归属人工修正
    - 返修写作清单
 8. 逐项测试主要导出按钮。
 
@@ -195,7 +198,7 @@ $env:DATABASE_URL='sqlite:///:memory:'
 - Linear regression 输出是探索性拟合结果，仍需要人工统计复核，不应直接作为最终 SCI 结论。
 - Writer 版本库当前恢复 Introduction；派生章节可作为历史恢复内容优先显示、预览、diff、复制和导出，但不会写回后端全文字段。
 - Reviewer 真实意见拆分是规则型，复杂 decision letter 仍需人工校正。
-- Reviewer 到 Writer 的章节映射是规则型建议，仍需人工确认。
+- Reviewer 到 Writer 的章节映射支持人工修正和持久化保存，但仍需人工对照原始 decision letter 最终确认。
 - 当前期刊模板不是实时抓取官网 Author Guidelines。
 - Reviewer 是规则型自查，不替代真实同行评审。
 

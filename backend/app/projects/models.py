@@ -143,6 +143,7 @@ class ReviewerCommentThreadUpdate(BaseModel):
     comment_text: str
     response_draft: str = ""
     manuscript_change: str = ""
+    manual_revision_sections: list[str] = Field(default_factory=list)
 
 
 class ReviewerCommentThread(BaseModel):
@@ -154,6 +155,7 @@ class ReviewerCommentThread(BaseModel):
     comment_text: str
     response_draft: str
     manuscript_change: str
+    manual_revision_sections: list[str] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
 

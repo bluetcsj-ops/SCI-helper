@@ -252,6 +252,13 @@ export type ReviewerCommentType = "major" | "minor" | "editorial";
 
 export type ReviewerCommentStatus = "draft" | "addressing" | "resolved" | "deferred";
 
+export type ReviewerRevisionSection =
+  | "Introduction"
+  | "Methods / Results"
+  | "Discussion"
+  | "Abstract"
+  | "Cover Letter / Submission";
+
 export interface ReviewerCommentThread {
   id: number;
   project_id: string;
@@ -261,6 +268,7 @@ export interface ReviewerCommentThread {
   comment_text: string;
   response_draft: string;
   manuscript_change: string;
+  manual_revision_sections: ReviewerRevisionSection[];
   created_at: string;
   updated_at: string;
 }

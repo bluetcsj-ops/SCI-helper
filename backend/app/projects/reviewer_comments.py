@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import re
+import json
 from datetime import datetime
 
-from sqlalchemy import inspect, select
+from sqlalchemy import inspect, select, text
 
 from app.db.models import ReviewerCommentThreadRecord
 from app.db.session import Base, SessionLocal, engine
@@ -12,6 +13,13 @@ from app.projects.models import ReviewerCommentThread, ReviewerCommentThreadUpda
 
 COMMENT_TYPE_VALUES = {"major", "minor", "editorial"}
 COMMENT_STATUS_VALUES = {"draft", "addressing", "resolved", "deferred"}
+REVISION_SECTION_VALUES = {
+    "Introduction",
+    "Methods / Results",
+    "Discussion",
+    "Abstract",
+    "Cover Letter / Submission",
+}
 
 
 class ReviewerCommentRepository:
@@ -43,6 +51,7 @@ class ReviewerCommentRepository:
                     comment_text=comment,
                     response_draft=self._build_response_draft(comment, comment_type),
                     manuscript_change=self._build_manuscript_change(comment_type),
+                    manual_revision_sections_json="[]",
                 )
                 session.add(record)
                 records.append(record)
@@ -74,6 +83,10 @@ class ReviewerCommentRepository:
             record.comment_text = payload.comment_text.strip()
             record.response_draft = payload.response_draft.strip()
             record.manuscript_change = payload.manuscript_change.strip()
+            record.manual_revision_sections_json = json.dumps(
+                self._normalize_revision_sections(payload.manual_revision_sections),
+                ensure_ascii=False,
+            )
             record.updated_at = datetime.utcnow()
             session.commit()
             session.refresh(record)
@@ -154,6 +167,22 @@ class ReviewerCommentRepository:
         clean_value = value.strip().lower()
         return clean_value if clean_value in COMMENT_STATUS_VALUES else "draft"
 
+    def _normalize_revision_sections(self, values: list[str]) -> list[str]:
+        sections: list[str] = []
+        for value in values:
+            if value in REVISION_SECTION_VALUES and value not in sections:
+                sections.append(value)
+        return sections
+
+    def _parse_revision_sections(self, value: str) -> list[str]:
+        try:
+            parsed = json.loads(value or "[]")
+        except json.JSONDecodeError:
+            return []
+        if not isinstance(parsed, list):
+            return []
+        return self._normalize_revision_sections([str(item) for item in parsed])
+
     def _to_thread(self, record: ReviewerCommentThreadRecord) -> ReviewerCommentThread:
         return ReviewerCommentThread(
             id=record.id,
@@ -164,6 +193,9 @@ class ReviewerCommentRepository:
             comment_text=record.comment_text,
             response_draft=record.response_draft,
             manuscript_change=record.manuscript_change,
+            manual_revision_sections=self._parse_revision_sections(
+                getattr(record, "manual_revision_sections_json", "[]")
+            ),
             created_at=record.created_at,
             updated_at=record.updated_at,
         )
@@ -176,6 +208,19 @@ class ReviewerCommentRepository:
             inspector = inspect(engine)
             if not inspector.has_table(ReviewerCommentThreadRecord.__tablename__):
                 table.create(bind=engine, checkfirst=True)
+            else:
+                existing_columns = {
+                    column["name"]
+                    for column in inspector.get_columns(ReviewerCommentThreadRecord.__tablename__)
+                }
+                if "manual_revision_sections_json" not in existing_columns:
+                    with engine.begin() as connection:
+                        connection.execute(
+                            text(
+                                f"ALTER TABLE {ReviewerCommentThreadRecord.__tablename__} "
+                                "ADD COLUMN manual_revision_sections_json TEXT NOT NULL DEFAULT '[]'"
+                            )
+                        )
         else:
             table.create(bind=engine, checkfirst=True)
         self._schema_checked = True

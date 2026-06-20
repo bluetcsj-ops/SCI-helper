@@ -2378,6 +2378,76 @@ button {
   min-width: 150px;
 }
 
+.reviewer-section-map {
+  display: grid;
+  gap: 10px;
+  border: 1px solid rgba(47, 126, 168, 0.16);
+  border-radius: 8px;
+  padding: 10px;
+  background: #f6fbfd;
+}
+
+.reviewer-section-map-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.reviewer-section-map-head span {
+  color: #22354a;
+}
+
+.reviewer-section-map-head small {
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: #e7f4f8;
+  color: #2f7ea8;
+  font-weight: 800;
+}
+
+.reviewer-section-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.reviewer-section-options label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: #ffffff;
+}
+
+.reviewer-section-options input {
+  flex: 0 0 auto;
+}
+
+.reviewer-section-options span {
+  color: #354962;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.reviewer-section-map button {
+  justify-self: start;
+  border: 1px solid rgba(47, 126, 168, 0.2);
+  border-radius: 8px;
+  padding: 7px 10px;
+  background: #ffffff;
+  color: #2f7ea8;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.reviewer-section-map button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
 .reviewer-thread-list small {
   color: #6d7890;
 }
