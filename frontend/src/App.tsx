@@ -226,8 +226,29 @@ const reminderTypeLabels: Record<ReminderType, string> = {
 };
 
 const statusOptions: ItemStatus[] = ["not_started", "in_progress", "blocked", "done"];
-const preparedDataSamplePath = "/sample-data/mimic_iv_demo_los_sample.csv";
-const preparedDataSampleFileName = "mimic_iv_demo_los_sample.csv";
+const preparedDataSamples = {
+  radiotherapy: {
+    id: "radiotherapy",
+    label: "放疗计划质量样例",
+    path: "/sample-data/radiotherapy_plan_quality_sample.csv",
+    fileName: "radiotherapy_plan_quality_sample.csv",
+    description: "脱敏模拟放疗计划质量字段，用于剂量学、QA 和 Writer 联调。",
+  },
+  mimic: {
+    id: "mimic",
+    label: "MIMIC-IV EHR demo",
+    path: "/sample-data/mimic_iv_demo_los_sample.csv",
+    fileName: "mimic_iv_demo_los_sample.csv",
+    description: "公开医学 EHR demo，用于通用 CSV 流程联调。",
+  },
+} as const;
+
+type PreparedDataSampleId = keyof typeof preparedDataSamples;
+
+const defaultPreparedDataSampleId: PreparedDataSampleId = "radiotherapy";
+const preparedDataSampleFileNames: Set<string> = new Set(
+  Object.values(preparedDataSamples).map((sample) => sample.fileName),
+);
 
 const protocolFields: Array<{
   key: keyof ProjectProtocolUpdate;
@@ -885,6 +906,40 @@ function buildDataAnalysisPlanSuggestion(params: {
   };
 }
 
+function detectRadiotherapyPlanQualityFields(qualityReport: DataQualityReport | null) {
+  const fieldNames = new Set(qualityReport?.columns.map((column) => column.name.toLowerCase()) ?? []);
+  const has = (field: string) => fieldNames.has(field.toLowerCase());
+  const doseMetricFields = [
+    "ptv_d95_percent",
+    "ptv_v95_percent",
+    "ptv_d2_percent",
+    "oar_max_dose_gy",
+    "oar_mean_dose_gy",
+  ].filter(has);
+  const workflowFields = [
+    "site",
+    "technique",
+    "prescription_dose_gy",
+    "fractions",
+    "gamma_pass_rate_percent",
+    "delivery_time_min",
+    "monitor_units",
+    "plan_complexity_score",
+    "qa_result",
+  ].filter(has);
+  return {
+    isRadiotherapyPlanQuality: doseMetricFields.length >= 2 || workflowFields.length >= 4,
+    doseMetricFields,
+    workflowFields,
+    hasSite: has("site"),
+    hasTechnique: has("technique"),
+    hasQaResult: has("qa_result"),
+    hasGammaPassRate: has("gamma_pass_rate_percent"),
+    hasPlanComplexity: has("plan_complexity_score"),
+    hasDeliveryTime: has("delivery_time_min"),
+  };
+}
+
 function buildWriterMethodsResultsDraft(
   qualityReport: DataQualityReport | null,
   statisticsReport: DataStatisticsReport | null,
@@ -895,6 +950,22 @@ function buildWriterMethodsResultsDraft(
   }
 
   const formalTestReport = statisticsReport.formal_test_report ?? null;
+  const radiotherapyFields = detectRadiotherapyPlanQualityFields(qualityReport);
+  const radiotherapyNumericColumns = statisticsReport.numeric_summaries
+    .filter((summary) =>
+      [
+        "ptv_d95_percent",
+        "ptv_v95_percent",
+        "ptv_d2_percent",
+        "oar_max_dose_gy",
+        "oar_mean_dose_gy",
+        "gamma_pass_rate_percent",
+        "delivery_time_min",
+        "monitor_units",
+        "plan_complexity_score",
+      ].includes(summary.column.toLowerCase()),
+    )
+    .map((summary) => `${summary.column} mean=${summary.mean}, median=${summary.median}, range=${summary.min}-${summary.max}`);
   const numericLines = statisticsReport.numeric_summaries.slice(0, 6).map(
     (summary) =>
       `${summary.column}: n=${summary.n}, mean=${summary.mean}, SD=${summary.std_dev}, median=${summary.median}, range=${summary.min}-${summary.max}`,
@@ -936,12 +1007,24 @@ function buildWriterMethodsResultsDraft(
     advancedModelFitReport?.warnings.length
       ? `The advanced model fit has ${advancedModelFitReport.warnings.length} warning(s) requiring statistical review.`
       : null,
+    radiotherapyFields.isRadiotherapyPlanQuality && !radiotherapyFields.hasGammaPassRate
+      ? "Patient-specific QA gamma pass-rate data are not available; QA interpretation should remain limited."
+      : null,
+    radiotherapyFields.isRadiotherapyPlanQuality
+      ? "Treatment planning system version, dose-calculation algorithm, gamma criteria, and structure naming rules still require manual confirmation."
+      : null,
     statisticsReport.next_step || null,
   ].filter(Boolean) as string[];
 
   return {
     methodsParagraphs: [
       `The current workflow used ${qualityReport.file_name}, which contained ${qualityReport.row_count} rows and ${qualityReport.column_count} columns. After CSV upload, the pipeline performed field type inference, missingness review, required-field coverage checks, and privacy-risk screening. The original CSV file was not persistently stored by the writing workflow.`,
+      radiotherapyFields.isRadiotherapyPlanQuality
+        ? `For radiotherapy plan-quality reporting, the available structured fields included ${[
+            ...radiotherapyFields.doseMetricFields,
+            ...radiotherapyFields.workflowFields,
+          ].join(", ")}. These variables support descriptive summaries of treatment site, technique, prescription dose, target coverage, OAR dose metrics, patient-specific QA, delivery time, monitor units, and plan complexity.`
+        : null,
       statisticsReport.methods_draft,
       formalTestReport
         ? `Formal testing was performed only after manual confirmation of the study design, endpoint definitions, de-identification status, missing-data handling, statistical assumptions, and multiplicity boundaries. The current method version is ${formalTestReport.method_version}.`
@@ -949,9 +1032,12 @@ function buildWriterMethodsResultsDraft(
       advancedModelFitReport
         ? advancedModelFitReport.methods_draft
         : "Advanced regression model fitting has not yet been completed; regression estimates should be described only as planned exploratory analyses.",
-    ],
+    ].filter(Boolean) as string[],
     resultsParagraphs: [
       statisticsReport.results_draft,
+      radiotherapyFields.isRadiotherapyPlanQuality && radiotherapyNumericColumns.length
+        ? `Radiotherapy-specific descriptive endpoints included: ${radiotherapyNumericColumns.join("; ")}. These summaries should be interpreted as workflow-test outputs until the treatment planning system version, dose-calculation algorithm, contouring rules, and QA criteria are confirmed.`
+        : null,
       numericLines.length
         ? `Descriptive statistics were summarized as follows: ${numericLines.join("; ")}.`
         : "The current CSV did not generate numeric descriptive statistics suitable for the Results section.",
@@ -964,7 +1050,7 @@ function buildWriterMethodsResultsDraft(
       advancedModelFitReport
         ? advancedModelFitReport.results_draft
         : "No fitted advanced regression model is available for this draft.",
-    ],
+    ].filter(Boolean) as string[],
     formalTestLines,
     chartLines,
     missingItems,
@@ -1869,6 +1955,42 @@ function buildReviewerChecks(params: {
   const introductionHasText = introductionDraftFields.some(
     (field) => writerIntroductionDraftForm[field].trim().length > 0,
   );
+  const radiotherapyFields = detectRadiotherapyPlanQualityFields(qualityReport);
+  const radiotherapyCheckItems: ReviewerCheckItem[] = radiotherapyFields.isRadiotherapyPlanQuality
+    ? [
+        {
+          title: "放疗剂量学指标定义",
+          severity: radiotherapyFields.doseMetricFields.length >= 4 ? "orange" : "red",
+          status: `${radiotherapyFields.doseMetricFields.length} 个剂量学字段`,
+          detail: radiotherapyFields.doseMetricFields.length
+            ? `已识别：${radiotherapyFields.doseMetricFields.join("、")}。`
+            : "未识别 PTV/OAR 剂量学字段。",
+          recommendation:
+            "Methods 中必须定义 PTV D95/V95、热点剂量、OAR max/mean dose、单位、归一化方式和结构命名规则。",
+        },
+        {
+          title: "患者特异性 QA 与 gamma criteria",
+          severity: radiotherapyFields.hasGammaPassRate && radiotherapyFields.hasQaResult ? "orange" : "red",
+          status:
+            radiotherapyFields.hasGammaPassRate && radiotherapyFields.hasQaResult
+              ? "已识别 QA 字段"
+              : "QA 字段不完整",
+          detail: radiotherapyFields.hasGammaPassRate
+            ? "已识别 gamma_pass_rate_percent；仍需人工确认 gamma criteria。"
+            : "未识别 gamma pass rate 字段。",
+          recommendation:
+            "补充 gamma criteria，例如 3%/2 mm 或机构标准、剂量阈值、测量设备、通过率阈值和失败计划处理规则。",
+        },
+        {
+          title: "计划系统与算法可复核性",
+          severity: "orange",
+          status: "需人工补充",
+          detail: "样例字段包含 treatment site、technique、delivery time、monitor units 和 complexity，但未包含 TPS 版本与剂量计算算法。",
+          recommendation:
+            "正式数据字典需补充 treatment planning system version、dose calculation algorithm、calculation grid、machine/MLC model 和计划审批流程。",
+        },
+      ]
+    : [];
 
   return [
     {
@@ -1933,6 +2055,7 @@ function buildReviewerChecks(params: {
         ? "逐句核对 Results 草稿是否只引用已生成的数据与检验结果。"
         : "先完成 Data Lin 统计草案，再返回 Alex Writer 生成 Methods / Results。",
     },
+    ...radiotherapyCheckItems,
     {
       title: "Introduction 引用追溯",
       severity: candidateReferenceCount
@@ -3330,6 +3453,8 @@ function App() {
   const [advancedModelFitReport, setAdvancedModelFitReport] =
     useState<AdvancedModelFitReport | null>(null);
   const [uploadedCsvFile, setUploadedCsvFile] = useState<File | null>(null);
+  const [selectedPreparedDataSampleId, setSelectedPreparedDataSampleId] =
+    useState<PreparedDataSampleId>(defaultPreparedDataSampleId);
   const [selectedJournalTemplateId, setSelectedJournalTemplateId] =
     useState<JournalTemplateId>("medical_physics");
   const [journalGuidelineSourceUrl, setJournalGuidelineSourceUrl] = useState("");
@@ -6291,7 +6416,7 @@ function App() {
       setAdvancedModelPlan(null);
       setAdvancedModelFitReport(null);
       setWorkflowSummary({
-        source: file.name === preparedDataSampleFileName ? "prepared" : "manual",
+        source: preparedDataSampleFileNames.has(file.name) ? "prepared" : "manual",
         fileName: report.file_name,
         rowCount: report.row_count,
         columnCount: report.column_count,
@@ -6331,6 +6456,16 @@ function App() {
     await processCsvFile(file);
   }
 
+  async function loadPreparedDataSampleFile(): Promise<File> {
+    const sample = preparedDataSamples[selectedPreparedDataSampleId];
+    const response = await fetch(sample.path);
+    if (!response.ok) {
+      throw new Error(`预备 DATA 读取失败：${response.status}`);
+    }
+    const csvText = await response.text();
+    return new File([csvText], sample.fileName, { type: "text/csv" });
+  }
+
   async function handleLoadPreparedData() {
     if (isCsvUploading || !canEditSelectedProject) {
       return;
@@ -6340,12 +6475,7 @@ function App() {
 
     try {
       setWorkflowStatus("正在加载预备 DATA...");
-      const response = await fetch(preparedDataSamplePath);
-      if (!response.ok) {
-        throw new Error(`预备 DATA 读取失败：${response.status}`);
-      }
-      const csvText = await response.text();
-      const file = new File([csvText], preparedDataSampleFileName, { type: "text/csv" });
+      const file = await loadPreparedDataSampleFile();
       await processCsvFile(file);
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "预备 DATA 加载失败。");
@@ -6381,12 +6511,7 @@ function App() {
     setError(null);
 
     try {
-      const response = await fetch(preparedDataSamplePath);
-      if (!response.ok) {
-        throw new Error(`预备 DATA 读取失败：${response.status}`);
-      }
-      const csvText = await response.text();
-      const file = new File([csvText], preparedDataSampleFileName, { type: "text/csv" });
+      const file = await loadPreparedDataSampleFile();
       const defaults = await processCsvFile(file);
       if (!defaults) {
         return;
@@ -6476,7 +6601,7 @@ function App() {
       setAdvancedModelFitReport(null);
       if (qualityReport) {
         setWorkflowSummary({
-          source: uploadedCsvFile.name === preparedDataSampleFileName ? "prepared" : "manual",
+          source: preparedDataSampleFileNames.has(uploadedCsvFile.name) ? "prepared" : "manual",
           fileName: qualityReport.file_name,
           rowCount: qualityReport.row_count,
           columnCount: qualityReport.column_count,
@@ -7318,7 +7443,7 @@ function App() {
     try {
       await saveAnalysisRecordFromReports(qualityReport.file_name, qualityReport, statisticsReport);
       setWorkflowSummary({
-        source: uploadedCsvFile?.name === preparedDataSampleFileName ? "prepared" : "manual",
+        source: uploadedCsvFile && preparedDataSampleFileNames.has(uploadedCsvFile.name) ? "prepared" : "manual",
         fileName: qualityReport.file_name,
         rowCount: qualityReport.row_count,
         columnCount: qualityReport.column_count,
@@ -8428,6 +8553,26 @@ function App() {
                       ) : null}
                     </>
                   )}
+
+                  <div className="prepared-data-selector">
+                    <label>
+                      <span>预备 DATA 样例</span>
+                      <select
+                        value={selectedPreparedDataSampleId}
+                        disabled={isCsvUploading || isStatisticsLoading || !canEditSelectedProject}
+                        onChange={(event) =>
+                          setSelectedPreparedDataSampleId(event.currentTarget.value as PreparedDataSampleId)
+                        }
+                      >
+                        {Object.values(preparedDataSamples).map((sample) => (
+                          <option key={sample.id} value={sample.id}>
+                            {sample.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <p>{preparedDataSamples[selectedPreparedDataSampleId].description}</p>
+                  </div>
 
                   <div className="data-upload-row">
                     <label

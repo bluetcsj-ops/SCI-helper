@@ -22,9 +22,9 @@ Mentor 选题与引用
 |---|---:|---|
 | Prof. RadOnc Mentor | 74% | 可生成课题推荐、加载预备真实引用、复核候选引用、导出引用清单，并将推荐写入方案 |
 | Dr. Vera Protocol | 78% | 可编辑/保存研究方案，生成方案草案和执行计划草案，完成方案质量检查、方案-数据一致性检查、方案版本快照与导出 |
-| Dr. Data Lin | 91% | 可上传 CSV、加载预备 DATA、做质控/隐私检查/统计草案/图表/审计、一键联调 Writer，生成自主分析计划和高级模型计划，并可在人工确认后执行第一版 linear regression |
-| Alex Writer | 98% | 可生成英文 Introduction、Methods / Results、Discussion、Abstract、Cover Letter、投稿包检查清单、目标期刊模板和 Author Guidelines 本地规则校验，并支持后端版本归档、恢复 Introduction、版本差异查看、历史章节复制、全文恢复逐字段编辑和 Reviewer 修改提醒 |
-| Rev. Dr. Helena Skov | 93% | 可生成投稿前规则清单、深度审稿意见、Response to Reviewers 草稿，并支持真实审稿意见导入、逐条映射、英文回复导出、返修写作清单和章节归属持久化修正 |
+| Dr. Data Lin | 92% | 可上传 CSV、选择预备 DATA、做质控/隐私检查/统计草案/图表/审计、一键联调 Writer，生成自主分析计划和高级模型计划，并可在人工确认后执行第一版 linear regression |
+| Alex Writer | 98% | 可生成英文 Introduction、Methods / Results、Discussion、Abstract、Cover Letter、投稿包检查清单、目标期刊模板和 Author Guidelines 本地规则校验，并支持放疗计划质量字段解读、后端版本归档、恢复 Introduction、版本差异查看、历史章节复制、全文恢复逐字段编辑和 Reviewer 修改提醒 |
+| Rev. Dr. Helena Skov | 94% | 可生成投稿前规则清单、深度审稿意见、Response to Reviewers 草稿，并支持放疗专科风险检查、真实审稿意见导入、逐条映射、英文回复导出、返修写作清单和章节归属持久化修正 |
 
 ## 已完成的关键闭环
 
@@ -48,10 +48,13 @@ Mentor 选题与引用
 
 ### 2. 预备 DATA 联调包
 
-- 新增公开医学示例 CSV：`MIMIC-IV Clinical Database Demo v2.2` 派生 50 行样本。
+- 新增放疗计划质量样例 CSV：20 行脱敏模拟计划记录，覆盖剂量学、QA、计划复杂度和治疗技术字段。
+- Writer Methods / Results 可识别放疗字段并生成 target coverage、OAR dose、QA gamma pass rate、delivery time 和 plan complexity 相关英文专科提示。
+- Reviewer 可提示 PTV/OAR 指标定义、gamma criteria、TPS 版本、剂量计算算法和计划审批流程等放疗专科风险。
+- 保留公开医学示例 CSV：`MIMIC-IV Clinical Database Demo v2.2` 派生 50 行样本。
 - 新增预备引用 JSON 和说明文档。
 - Data Lin 可一键完成：
-  - 加载预备 CSV
+  - 选择并加载预备 CSV
   - 生成质控报告
   - 生成统计草案
   - 保存分析记录
@@ -84,7 +87,7 @@ Mentor 选题与引用
 
 - logistic regression、生存分析、混合效应模型拟合。
 - SciPy / statsmodels / lifelines 等专用统计库完整生产路径。
-- 真实放疗专科数据接入。
+- 真实放疗专科数据接入和数据许可核对。
 
 ### 4. Alex Writer
 

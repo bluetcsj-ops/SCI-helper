@@ -1001,6 +1001,43 @@ button {
   align-items: stretch;
 }
 
+.prepared-data-selector {
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(47, 113, 151, 0.14);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #f8fbff;
+}
+
+.prepared-data-selector label {
+  display: grid;
+  max-width: 360px;
+  gap: 6px;
+}
+
+.prepared-data-selector span {
+  color: #6d5a48;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.prepared-data-selector select {
+  min-height: 38px;
+  border: 1px solid rgba(36, 48, 64, 0.14);
+  border-radius: 8px;
+  padding: 0 10px;
+  color: #243040;
+  background: #ffffff;
+  font-weight: 800;
+}
+
+.prepared-data-selector p {
+  margin: 0;
+  color: #4f6074;
+  line-height: 1.5;
+}
+
 .file-upload-button,
 .prepared-data-button,
 .prepared-workflow-button {

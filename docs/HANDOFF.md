@@ -51,7 +51,9 @@ Mentor → Vera Protocol → Data Lin → Alex Writer → Reviewer
 - 正式检验人工确认入口。
 - 分析记录保存和恢复。
 - 数据审计日志。
-- 预备 DATA 一键联调到 Writer。
+- 预备 DATA 选择和一键联调到 Writer：
+  - 放疗计划质量脱敏模拟样例
+  - MIMIC-IV EHR demo 样例
 - 自主分析计划建议。
 - 高级统计模型计划：
   - linear regression
@@ -68,6 +70,7 @@ Mentor → Vera Protocol → Data Lin → Alex Writer → Reviewer
 
 - 英文 Introduction 草稿、引用映射和引用质控。
 - Methods / Results 草稿。
+  - 可识别放疗计划质量字段，补充 target coverage、OAR dose、patient-specific QA、delivery time、monitor units 和 plan complexity 的英文专科提示。
 - Discussion 草稿。
 - Abstract 草稿。
 - Cover Letter 草稿。
@@ -105,6 +108,10 @@ Mentor → Vera Protocol → Data Lin → Alex Writer → Reviewer
 ### Reviewer
 
 - 投稿前规则型审稿清单。
+- 放疗专科风险检查：
+  - PTV/OAR dose metric 定义
+  - patient-specific QA 与 gamma criteria
+  - treatment planning system version、dose calculation algorithm 和计划审批流程
 - 深度审稿意见。
 - Response to Reviewers 草稿。
 - 真实审稿意见导入。
@@ -200,7 +207,7 @@ $env:DATABASE_URL='sqlite:///:memory:'
 
 ## 当前限制
 
-- 当前预备 CSV 是 ICU/EHR 示例数据，不是放疗专科数据；用于流程联调，不代表正式课题数据。
+- 当前预备 CSV 包含放疗计划质量脱敏模拟样例和 MIMIC-IV EHR demo；前者用于放疗字段流程联调，后者用于公开医学 EHR 流程联调，二者都不代表正式课题结论。
 - 高级模型执行第一版已支持 linear regression；logistic regression、Cox 和 mixed-effects 仍只停留在计划/待开发阶段。
 - Linear regression 输出是探索性拟合结果，仍需要人工统计复核，不应直接作为最终 SCI 结论。
 - Writer 版本库当前恢复 Introduction；派生章节可作为历史恢复内容优先显示、逐字段编辑、预览、diff、复制、导出，并可纳入新的版本快照，但不会直接写回后端全文字段。

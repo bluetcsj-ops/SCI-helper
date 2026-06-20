@@ -4,6 +4,31 @@ This folder documents the real public sources used for local workflow testing.
 
 ## CSV sample
 
+`frontend/public/sample-data/radiotherapy_plan_quality_sample.csv` is a 20-row synthetic, de-identified radiotherapy plan quality sample for workflow testing. It is not real patient data and must not be described as a clinical dataset.
+
+Columns:
+
+- `plan_id`
+- `site`
+- `technique`
+- `prescription_dose_gy`
+- `fractions`
+- `ptv_volume_cc`
+- `ptv_d95_percent`
+- `ptv_v95_percent`
+- `ptv_d2_percent`
+- `homogeneity_index`
+- `conformity_index`
+- `oar_max_dose_gy`
+- `oar_mean_dose_gy`
+- `gamma_pass_rate_percent`
+- `delivery_time_min`
+- `monitor_units`
+- `plan_complexity_score`
+- `qa_result`
+
+This sample is intended to exercise radiation-therapy-specific field coverage, quality checks, descriptive statistics, model planning, Writer Methods / Results handoff, and Reviewer risk checks without using protected health information.
+
 `frontend/public/sample-data/mimic_iv_demo_los_sample.csv` is a 50-row derived sample from the PhysioNet MIMIC-IV Clinical Database Demo v2.2.
 
 Source files used:
