@@ -1820,6 +1820,192 @@ function buildProtocolQualitySummary(protocol: ProjectProtocol | null): Protocol
   };
 }
 
+function buildProtocolDataConsistencyCheck(params: {
+  protocol: ProjectProtocol | null;
+  dataRequirementSpec: DataRequirementSpec | null;
+  qualityReport: DataQualityReport | null;
+  statisticsReport: DataStatisticsReport | null;
+  dataAnalysisPlanSuggestion: DataAnalysisPlanSuggestion;
+}): ProtocolDataConsistencyCheck {
+  const {
+    protocol,
+    dataRequirementSpec,
+    qualityReport,
+    statisticsReport,
+    dataAnalysisPlanSuggestion,
+  } = params;
+  const protocolText = [
+    protocol?.research_question,
+    protocol?.primary_endpoint,
+    protocol?.secondary_endpoints,
+    protocol?.data_requirements,
+    protocol?.statistical_plan,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  const csvColumns = qualityReport?.columns.map((column) => column.name.toLowerCase()) ?? [];
+  const matchedProtocolTerms = csvColumns.filter((column) => protocolText.includes(column));
+  const requiredItemCount = dataRequirementSpec?.items.filter((item) => item.required).length ?? 0;
+  const matchedRequiredCount = qualityReport?.matched_required_fields.length ?? 0;
+  const missingRequiredCount = qualityReport?.missing_required_fields.length ?? requiredItemCount;
+  const privacyRisk = qualityReport?.privacy_report?.risk_level ?? "green";
+  const formalTestReport = statisticsReport?.formal_test_report ?? null;
+  const items: ProtocolDataConsistencyItem[] = [
+    {
+      title: "研究问题与数据字段",
+      status: protocol?.research_question
+        ? matchedProtocolTerms.length || matchedRequiredCount
+          ? "passed"
+          : "review"
+        : "blocked",
+      detail: protocol?.research_question
+        ? matchedProtocolTerms.length
+          ? `研究问题文本与 CSV 字段存在 ${matchedProtocolTerms.length} 个直接匹配。`
+          : "研究问题已填写，但暂未发现与 CSV 字段的直接文本匹配。"
+        : "研究问题为空，无法判断数据是否支撑。",
+      recommendation: protocol?.research_question
+        ? "人工确认语义等价字段，例如缩写、英文列名或派生变量。"
+        : "先补齐研究问题，再做数据一致性检查。",
+    },
+    {
+      title: "主要终点与候选结局",
+      status: protocol?.primary_endpoint
+        ? dataAnalysisPlanSuggestion.candidateOutcomeColumns.length
+          ? "passed"
+          : "review"
+        : "blocked",
+      detail: protocol?.primary_endpoint
+        ? dataAnalysisPlanSuggestion.candidateOutcomeColumns.length
+          ? `Data Lin 识别到 ${dataAnalysisPlanSuggestion.candidateOutcomeColumns.length} 个低缺失数值结局候选。`
+          : "尚未识别到适合作为结局的低缺失数值列。"
+        : "主要终点为空。",
+      recommendation: protocol?.primary_endpoint
+        ? "确认主要终点是否能映射到候选结局列，必要时补充派生变量说明。"
+        : "先在 Vera Protocol 中锁定主要终点。",
+    },
+    {
+      title: "数据需求覆盖",
+      status: qualityReport
+        ? missingRequiredCount
+          ? "review"
+          : "passed"
+        : "blocked",
+      detail: qualityReport
+        ? `已匹配 ${matchedRequiredCount} 个需求字段，缺少 ${missingRequiredCount} 个。`
+        : "尚未生成 CSV 质控报告。",
+      recommendation: missingRequiredCount
+        ? "补齐缺失字段，或在方案中说明替代字段和不可获得字段。"
+        : "保持数据需求清单与 Methods 字段说明一致。",
+    },
+    {
+      title: "统计路线与 Data Lin 建议",
+      status: protocol?.statistical_plan
+        ? dataAnalysisPlanSuggestion.mainAnalyses.length
+          ? "passed"
+          : "review"
+        : "review",
+      detail: protocol?.statistical_plan
+        ? `方案统计路线已填写；Data Lin 当前状态：${dataAnalysisPlanSuggestion.readinessLabel}。`
+        : "方案中缺少明确统计路线。",
+      recommendation: protocol?.statistical_plan
+        ? "对照自主分析计划，确认描述性统计、分组比较和正式检验边界一致。"
+        : "把 Data Lin 推荐的主分析写回统计路线。",
+    },
+    {
+      title: "隐私与伦理阻断",
+      status: privacyRisk === "red" ? "blocked" : privacyRisk === "orange" ? "review" : "passed",
+      detail: qualityReport?.privacy_report?.summary ?? "尚未生成隐私检查摘要。",
+      recommendation:
+        privacyRisk === "red"
+          ? "先处理高风险脱敏问题，再继续统计或写作。"
+          : "正式研究仍需人工核对伦理审批、数据使用权限和脱敏记录。",
+    },
+    {
+      title: "Methods / Results 证据链",
+      status: statisticsReport ? (formalTestReport ? "passed" : "review") : "blocked",
+      detail: statisticsReport
+        ? formalTestReport
+          ? `已有 ${formalTestReport.results.length} 项正式检验记录。`
+          : "已有统计草案，但尚未执行正式检验。"
+        : "尚未生成统计报告。",
+      recommendation: statisticsReport
+        ? formalTestReport
+          ? "核对正式检验是否严格服务于研究问题和主要终点。"
+          : "Results 中不要报告 P 值或显著性结论，除非完成正式检验确认。"
+        : "先在 Data Lin 中生成统计草案。",
+    },
+  ];
+  const passedCount = items.filter((item) => item.status === "passed").length;
+  const reviewCount = items.filter((item) => item.status === "review").length;
+  const blockedCount = items.filter((item) => item.status === "blocked").length;
+  const overallStatus = blockedCount
+    ? "存在方案-数据阻断"
+    : reviewCount
+      ? "需要人工复核一致性"
+      : "方案-数据链路一致";
+
+  return {
+    passedCount,
+    reviewCount,
+    blockedCount,
+    overallStatus,
+    items,
+  };
+}
+
+function buildProtocolVersionSnapshot(params: {
+  selectedProject: Project | null | undefined;
+  protocolQualitySummary: ProtocolQualitySummary;
+  protocolDataConsistencyCheck: ProtocolDataConsistencyCheck;
+  dataAnalysisPlanSuggestion: DataAnalysisPlanSuggestion;
+}): ProtocolVersionSnapshot {
+  const {
+    selectedProject,
+    protocolQualitySummary,
+    protocolDataConsistencyCheck,
+    dataAnalysisPlanSuggestion,
+  } = params;
+  const missingSections = protocolQualitySummary.items
+    .filter((item) => item.status !== "passed")
+    .map((item) => item.title);
+  const consistencyActions = protocolDataConsistencyCheck.items
+    .filter((item) => item.status !== "passed")
+    .map((item) => `${item.title}：${item.recommendation}`);
+  const nextRevisionActions = [
+    protocolQualitySummary.highRiskCount ? protocolQualitySummary.nextAction : null,
+    ...consistencyActions.slice(0, 3),
+    dataAnalysisPlanSuggestion.readinessLabel === "隐私阻断"
+      ? "先处理 Data Lin 标记的隐私阻断，再冻结方案版本。"
+      : null,
+    "正式研究前人工核对伦理审批、真实数据字段、统计路线和目标期刊要求。",
+  ].filter(Boolean) as string[];
+  const statusLabel = protocolDataConsistencyCheck.blockedCount
+    ? "blocked"
+    : protocolQualitySummary.highRiskCount || protocolDataConsistencyCheck.reviewCount
+      ? "review"
+      : "ready";
+
+  return {
+    label: `${selectedProject?.name ?? "Project"} / Protocol / ${statusLabel}`,
+    createdAt: new Date().toLocaleString("zh-CN"),
+    completenessPercent: protocolQualitySummary.completionPercent,
+    qualityCounts: {
+      passed: protocolQualitySummary.passedCount,
+      needsInput: protocolQualitySummary.needsInputCount,
+      highRisk: protocolQualitySummary.highRiskCount,
+    },
+    consistencyCounts: {
+      passed: protocolDataConsistencyCheck.passedCount,
+      review: protocolDataConsistencyCheck.reviewCount,
+      blocked: protocolDataConsistencyCheck.blockedCount,
+    },
+    linkedAnalysisReadiness: dataAnalysisPlanSuggestion.readinessLabel,
+    missingSections,
+    nextRevisionActions,
+  };
+}
+
 interface IntroductionFieldCitationMap {
   field: IntroductionDraftField;
   label: string;
@@ -2078,6 +2264,42 @@ interface ProtocolQualitySummary {
   highRiskCount: number;
   nextAction: string;
   items: ProtocolQualityItem[];
+}
+
+type ProtocolConsistencyStatus = "passed" | "review" | "blocked";
+
+interface ProtocolDataConsistencyItem {
+  title: string;
+  status: ProtocolConsistencyStatus;
+  detail: string;
+  recommendation: string;
+}
+
+interface ProtocolDataConsistencyCheck {
+  passedCount: number;
+  reviewCount: number;
+  blockedCount: number;
+  overallStatus: string;
+  items: ProtocolDataConsistencyItem[];
+}
+
+interface ProtocolVersionSnapshot {
+  label: string;
+  createdAt: string;
+  completenessPercent: number;
+  qualityCounts: {
+    passed: number;
+    needsInput: number;
+    highRisk: number;
+  };
+  consistencyCounts: {
+    passed: number;
+    review: number;
+    blocked: number;
+  };
+  linkedAnalysisReadiness: string;
+  missingSections: string[];
+  nextRevisionActions: string[];
 }
 
 function buildCitationTrace(evidence: MentorEvidenceItem): string {
@@ -2838,6 +3060,27 @@ function App() {
   const dataAnalysisPlanSuggestion = useMemo(
     () => buildDataAnalysisPlanSuggestion({ protocol, qualityReport, statisticsReport }),
     [protocol, qualityReport, statisticsReport],
+  );
+  const protocolDataConsistencyCheck = useMemo(
+    () =>
+      buildProtocolDataConsistencyCheck({
+        protocol,
+        dataRequirementSpec,
+        qualityReport,
+        statisticsReport,
+        dataAnalysisPlanSuggestion,
+      }),
+    [protocol, dataRequirementSpec, qualityReport, statisticsReport, dataAnalysisPlanSuggestion],
+  );
+  const protocolVersionSnapshot = useMemo(
+    () =>
+      buildProtocolVersionSnapshot({
+        selectedProject,
+        protocolQualitySummary,
+        protocolDataConsistencyCheck,
+        dataAnalysisPlanSuggestion,
+      }),
+    [selectedProject, protocolQualitySummary, protocolDataConsistencyCheck, dataAnalysisPlanSuggestion],
   );
 
   const privacyReport = qualityReport?.privacy_report ?? null;
@@ -4543,6 +4786,96 @@ function App() {
     try {
       link.href = url;
       link.download = "protocol-quality-check.md";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  function handleDownloadProtocolDataConsistencyCheck() {
+    const content = [
+      "# 方案-数据一致性检查",
+      "",
+      `导出时间：${new Date().toLocaleString("zh-CN")}`,
+      selectedProject ? `关联项目：${selectedProject.name} / ${selectedProject.title}` : "关联项目：未指定",
+      protocol?.research_question ? `研究问题：${protocol.research_question}` : "研究问题：待补充",
+      "",
+      "## 总体状态",
+      `- ${protocolDataConsistencyCheck.overallStatus}`,
+      `- 已通过：${protocolDataConsistencyCheck.passedCount}`,
+      `- 需复核：${protocolDataConsistencyCheck.reviewCount}`,
+      `- 阻断项：${protocolDataConsistencyCheck.blockedCount}`,
+      "",
+      "## 检查项",
+      ...protocolDataConsistencyCheck.items.flatMap((item, index) => [
+        `### ${index + 1}. ${item.title}`,
+        `- 状态：${
+          item.status === "passed" ? "已通过" : item.status === "review" ? "需复核" : "阻断"
+        }`,
+        `- 详情：${item.detail}`,
+        `- 建议：${item.recommendation}`,
+        "",
+      ]),
+      "## 使用边界",
+      "- 该检查是规则型方案-数据一致性自查，不替代统计专家、伦理审查或真实数据管理员确认。",
+      "- 字段匹配包含直接文本匹配和需求覆盖，不代表完整语义理解。",
+      "",
+    ].join("\n");
+
+    const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    try {
+      link.href = url;
+      link.download = "protocol-data-consistency-check.md";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  function handleDownloadProtocolVersionSnapshot() {
+    const content = [
+      "# Protocol Version Snapshot",
+      "",
+      `生成时间：${protocolVersionSnapshot.createdAt}`,
+      `版本标签：${protocolVersionSnapshot.label}`,
+      selectedProject ? `关联项目：${selectedProject.name} / ${selectedProject.title}` : "关联项目：未指定",
+      "",
+      "## 方案状态",
+      `- 完整度：${protocolVersionSnapshot.completenessPercent}%`,
+      `- 质量检查已通过：${protocolVersionSnapshot.qualityCounts.passed}`,
+      `- 质量检查需补充：${protocolVersionSnapshot.qualityCounts.needsInput}`,
+      `- 质量检查高风险：${protocolVersionSnapshot.qualityCounts.highRisk}`,
+      `- 数据一致性已通过：${protocolVersionSnapshot.consistencyCounts.passed}`,
+      `- 数据一致性需复核：${protocolVersionSnapshot.consistencyCounts.review}`,
+      `- 数据一致性阻断：${protocolVersionSnapshot.consistencyCounts.blocked}`,
+      `- Data Lin 状态：${protocolVersionSnapshot.linkedAnalysisReadiness}`,
+      "",
+      "## 缺失或待补方案段落",
+      ...(protocolVersionSnapshot.missingSections.length
+        ? protocolVersionSnapshot.missingSections.map((item) => `- ${item}`)
+        : ["- 暂无"]),
+      "",
+      "## 下一步修订动作",
+      ...protocolVersionSnapshot.nextRevisionActions.map((item) => `- ${item}`),
+      "",
+      "## 使用边界",
+      "- 该快照是当前页面状态的方案版本记录，不是数据库持久化版本。",
+      "- 如需真正回退方案版本，后续需要接入后端版本表或本地持久化。",
+      "",
+    ].join("\n");
+
+    const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    try {
+      link.href = url;
+      link.download = "protocol-version-snapshot.md";
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -6318,6 +6651,96 @@ function App() {
                             {item.status !== "passed" ? <p>{item.recommendation}</p> : null}
                           </article>
                         ))}
+                      </div>
+                    </section>
+                    <section className="protocol-consistency-panel">
+                      <div className="protocol-quality-head">
+                        <div>
+                          <p className="eyebrow">方案-数据一致性检查</p>
+                          <h4>{protocolDataConsistencyCheck.overallStatus}</h4>
+                          <small>对照 Vera 方案、Data Lin 数据质控、统计草案和自主分析计划。</small>
+                        </div>
+                        <button type="button" onClick={handleDownloadProtocolDataConsistencyCheck}>
+                          <Download aria-hidden="true" size={15} />
+                          <span>导出一致性</span>
+                        </button>
+                      </div>
+                      <div className="protocol-quality-metrics">
+                        <span>已通过 {protocolDataConsistencyCheck.passedCount}</span>
+                        <span>需复核 {protocolDataConsistencyCheck.reviewCount}</span>
+                        <span>阻断项 {protocolDataConsistencyCheck.blockedCount}</span>
+                      </div>
+                      <div className="protocol-consistency-list">
+                        {protocolDataConsistencyCheck.items.map((item) => (
+                          <article className={`protocol-consistency-item status-${item.status}`} key={item.title}>
+                            <div>
+                              <strong>{item.title}</strong>
+                              <small>{item.detail}</small>
+                            </div>
+                            <span>
+                              {item.status === "passed" ? "已通过" : item.status === "review" ? "需复核" : "阻断"}
+                            </span>
+                            <p>{item.recommendation}</p>
+                          </article>
+                        ))}
+                      </div>
+                    </section>
+                    <section className="protocol-version-panel">
+                      <div className="protocol-quality-head">
+                        <div>
+                          <p className="eyebrow">Protocol version snapshot</p>
+                          <h4>{protocolVersionSnapshot.label}</h4>
+                          <small>冻结当前方案质量、数据一致性和 Data Lin 分析准备状态。</small>
+                        </div>
+                        <button type="button" onClick={handleDownloadProtocolVersionSnapshot}>
+                          <Download aria-hidden="true" size={15} />
+                          <span>导出快照</span>
+                        </button>
+                      </div>
+                      <div className="protocol-version-grid">
+                        <article>
+                          <strong>完整度</strong>
+                          <p>{protocolVersionSnapshot.completenessPercent}%</p>
+                        </article>
+                        <article>
+                          <strong>Data Lin 状态</strong>
+                          <p>{protocolVersionSnapshot.linkedAnalysisReadiness}</p>
+                        </article>
+                        <article>
+                          <strong>质量检查</strong>
+                          <p>
+                            通过 {protocolVersionSnapshot.qualityCounts.passed} / 需补充{" "}
+                            {protocolVersionSnapshot.qualityCounts.needsInput} / 高风险{" "}
+                            {protocolVersionSnapshot.qualityCounts.highRisk}
+                          </p>
+                        </article>
+                        <article>
+                          <strong>数据一致性</strong>
+                          <p>
+                            通过 {protocolVersionSnapshot.consistencyCounts.passed} / 需复核{" "}
+                            {protocolVersionSnapshot.consistencyCounts.review} / 阻断{" "}
+                            {protocolVersionSnapshot.consistencyCounts.blocked}
+                          </p>
+                        </article>
+                        <article>
+                          <strong>待补方案段落</strong>
+                          <ul>
+                            {(protocolVersionSnapshot.missingSections.length
+                              ? protocolVersionSnapshot.missingSections
+                              : ["暂无"]
+                            ).map((item) => (
+                              <li key={item}>{item}</li>
+                            ))}
+                          </ul>
+                        </article>
+                        <article>
+                          <strong>下一步修订</strong>
+                          <ul>
+                            {protocolVersionSnapshot.nextRevisionActions.map((item) => (
+                              <li key={item}>{item}</li>
+                            ))}
+                          </ul>
+                        </article>
                       </div>
                     </section>
                     <div className="protocol-sections">

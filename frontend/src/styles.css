@@ -3334,6 +3334,135 @@ button {
   font-weight: 800;
 }
 
+.protocol-consistency-panel {
+  display: grid;
+  gap: 12px;
+  border: 1px solid rgba(45, 110, 82, 0.16);
+  border-radius: 8px;
+  padding: 12px;
+  background: #f7fbf8;
+}
+
+.protocol-consistency-list {
+  display: grid;
+  gap: 8px;
+}
+
+.protocol-consistency-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 7px 10px;
+  border: 1px solid rgba(36, 48, 64, 0.1);
+  border-left-width: 4px;
+  border-radius: 8px;
+  padding: 10px;
+  background: #ffffff;
+}
+
+.protocol-consistency-item.status-passed {
+  border-left-color: #2d6e52;
+}
+
+.protocol-consistency-item.status-review {
+  border-left-color: #d97706;
+}
+
+.protocol-consistency-item.status-blocked {
+  border-left-color: #c43f3f;
+}
+
+.protocol-consistency-item div {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.protocol-consistency-item strong {
+  color: #22354a;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.protocol-consistency-item small,
+.protocol-consistency-item p {
+  color: #4f6074;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.protocol-consistency-item span {
+  align-self: start;
+  border-radius: 999px;
+  padding: 4px 7px;
+  color: #4f6074;
+  background: #eef2f6;
+  font-size: 11px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.protocol-consistency-item.status-passed span {
+  color: #245c46;
+  background: #dff4e7;
+}
+
+.protocol-consistency-item.status-review span {
+  color: #8c4d10;
+  background: #ffe8c7;
+}
+
+.protocol-consistency-item.status-blocked span {
+  color: #8b1e2d;
+  background: #ffe0e4;
+}
+
+.protocol-consistency-item p {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-weight: 800;
+}
+
+.protocol-version-panel {
+  display: grid;
+  gap: 12px;
+  border: 1px solid rgba(47, 113, 151, 0.16);
+  border-radius: 8px;
+  padding: 12px;
+  background: #f7fbfd;
+}
+
+.protocol-version-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.protocol-version-grid article {
+  display: grid;
+  gap: 6px;
+  border-radius: 8px;
+  padding: 12px;
+  background: #ffffff;
+}
+
+.protocol-version-grid strong {
+  color: #22354a;
+}
+
+.protocol-version-grid p,
+.protocol-version-grid li {
+  margin: 0;
+  color: #4f6074;
+  line-height: 1.45;
+}
+
+.protocol-version-grid ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+}
+
 .protocol-form {
   display: grid;
   gap: 12px;
@@ -3932,6 +4061,8 @@ button {
   .formal-test-checklist,
   .paired-long-grid,
   .protocol-quality-list,
+  .protocol-consistency-list,
+  .protocol-version-grid,
   .mentor-prepared-row,
   .mentor-trend-grid,
   .mentor-strength-list,
