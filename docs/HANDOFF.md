@@ -79,6 +79,11 @@ Mentor → Vera Protocol → Data Lin → Alex Writer → Reviewer
   - 恢复版本的 Introduction
   - 查看当前稿件与历史快照的章节差异
   - 复制历史版本中的派生章节
+  - 恢复全文草稿第一版：Introduction 写回后端，其他章节作为历史恢复内容优先显示
+  - 清除历史恢复内容，回到自动生成草稿
+- Reviewer 修改提醒：
+  - 按章节显示真实审稿意见的未解决修改项
+  - 不自动改写论文正文
 - 导出：
   - `alex-writer-outline.md`
   - `introduction-draft.md`
@@ -100,11 +105,16 @@ Mentor → Vera Protocol → Data Lin → Alex Writer → Reviewer
 - 逐条英文 response draft。
 - 条目状态管理。
 - 风险分级。
+- 返修写作清单：
+  - 按章节聚合真实审稿意见
+  - 显示状态、response draft 和 manuscript change
+  - 导出 `writer-revision-checklist.md`
 - 导出：
   - `pre-submission-review.md`
   - `reviewer-deep-comments.md`
   - `response-to-reviewers-draft.md`
   - `response-to-reviewers-mapped.md`
+  - `writer-revision-checklist.md`
 
 ## 当前验证记录
 
@@ -167,13 +177,15 @@ $env:DATABASE_URL='sqlite:///:memory:'
    - Discussion
    - Abstract
    - Cover Letter
-   - 后端版本库保存、恢复 Introduction、版本 diff 和历史章节复制
+   - 后端版本库保存、恢复 Introduction、恢复全文草稿、版本 diff、历史章节复制和清除恢复
+   - Reviewer 修改提醒
 7. 在 Reviewer 中检查：
    - 投稿前审稿清单
    - Deep review comments
    - Response to Reviewers
    - 真实审稿意见导入
    - 逐条英文回复草稿
+   - 返修写作清单
 8. 逐项测试主要导出按钮。
 
 ## 当前限制
@@ -181,8 +193,9 @@ $env:DATABASE_URL='sqlite:///:memory:'
 - 当前预备 CSV 是 ICU/EHR 示例数据，不是放疗专科数据；用于流程联调，不代表正式课题数据。
 - 高级模型执行第一版已支持 linear regression；logistic regression、Cox 和 mixed-effects 仍只停留在计划/待开发阶段。
 - Linear regression 输出是探索性拟合结果，仍需要人工统计复核，不应直接作为最终 SCI 结论。
-- Writer 版本库当前恢复 Introduction；派生章节支持历史快照预览、diff、复制和导出，但不自动覆盖当前全文。
+- Writer 版本库当前恢复 Introduction；派生章节可作为历史恢复内容优先显示、预览、diff、复制和导出，但不会写回后端全文字段。
 - Reviewer 真实意见拆分是规则型，复杂 decision letter 仍需人工校正。
+- Reviewer 到 Writer 的章节映射是规则型建议，仍需人工确认。
 - 当前期刊模板不是实时抓取官网 Author Guidelines。
 - Reviewer 是规则型自查，不替代真实同行评审。
 
@@ -211,5 +224,5 @@ npm.cmd run dev -- --host 127.0.0.1 --port 3000
    - logistic regression
    - survival analysis
    - mixed-effects model
-4. 做 Writer 全文自动恢复。
+4. 做 Writer 历史恢复内容的逐字段编辑。
 5. 接入真实放疗专科样例数据。

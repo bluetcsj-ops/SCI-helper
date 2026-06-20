@@ -23,8 +23,8 @@ Mentor 选题与引用
 | Prof. RadOnc Mentor | 74% | 可生成课题推荐、加载预备真实引用、复核候选引用、导出引用清单，并将推荐写入方案 |
 | Dr. Vera Protocol | 78% | 可编辑/保存研究方案，生成方案草案和执行计划草案，完成方案质量检查、方案-数据一致性检查、方案版本快照与导出 |
 | Dr. Data Lin | 91% | 可上传 CSV、加载预备 DATA、做质控/隐私检查/统计草案/图表/审计、一键联调 Writer，生成自主分析计划和高级模型计划，并可在人工确认后执行第一版 linear regression |
-| Alex Writer | 95% | 可生成英文 Introduction、Methods / Results、Discussion、Abstract、Cover Letter、投稿包检查清单、目标期刊模板，并支持后端版本归档、恢复 Introduction、版本差异查看和历史章节复制 |
-| Rev. Dr. Helena Skov | 89% | 可生成投稿前规则清单、深度审稿意见、Response to Reviewers 草稿，并支持真实审稿意见导入、逐条映射和英文回复导出 |
+| Alex Writer | 96% | 可生成英文 Introduction、Methods / Results、Discussion、Abstract、Cover Letter、投稿包检查清单、目标期刊模板，并支持后端版本归档、恢复 Introduction、版本差异查看、历史章节复制、全文恢复显示层和 Reviewer 修改提醒 |
+| Rev. Dr. Helena Skov | 91% | 可生成投稿前规则清单、深度审稿意见、Response to Reviewers 草稿，并支持真实审稿意见导入、逐条映射、英文回复导出和返修写作清单 |
 
 ## 已完成的关键闭环
 
@@ -103,12 +103,14 @@ Mentor 选题与引用
   - 恢复 Introduction
   - 查看当前稿件与历史快照的章节差异
   - 复制历史版本中的派生章节
+  - 恢复全文草稿第一版：Introduction 写回后端，其他章节作为历史恢复内容优先显示
+  - 清除历史恢复内容，回到自动生成草稿
   - 导出 `writer-version-diff.md`
 - 版本快照导出 `draft-version-snapshot.md`。
 
 当前仍未完成：
 
-- 全文自动恢复。
+- 全文恢复后的逐字段编辑。
 - 目标期刊官网规则实时抓取。
 - 写作风格学习。
 
@@ -123,11 +125,16 @@ Mentor 选题与引用
 - 逐条英文 response draft。
 - 条目状态管理：草稿、处理中、已解决、暂缓。
 - 映射回复导出 `response-to-reviewers-mapped.md`。
+- 返修写作清单：
+  - 按 Introduction、Methods / Results、Discussion、Abstract、Cover Letter / Submission 聚合真实审稿意见。
+  - 在 Writer 面板显示各章节未解决修改提醒。
+  - 导出 `writer-revision-checklist.md`。
 
 当前仍未完成：
 
 - AI 写作痕迹检查。
 - 复杂审稿信的高精度语义拆分。
+- 返修清单章节归属的人工编辑。
 - 目标期刊专属审稿维度。
 
 ## 当前优先级建议
@@ -136,6 +143,6 @@ Mentor 选题与引用
 2. 阶段性提交当前大功能集合。
 3. 后续优先补：
    - 真实高级统计模型拟合
-   - 后端版本 diff 和全文恢复
+   - 返修清单章节归属人工编辑
    - 真实放疗专科数据适配
    - 目标期刊规则实时校验

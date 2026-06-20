@@ -1693,7 +1693,7 @@ button {
 }
 
 .writer-version-toolbar button,
-.writer-version-list article > button:last-child {
+.writer-version-actions button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1709,7 +1709,7 @@ button {
 }
 
 .writer-version-toolbar button:disabled,
-.writer-version-list article > button:last-child:disabled {
+.writer-version-actions button:disabled {
   cursor: not-allowed;
   opacity: 0.58;
 }
@@ -1770,10 +1770,48 @@ button {
   grid-column: 1 / 2;
 }
 
-.writer-version-list article > button:last-child {
+.writer-version-actions {
   grid-column: 2 / 3;
   grid-row: 1 / 4;
+  display: grid;
+  gap: 8px;
   align-self: center;
+}
+
+.writer-restored-section {
+  display: grid;
+  gap: 10px;
+  border: 1px solid rgba(217, 119, 6, 0.2);
+  border-radius: 8px;
+  padding: 12px;
+  background: #fffaf2;
+}
+
+.writer-restored-section > div {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.writer-restored-section strong {
+  color: #22354a;
+}
+
+.writer-restored-section span {
+  border-radius: 999px;
+  padding: 4px 9px;
+  color: #8c4d10;
+  background: #fff0d8;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.writer-restored-section p {
+  margin: 0;
+  color: #4f6074;
+  line-height: 1.6;
 }
 
 .writer-version-preview {
@@ -2122,6 +2160,86 @@ button {
 
 .reviewer-real-comments-panel {
   background: #f8fbff;
+}
+
+.reviewer-writer-checklist-panel {
+  background: #fffdf8;
+}
+
+.reviewer-writer-checklist,
+.writer-revision-group-list {
+  display: grid;
+  gap: 10px;
+}
+
+.reviewer-writer-checklist article,
+.writer-revision-group-list article {
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(36, 48, 64, 0.12);
+  border-radius: 8px;
+  padding: 12px;
+  background: #ffffff;
+}
+
+.reviewer-writer-checklist article > div,
+.writer-revision-group-list article > div {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.reviewer-writer-checklist strong,
+.writer-revision-group-list strong {
+  color: #22354a;
+}
+
+.reviewer-writer-checklist span,
+.writer-revision-group-list span {
+  border-radius: 999px;
+  padding: 4px 9px;
+  color: #8c4d10;
+  background: #fff0d8;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.reviewer-writer-checklist ol,
+.writer-revision-group-list ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.reviewer-writer-checklist li,
+.writer-revision-group-list li,
+.reviewer-writer-checklist p,
+.writer-revision-group-list p,
+.reviewer-writer-checklist small,
+.writer-revision-note {
+  margin: 0;
+  color: #4f6074;
+  line-height: 1.5;
+}
+
+.reviewer-writer-checklist small {
+  display: block;
+  margin-top: 4px;
+}
+
+.writer-revision-card {
+  background: #fffdf8;
+}
+
+.writer-revision-note {
+  border-radius: 8px;
+  padding: 9px 11px;
+  background: #fff0d8;
+  color: #8c4d10;
+  font-weight: 800;
 }
 
 .reviewer-import-box {

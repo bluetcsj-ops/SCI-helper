@@ -1597,6 +1597,64 @@ function buildWriterVersionSectionDiffs(
   });
 }
 
+function inferReviewerRevisionSections(thread: ReviewerCommentThread): RevisionSectionId[] {
+  const text = [
+    thread.comment_text,
+    thread.response_draft,
+    thread.manuscript_change,
+  ].join(" ").toLowerCase();
+  const sections: RevisionSectionId[] = [];
+  if (/\b(introduction|background|rationale|study aim|objective|hypothesis)\b/.test(text)) {
+    sections.push("Introduction");
+  }
+  if (
+    /\b(method|methods|materials|statistical analysis|data|dataset|cohort|eligibility|inclusion|exclusion|result|results|table|figure|endpoint|model|regression|p value|confidence interval|ci\b)\b/.test(text)
+  ) {
+    sections.push("Methods / Results");
+  }
+  if (/\b(discussion|interpretation|limitation|clinical implication|future work|compare|literature)\b/.test(text)) {
+    sections.push("Discussion");
+  }
+  if (/\b(abstract|summary|keyword|structured abstract)\b/.test(text)) {
+    sections.push("Abstract");
+  }
+  if (
+    /\b(cover letter|submission|journal|editor|response to reviewers|ethics|conflict of interest|funding|data availability|author contribution|supplementary)\b/.test(text)
+  ) {
+    sections.push("Cover Letter / Submission");
+  }
+  return sections.length ? sections : ["Methods / Results"];
+}
+
+function buildWriterRevisionChecklistGroups(
+  threads: ReviewerCommentThread[],
+): WriterRevisionSectionGroup[] {
+  const sectionOrder: RevisionSectionId[] = [
+    "Introduction",
+    "Methods / Results",
+    "Discussion",
+    "Abstract",
+    "Cover Letter / Submission",
+  ];
+  const groups = new Map<RevisionSectionId, WriterRevisionChecklistItem[]>(
+    sectionOrder.map((section) => [section, []]),
+  );
+  threads.forEach((thread) => {
+    const sections = inferReviewerRevisionSections(thread);
+    sections.forEach((section) => {
+      groups.get(section)?.push({ thread, sections });
+    });
+  });
+  return sectionOrder.map((section) => {
+    const items = groups.get(section) ?? [];
+    return {
+      section,
+      items,
+      unresolvedCount: items.filter((item) => item.thread.status !== "resolved").length,
+    };
+  });
+}
+
 function buildReviewerChecks(params: {
   protocolHasContent: boolean;
   protocol: ProjectProtocol | null;
@@ -2392,6 +2450,26 @@ interface WriterVersionSectionDiff {
   delta: number;
 }
 
+type RestoredWriterSections = Record<string, string>;
+
+type RevisionSectionId =
+  | "Introduction"
+  | "Methods / Results"
+  | "Discussion"
+  | "Abstract"
+  | "Cover Letter / Submission";
+
+interface WriterRevisionChecklistItem {
+  thread: ReviewerCommentThread;
+  sections: RevisionSectionId[];
+}
+
+interface WriterRevisionSectionGroup {
+  section: RevisionSectionId;
+  items: WriterRevisionChecklistItem[];
+  unresolvedCount: number;
+}
+
 interface DataAnalysisPlanSuggestion {
   readinessLabel: string;
   mainAnalyses: string[];
@@ -3109,6 +3187,8 @@ function App() {
   const [isWriterVersionSaving, setIsWriterVersionSaving] = useState(false);
   const [restoringWriterVersionId, setRestoringWriterVersionId] = useState<number | null>(null);
   const [writerVersionNotice, setWriterVersionNotice] = useState<string | null>(null);
+  const [restoredWriterSections, setRestoredWriterSections] = useState<RestoredWriterSections>({});
+  const [restoredWriterVersionLabel, setRestoredWriterVersionLabel] = useState<string | null>(null);
   const [reviewerCommentThreads, setReviewerCommentThreads] = useState<ReviewerCommentThread[]>([]);
   const [reviewerRawImportText, setReviewerRawImportText] = useState("");
   const [isReviewerCommentLoading, setIsReviewerCommentLoading] = useState(false);
@@ -3604,6 +3684,13 @@ function App() {
     () => buildWriterVersionSectionDiffs(currentWriterSections, selectedWriterDraftVersion),
     [currentWriterSections, selectedWriterDraftVersion],
   );
+  const restoredMethodsResultsText = restoredWriterSections["Methods / Results"]?.trim() ?? "";
+  const restoredDiscussionText = restoredWriterSections.Discussion?.trim() ?? "";
+  const restoredAbstractText = restoredWriterSections.Abstract?.trim() ?? "";
+  const restoredCoverLetterText = restoredWriterSections["Cover Letter"]?.trim() ?? "";
+  const hasRestoredWriterSections = Object.values(restoredWriterSections).some(
+    (value) => value.trim().length > 0,
+  );
   const reviewerResponseDraft = useMemo(
     () =>
       buildReviewerResponseDraft({
@@ -3613,6 +3700,14 @@ function App() {
         submissionPackageChecklist,
       }),
     [reviewerChecks, reviewerDeepComments, protocolDataConsistencyCheck, submissionPackageChecklist],
+  );
+  const writerRevisionChecklistGroups = useMemo(
+    () => buildWriterRevisionChecklistGroups(reviewerCommentThreads),
+    [reviewerCommentThreads],
+  );
+  const writerRevisionUnresolvedCount = writerRevisionChecklistGroups.reduce(
+    (total, group) => total + group.unresolvedCount,
+    0,
   );
   const pipelineSteps = useMemo(
     () =>
@@ -3725,6 +3820,8 @@ function App() {
     setDataAuditLogs([]);
     setWriterIntroductionDraft(null);
     setWriterIntroductionDraftForm(createWriterIntroductionDraftForm());
+    setRestoredWriterSections({});
+    setRestoredWriterVersionLabel(null);
     setUploadedCsvFile(null);
     setSelectedGroupColumn("");
     setSelectedOutcomeColumns([]);
@@ -4727,7 +4824,7 @@ function App() {
   }
 
   function handleDownloadMethodsResultsDraft() {
-    if (!writerMethodsResultsDraft) {
+    if (!writerMethodsResultsDraft && !restoredMethodsResultsText) {
       return;
     }
 
@@ -4739,21 +4836,32 @@ function App() {
       protocol?.research_question ? `研究问题：${protocol.research_question}` : "研究问题：待补充",
       qualityReport ? `数据文件：${qualityReport.file_name}` : "数据文件：待补充",
       "",
+      ...(restoredMethodsResultsText
+        ? [
+            "## 历史恢复内容",
+            "",
+            restoredMethodsResultsText,
+            "",
+            "## 使用边界",
+            `- 本内容恢复自 ${restoredWriterVersionLabel ?? "历史版本"}，需要人工确认是否仍匹配当前数据、统计结果和研究方案。`,
+            "",
+          ]
+        : [
       "## Methods",
-      ...writerMethodsResultsDraft.methodsParagraphs.flatMap((paragraph) => [paragraph, ""]),
+      ...writerMethodsResultsDraft!.methodsParagraphs.flatMap((paragraph) => [paragraph, ""]),
       "## Results",
-      ...writerMethodsResultsDraft.resultsParagraphs.flatMap((paragraph) => [paragraph, ""]),
+      ...writerMethodsResultsDraft!.resultsParagraphs.flatMap((paragraph) => [paragraph, ""]),
       "## 正式检验摘要",
-      ...writerMethodsResultsDraft.formalTestLines.map((line) => `- ${line}`),
+      ...writerMethodsResultsDraft!.formalTestLines.map((line) => `- ${line}`),
       "",
       "## 图表与展示建议",
-      ...(writerMethodsResultsDraft.chartLines.length
-        ? writerMethodsResultsDraft.chartLines.map((line) => `- ${line}`)
+      ...(writerMethodsResultsDraft!.chartLines.length
+        ? writerMethodsResultsDraft!.chartLines.map((line) => `- ${line}`)
         : ["- 暂无可展示图表摘要。"]),
       "",
       "## 待补充 / 不可编造",
-      ...(writerMethodsResultsDraft.missingItems.length
-        ? writerMethodsResultsDraft.missingItems.map((item) => `- ${item}`)
+      ...(writerMethodsResultsDraft!.missingItems.length
+        ? writerMethodsResultsDraft!.missingItems.map((item) => `- ${item}`)
         : ["- 当前没有系统识别出的阻断项；正式投稿前仍需人工复核数据、统计和引用。"]),
       "",
       "## 使用边界",
@@ -4761,6 +4869,7 @@ function App() {
       "- 未执行正式检验时，不得添加 P 值、置信区间或显著性表述。",
       "- 正式论文需要用真实课题数据、伦理信息和目标期刊格式重新核对。",
       "",
+          ]),
     ].join("\n");
 
     const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
@@ -4778,7 +4887,7 @@ function App() {
   }
 
   function handleDownloadDiscussionDraft() {
-    if (!writerDiscussionDraft) {
+    if (!writerDiscussionDraft && !restoredDiscussionText) {
       return;
     }
 
@@ -4790,26 +4899,38 @@ function App() {
       protocol?.research_question ? `研究问题：${protocol.research_question}` : "研究问题：待补充",
       qualityReport ? `数据文件：${qualityReport.file_name}` : "数据文件：待补充",
       "",
+      ...(restoredDiscussionText
+        ? [
+            "## 历史恢复内容",
+            "",
+            restoredDiscussionText,
+            "",
+            "## 使用边界",
+            `- 本内容恢复自 ${restoredWriterVersionLabel ?? "历史版本"}，需要人工确认是否仍匹配当前结果和引用。`,
+            "",
+          ]
+        : [
       "## 主要发现",
-      ...writerDiscussionDraft.keyFindings.map((item) => `- ${item}`),
+      ...writerDiscussionDraft!.keyFindings.map((item) => `- ${item}`),
       "",
       "## 结果解释",
-      ...writerDiscussionDraft.interpretationParagraphs.flatMap((paragraph) => [paragraph, ""]),
+      ...writerDiscussionDraft!.interpretationParagraphs.flatMap((paragraph) => [paragraph, ""]),
       "## 与既有研究的关系",
-      ...writerDiscussionDraft.literatureContext.map((item) => `- ${item}`),
+      ...writerDiscussionDraft!.literatureContext.map((item) => `- ${item}`),
       "",
       "## 临床或方法学意义",
-      ...writerDiscussionDraft.clinicalMeaning.map((item) => `- ${item}`),
+      ...writerDiscussionDraft!.clinicalMeaning.map((item) => `- ${item}`),
       "",
       "## 局限性",
-      ...writerDiscussionDraft.limitations.map((item) => `- ${item}`),
+      ...writerDiscussionDraft!.limitations.map((item) => `- ${item}`),
       "",
       "## 下一步研究方向",
-      ...writerDiscussionDraft.futureWork.map((item) => `- ${item}`),
+      ...writerDiscussionDraft!.futureWork.map((item) => `- ${item}`),
       "",
       "## 使用边界",
-      ...writerDiscussionDraft.cautionNotes.map((item) => `- ${item}`),
+      ...writerDiscussionDraft!.cautionNotes.map((item) => `- ${item}`),
       "",
+          ]),
     ].join("\n");
 
     const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
@@ -4827,7 +4948,7 @@ function App() {
   }
 
   function handleDownloadAbstractDraft() {
-    if (!writerAbstractDraft) {
+    if (!writerAbstractDraft && !restoredAbstractText) {
       return;
     }
 
@@ -4837,27 +4958,39 @@ function App() {
       `导出时间：${new Date().toLocaleString("zh-CN")}`,
       selectedProject ? `关联项目：${selectedProject.name} / ${selectedProject.title}` : "关联项目：未指定",
       "",
+      ...(restoredAbstractText
+        ? [
+            "## 历史恢复内容",
+            "",
+            restoredAbstractText,
+            "",
+            "## 使用边界",
+            `- 本内容恢复自 ${restoredWriterVersionLabel ?? "历史版本"}，需要人工确认目标期刊摘要结构和当前结果是否一致。`,
+            "",
+          ]
+        : [
       "## Background",
-      writerAbstractDraft.background,
+      writerAbstractDraft!.background,
       "",
       "## Objective",
-      writerAbstractDraft.objective,
+      writerAbstractDraft!.objective,
       "",
       "## Methods",
-      writerAbstractDraft.methods,
+      writerAbstractDraft!.methods,
       "",
       "## Results",
-      writerAbstractDraft.results,
+      writerAbstractDraft!.results,
       "",
       "## Conclusions",
-      writerAbstractDraft.conclusions,
+      writerAbstractDraft!.conclusions,
       "",
       "## Keywords",
-      writerAbstractDraft.keywords.join("; "),
+      writerAbstractDraft!.keywords.join("; "),
       "",
       "## 使用边界",
-      ...writerAbstractDraft.cautionNotes.map((item) => `- ${item}`),
+      ...writerAbstractDraft!.cautionNotes.map((item) => `- ${item}`),
       "",
+          ]),
     ].join("\n");
 
     const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
@@ -4875,7 +5008,7 @@ function App() {
   }
 
   function handleDownloadCoverLetterDraft() {
-    if (!writerCoverLetterDraft) {
+    if (!writerCoverLetterDraft && !restoredCoverLetterText) {
       return;
     }
 
@@ -4885,25 +5018,37 @@ function App() {
       `导出时间：${new Date().toLocaleString("zh-CN")}`,
       selectedProject ? `关联项目：${selectedProject.name} / ${selectedProject.title}` : "关联项目：未指定",
       "",
-      writerCoverLetterDraft.greeting,
+      ...(restoredCoverLetterText
+        ? [
+            "## 历史恢复内容",
+            "",
+            restoredCoverLetterText,
+            "",
+            "## 使用边界",
+            `- 本内容恢复自 ${restoredWriterVersionLabel ?? "历史版本"}，需要人工补充真实编辑、通讯作者和投稿系统信息。`,
+            "",
+          ]
+        : [
+      writerCoverLetterDraft!.greeting,
       "",
-      writerCoverLetterDraft.manuscriptLine,
+      writerCoverLetterDraft!.manuscriptLine,
       "",
-      ...writerCoverLetterDraft.contributionParagraphs.flatMap((paragraph) => [paragraph, ""]),
+      ...writerCoverLetterDraft!.contributionParagraphs.flatMap((paragraph) => [paragraph, ""]),
       "## Transparency statements",
-      ...writerCoverLetterDraft.transparencyStatements.map((item) => `- ${item}`),
+      ...writerCoverLetterDraft!.transparencyStatements.map((item) => `- ${item}`),
       "",
       "## Compliance placeholders",
-      ...writerCoverLetterDraft.compliancePlaceholders.map((item) => `- ${item}`),
+      ...writerCoverLetterDraft!.compliancePlaceholders.map((item) => `- ${item}`),
       "",
-      writerCoverLetterDraft.closingParagraph,
+      writerCoverLetterDraft!.closingParagraph,
       "",
       "Sincerely,",
       "[Corresponding author name]",
       "",
       "## 投稿前人工补充清单",
-      ...writerCoverLetterDraft.manualChecklist.map((item) => `- ${item}`),
+      ...writerCoverLetterDraft!.manualChecklist.map((item) => `- ${item}`),
       "",
+          ]),
     ].join("\n");
 
     const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
@@ -5317,6 +5462,63 @@ function App() {
     try {
       link.href = url;
       link.download = "response-to-reviewers-mapped.md";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  function handleDownloadWriterRevisionChecklist() {
+    const content = [
+      "# Writer Revision Checklist",
+      "",
+      `Generated at: ${new Date().toLocaleString("zh-CN")}`,
+      selectedProject ? `Project: ${selectedProject.name} / ${selectedProject.title}` : "Project: not specified",
+      "",
+      "This checklist maps imported reviewer comments to manuscript sections for manual revision tracking. Section assignment is rule-based and must be reviewed against the original decision letter.",
+      "",
+      ...writerRevisionChecklistGroups.flatMap((group) => [
+        `## ${group.section}`,
+        "",
+        `Unresolved items: ${group.unresolvedCount}`,
+        "",
+        ...(group.items.length
+          ? group.items.flatMap(({ thread }, index) => [
+              `### ${index + 1}. ${thread.reviewer_label} - ${reviewerCommentTypeLabels[thread.comment_type]}`,
+              "",
+              `Status: ${reviewerCommentStatusLabels[thread.status]}`,
+              "",
+              "**Reviewer comment**",
+              "",
+              thread.comment_text,
+              "",
+              "**Response draft**",
+              "",
+              thread.response_draft || "Response pending.",
+              "",
+              "**Manuscript change**",
+              "",
+              thread.manuscript_change || "Manuscript change pending manual confirmation.",
+              "",
+            ])
+          : ["No reviewer comments mapped to this section.", ""]),
+      ]),
+      "## Manual checks",
+      "",
+      "- Confirm each section assignment manually.",
+      "- Add page and line numbers after manuscript revision.",
+      "- Do not automatically insert reviewer text into the manuscript.",
+      "",
+    ].join("\n");
+
+    const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    try {
+      link.href = url;
+      link.download = "writer-revision-checklist.md";
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -6468,6 +6670,54 @@ function App() {
     } finally {
       setRestoringWriterVersionId(null);
     }
+  }
+
+  async function handleRestoreWriterFullDraftVersion(versionId: number) {
+    if (!selectedProjectId || !canEditSelectedProject || restoringWriterVersionId !== null) {
+      return;
+    }
+    const version = writerDraftVersions.find((item) => item.id === versionId);
+    if (!version) {
+      setWriterVersionNotice("没有找到可恢复的历史版本。");
+      return;
+    }
+
+    setRestoringWriterVersionId(versionId);
+    setWriterVersionNotice(null);
+    setError(null);
+    try {
+      const restoredDraft = await restoreWriterDraftVersion(selectedProjectId, versionId);
+      setWriterIntroductionDraft(restoredDraft);
+      setWriterIntroductionDraftForm({
+        background_paragraph: restoredDraft.background_paragraph,
+        gap_paragraph: restoredDraft.gap_paragraph,
+        objective_paragraph: restoredDraft.objective_paragraph,
+        citation_bindings: normalizeIntroductionCitationBindings(restoredDraft.citation_bindings),
+      });
+      const restoredSections = Object.fromEntries(
+        Object.entries(version.derived_sections).filter(
+          ([section, value]) => section !== "Introduction" && value.trim().length > 0,
+        ),
+      );
+      setRestoredWriterSections(restoredSections);
+      setRestoredWriterVersionLabel(version.version_label);
+      const versions = await getWriterDraftVersions(selectedProjectId);
+      setWriterDraftVersions(versions);
+      setSelectedWriterDraftVersionId(versionId);
+      setWriterVersionNotice(
+        `已恢复 ${version.version_label}：Introduction 已写回后端，其他章节作为历史恢复内容显示，需人工复核。`,
+      );
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Writer 全文恢复失败。");
+    } finally {
+      setRestoringWriterVersionId(null);
+    }
+  }
+
+  function handleClearRestoredWriterSections() {
+    setRestoredWriterSections({});
+    setRestoredWriterVersionLabel(null);
+    setWriterVersionNotice("已清除历史恢复内容，Writer 回到自动生成草稿。");
   }
 
   async function handleCopyWriterVersionSection(sectionName: string) {
@@ -9640,7 +9890,7 @@ function App() {
                         <button
                           type="button"
                           onClick={handleDownloadMethodsResultsDraft}
-                          disabled={!writerMethodsResultsDraft}
+                          disabled={!writerMethodsResultsDraft && !restoredMethodsResultsText}
                         >
                           <Download aria-hidden="true" size={15} />
                           <span>导出结果</span>
@@ -9648,7 +9898,7 @@ function App() {
                         <button
                           type="button"
                           onClick={handleDownloadDiscussionDraft}
-                          disabled={!writerDiscussionDraft}
+                          disabled={!writerDiscussionDraft && !restoredDiscussionText}
                         >
                           <Download aria-hidden="true" size={15} />
                           <span>导出 Discussion</span>
@@ -9656,7 +9906,7 @@ function App() {
                         <button
                           type="button"
                           onClick={handleDownloadAbstractDraft}
-                          disabled={!writerAbstractDraft}
+                          disabled={!writerAbstractDraft && !restoredAbstractText}
                         >
                           <Download aria-hidden="true" size={15} />
                           <span>导出 Abstract</span>
@@ -9664,7 +9914,7 @@ function App() {
                         <button
                           type="button"
                           onClick={handleDownloadCoverLetterDraft}
-                          disabled={!writerCoverLetterDraft}
+                          disabled={!writerCoverLetterDraft && !restoredCoverLetterText}
                         >
                           <Download aria-hidden="true" size={15} />
                           <span>导出 Cover Letter</span>
@@ -9726,9 +9976,25 @@ function App() {
                     <section className="writer-methods-results-card">
                       <div className="mentor-section-head">
                         <strong>Methods / Results 草稿</strong>
-                        <span>{writerMethodsResultsDraft ? "来自 Data Lin" : "等待统计结果"}</span>
+                        <span>
+                          {restoredMethodsResultsText
+                            ? `历史恢复：${restoredWriterVersionLabel ?? "版本"}`
+                            : writerMethodsResultsDraft
+                              ? "来自 Data Lin"
+                              : "等待统计结果"}
+                        </span>
                       </div>
-                      {writerMethodsResultsDraft ? (
+                      {restoredMethodsResultsText ? (
+                        <div className="writer-restored-section">
+                          <div>
+                            <strong>历史版本 Methods / Results</strong>
+                            <span>需人工复核后再用于 SCI 正文</span>
+                          </div>
+                          {restoredMethodsResultsText.split(/\n{2,}/).map((paragraph) => (
+                            <p key={paragraph}>{paragraph}</p>
+                          ))}
+                        </div>
+                      ) : writerMethodsResultsDraft ? (
                         <>
                         {workflowSummary ? (
                           <div className="writer-source-strip">
@@ -9801,9 +10067,25 @@ function App() {
                     <section className="writer-methods-results-card writer-discussion-card">
                       <div className="mentor-section-head">
                         <strong>Discussion 草稿</strong>
-                        <span>{writerDiscussionDraft ? "来自统计结果与审稿意见" : "等待 Methods / Results"}</span>
+                        <span>
+                          {restoredDiscussionText
+                            ? `历史恢复：${restoredWriterVersionLabel ?? "版本"}`
+                            : writerDiscussionDraft
+                              ? "来自统计结果与审稿意见"
+                              : "等待 Methods / Results"}
+                        </span>
                       </div>
-                      {writerDiscussionDraft ? (
+                      {restoredDiscussionText ? (
+                        <div className="writer-restored-section">
+                          <div>
+                            <strong>历史版本 Discussion</strong>
+                            <span>需人工复核解释边界</span>
+                          </div>
+                          {restoredDiscussionText.split(/\n{2,}/).map((paragraph) => (
+                            <p key={paragraph}>{paragraph}</p>
+                          ))}
+                        </div>
+                      ) : writerDiscussionDraft ? (
                         <div className="writer-methods-results-layout">
                           <article>
                             <strong>主要发现</strong>
@@ -9870,9 +10152,25 @@ function App() {
                     <section className="writer-methods-results-card writer-abstract-card">
                       <div className="mentor-section-head">
                         <strong>Abstract 草稿</strong>
-                        <span>{writerAbstractDraft ? "结构化摘要" : "等待 Discussion"}</span>
+                        <span>
+                          {restoredAbstractText
+                            ? `历史恢复：${restoredWriterVersionLabel ?? "版本"}`
+                            : writerAbstractDraft
+                              ? "结构化摘要"
+                              : "等待 Discussion"}
+                        </span>
                       </div>
-                      {writerAbstractDraft ? (
+                      {restoredAbstractText ? (
+                        <div className="writer-restored-section">
+                          <div>
+                            <strong>历史版本 Abstract</strong>
+                            <span>需核对目标期刊结构</span>
+                          </div>
+                          {restoredAbstractText.split(/\n{2,}/).map((paragraph) => (
+                            <p key={paragraph}>{paragraph}</p>
+                          ))}
+                        </div>
+                      ) : writerAbstractDraft ? (
                         <div className="writer-abstract-layout">
                           <article>
                             <strong>Background</strong>
@@ -9917,9 +10215,25 @@ function App() {
                     <section className="writer-methods-results-card writer-cover-letter-card">
                       <div className="mentor-section-head">
                         <strong>Cover Letter 草稿</strong>
-                        <span>{writerCoverLetterDraft ? "投稿信模板" : "等待 Abstract"}</span>
+                        <span>
+                          {restoredCoverLetterText
+                            ? `历史恢复：${restoredWriterVersionLabel ?? "版本"}`
+                            : writerCoverLetterDraft
+                              ? "投稿信模板"
+                              : "等待 Abstract"}
+                        </span>
                       </div>
-                      {writerCoverLetterDraft ? (
+                      {restoredCoverLetterText ? (
+                        <div className="writer-restored-section">
+                          <div>
+                            <strong>历史版本 Cover Letter</strong>
+                            <span>需补充真实编辑和通讯作者信息</span>
+                          </div>
+                          {restoredCoverLetterText.split(/\n{2,}/).map((paragraph) => (
+                            <p key={paragraph}>{paragraph}</p>
+                          ))}
+                        </div>
+                      ) : writerCoverLetterDraft ? (
                         <div className="writer-cover-letter-layout">
                           <article className="writer-cover-letter-wide">
                             <strong>{writerCoverLetterDraft.greeting}</strong>
@@ -10150,6 +10464,15 @@ function App() {
                         <p>
                           保存当前英文 SCI 稿件快照；恢复时只覆盖 Introduction，其他章节可对比、预览和复制。
                         </p>
+                        {hasRestoredWriterSections ? (
+                          <button
+                            type="button"
+                            onClick={handleClearRestoredWriterSections}
+                          >
+                            <RefreshCw aria-hidden="true" size={15} />
+                            <span>清除历史恢复</span>
+                          </button>
+                        ) : null}
                         <button
                           type="button"
                           onClick={handleCreateWriterDraftVersion}
@@ -10205,24 +10528,44 @@ function App() {
                                     已恢复 {new Date(version.restored_at).toLocaleString("zh-CN")}
                                   </small>
                                 ) : null}
-                                <button
-                                  type="button"
-                                  onClick={() => handleRestoreWriterDraftVersion(version.id)}
-                                  disabled={
-                                    !canEditSelectedProject ||
-                                    restoringWriterVersionId !== null ||
-                                    isWriterDraftLoading
-                                  }
-                                >
-                                  {restoringWriterVersionId === version.id ? (
-                                    <Loader2 aria-hidden="true" className="spin" size={15} />
-                                  ) : (
-                                    <RefreshCw aria-hidden="true" size={15} />
-                                  )}
-                                  <span>
-                                    {restoringWriterVersionId === version.id ? "恢复中" : "恢复 Introduction"}
-                                  </span>
-                                </button>
+                                <div className="writer-version-actions">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRestoreWriterDraftVersion(version.id)}
+                                    disabled={
+                                      !canEditSelectedProject ||
+                                      restoringWriterVersionId !== null ||
+                                      isWriterDraftLoading
+                                    }
+                                  >
+                                    {restoringWriterVersionId === version.id ? (
+                                      <Loader2 aria-hidden="true" className="spin" size={15} />
+                                    ) : (
+                                      <RefreshCw aria-hidden="true" size={15} />
+                                    )}
+                                    <span>
+                                      {restoringWriterVersionId === version.id ? "恢复中" : "恢复 Introduction"}
+                                    </span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleRestoreWriterFullDraftVersion(version.id)}
+                                    disabled={
+                                      !canEditSelectedProject ||
+                                      restoringWriterVersionId !== null ||
+                                      isWriterDraftLoading
+                                    }
+                                  >
+                                    {restoringWriterVersionId === version.id ? (
+                                      <Loader2 aria-hidden="true" className="spin" size={15} />
+                                    ) : (
+                                      <RefreshCw aria-hidden="true" size={15} />
+                                    )}
+                                    <span>
+                                      {restoringWriterVersionId === version.id ? "恢复中" : "恢复全文草稿"}
+                                    </span>
+                                  </button>
+                                </div>
                               </article>
                             );
                           })}
@@ -10278,6 +10621,40 @@ function App() {
                         </div>
                       ) : null}
                     </section>
+
+                    {reviewerCommentThreads.length ? (
+                      <section className="writer-methods-results-card writer-revision-card">
+                        <div className="mentor-section-head">
+                          <strong>Reviewer 修改提醒</strong>
+                          <span>{writerRevisionUnresolvedCount} 条未解决</span>
+                        </div>
+                        <p className="writer-revision-note">
+                          这些提醒来自真实审稿意见映射，只作为人工修改清单，不会自动改写论文正文。
+                        </p>
+                        <div className="writer-revision-group-list">
+                          {writerRevisionChecklistGroups.map((group) => (
+                            <article key={group.section}>
+                              <div>
+                                <strong>{group.section}</strong>
+                                <span>{group.unresolvedCount} 条未解决</span>
+                              </div>
+                              {group.items.length ? (
+                                <ul>
+                                  {group.items.slice(0, 3).map(({ thread }) => (
+                                    <li key={thread.id}>
+                                      {reviewerCommentStatusLabels[thread.status]} ·{" "}
+                                      {thread.manuscript_change || thread.comment_text.slice(0, 90)}
+                                    </li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <p>暂无映射到本章节的审稿意见。</p>
+                              )}
+                            </article>
+                          ))}
+                        </div>
+                      </section>
+                    ) : null}
 
                     <section className="writer-draft-card">
                       <div className="mentor-section-head">
@@ -10976,6 +11353,50 @@ function App() {
                         </p>
                       )}
                     </section>
+
+                    {reviewerCommentThreads.length ? (
+                      <section className="reviewer-response-panel reviewer-writer-checklist-panel">
+                        <div className="reviewer-deep-head">
+                          <div>
+                            <p className="eyebrow">Writer revision checklist</p>
+                            <h4>返修写作清单</h4>
+                          </div>
+                          <button type="button" onClick={handleDownloadWriterRevisionChecklist}>
+                            <Download aria-hidden="true" size={15} />
+                            <span>导出写作清单</span>
+                          </button>
+                        </div>
+                        <p>
+                          按章节聚合真实审稿意见，帮助 Alex Writer 定位需要人工修改的位置；章节识别为规则型建议。
+                        </p>
+                        <div className="reviewer-writer-checklist">
+                          {writerRevisionChecklistGroups.map((group) => (
+                            <article key={group.section}>
+                              <div>
+                                <strong>{group.section}</strong>
+                                <span>{group.unresolvedCount} 条未解决</span>
+                              </div>
+                              {group.items.length ? (
+                                <ol>
+                                  {group.items.map(({ thread }) => (
+                                    <li key={thread.id}>
+                                      <strong>
+                                        {thread.reviewer_label} · {reviewerCommentTypeLabels[thread.comment_type]} ·{" "}
+                                        {reviewerCommentStatusLabels[thread.status]}
+                                      </strong>
+                                      <p>{thread.manuscript_change || thread.comment_text}</p>
+                                      {thread.response_draft ? <small>{thread.response_draft}</small> : null}
+                                    </li>
+                                  ))}
+                                </ol>
+                              ) : (
+                                <p>暂无条目。</p>
+                              )}
+                            </article>
+                          ))}
+                        </div>
+                      </section>
+                    ) : null}
 
                     <div className="reviewer-check-list">
                       {reviewerChecks.map((item) => (
