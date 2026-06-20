@@ -826,6 +826,106 @@ function buildWriterMethodsResultsDraft(
   };
 }
 
+function buildWriterDiscussionDraft(params: {
+  protocol: ProjectProtocol | null;
+  qualityReport: DataQualityReport | null;
+  statisticsReport: DataStatisticsReport | null;
+  writerMethodsResultsDraft: WriterMethodsResultsDraft | null;
+  reviewerDeepComments: ReviewerDeepComments | null;
+  candidateReferenceCount: number;
+  citationIssueCount: number;
+}): WriterDiscussionDraft | null {
+  const {
+    protocol,
+    qualityReport,
+    statisticsReport,
+    writerMethodsResultsDraft,
+    reviewerDeepComments,
+    candidateReferenceCount,
+    citationIssueCount,
+  } = params;
+
+  if (!qualityReport || !statisticsReport || !writerMethodsResultsDraft) {
+    return null;
+  }
+
+  const formalTestReport = statisticsReport.formal_test_report ?? null;
+  const numericFindings = statisticsReport.numeric_summaries.slice(0, 3).map(
+    (summary) =>
+      `${summary.column} 的描述性结果为 n=${summary.n}，均值 ${summary.mean}，中位数 ${summary.median}，范围 ${summary.min}-${summary.max}。`,
+  );
+  const groupFindings = statisticsReport.group_comparisons
+    .slice(0, 2)
+    .map((comparison) => comparison.interpretation);
+  const formalFindings = formalTestReport?.results.length
+    ? formalTestReport.results.slice(0, 3).map((result) => `${result.outcome_column}：${result.interpretation}`)
+    : [];
+  const keyFindings = [
+    ...numericFindings,
+    ...groupFindings,
+    ...formalFindings,
+  ].slice(0, 5);
+
+  const interpretationParagraphs = [
+    protocol?.research_question
+      ? `本研究的 Discussion 应围绕研究问题展开：${protocol.research_question}。当前结果应被解释为对该问题的初步回答，而不是泛化到所有放疗场景的最终结论。`
+      : "本研究的 Discussion 仍需先补齐清晰研究问题，再围绕主要终点解释结果。",
+    formalTestReport
+      ? "已有正式检验结果时，Discussion 可以讨论方向、效应大小和临床意义，但仍应避免把统计显著性直接等同于临床重要性。"
+      : "当前尚未执行正式检验，Discussion 只能讨论描述性趋势、流程可行性和后续验证计划，不应写出显著性结论。",
+  ];
+
+  const literatureContext = [
+    candidateReferenceCount
+      ? `当前已有 ${candidateReferenceCount} 条候选引用，可用于把结果放回既有公开数据源、方法学或临床研究背景中。`
+      : "当前缺少可追溯候选引用，Discussion 中暂不应加入与既有研究的强比较。",
+    citationIssueCount
+      ? `仍有 ${citationIssueCount} 项引用质控问题，应在正式写入 Discussion 前完成 DOI/PMID、用途标记和全文核对。`
+      : "引用质控未发现系统级阻断项，但正式投稿前仍需人工核对目标期刊格式。",
+  ];
+
+  const clinicalMeaning = [
+    qualityReport.row_count >= 30
+      ? `当前联调数据包含 ${qualityReport.row_count} 行记录，足以验证流程链路和草稿生成，但仍不能替代真实课题数据的临床推断。`
+      : `当前样本量为 ${qualityReport.row_count} 行，只适合流程联调和写作模板验证。`,
+    statisticsReport.chart_specs.length
+      ? `已有 ${statisticsReport.chart_specs.length} 个图表规格，可在 Discussion 中对应说明哪些趋势适合图形化展示。`
+      : "当前还没有图表规格，建议先补充可视化摘要再讨论结果呈现方式。",
+  ];
+
+  const limitations = [
+    "当前 Discussion 是规则型草稿，需要研究者根据真实病种、治疗技术、伦理审批和数据来源重写关键解释。",
+    "预备 DATA 只用于流程对接，不应被描述为真实放疗研究结论。",
+    formalTestReport
+      ? "正式检验结果仍需人工核对适用条件、缺失值处理、分组定义和多重比较边界。"
+      : "尚未执行正式检验，因此不能报告 P 值、置信区间或显著性方向。",
+    writerMethodsResultsDraft.missingItems.length
+      ? `Writer 仍提示 ${writerMethodsResultsDraft.missingItems.length} 个待补充项，Discussion 应在这些问题解决后再定稿。`
+      : "即使系统未识别阻断项，仍需人工复核 Methods、Results 和 Discussion 是否逐句一致。",
+  ];
+
+  const futureWork = [
+    "使用真实脱敏课题数据重新跑 Data Lin 质控、统计和 Writer 草稿链路。",
+    "补充目标期刊要求下的图表、亚组分析或敏感性分析计划。",
+    reviewerDeepComments?.revisionPriorities[0] ?? "根据 Reviewer 清单完成投稿前人工复核。",
+  ];
+
+  const cautionNotes = [
+    "Discussion 草稿不能代替临床专家、统计专家或真实同行评审意见。",
+    "所有结论性表述必须能回溯到已确认数据、统计输出和可核对引用。",
+  ];
+
+  return {
+    keyFindings: keyFindings.length ? keyFindings : ["当前统计结果不足以形成主要发现，请先完成 Data Lin 分析。"],
+    interpretationParagraphs,
+    literatureContext,
+    clinicalMeaning,
+    limitations,
+    futureWork,
+    cautionNotes,
+  };
+}
+
 function buildReviewerChecks(params: {
   protocolHasContent: boolean;
   protocol: ProjectProtocol | null;
@@ -1240,6 +1340,16 @@ interface WriterMethodsResultsDraft {
   formalTestLines: string[];
   chartLines: string[];
   missingItems: string[];
+}
+
+interface WriterDiscussionDraft {
+  keyFindings: string[];
+  interpretationParagraphs: string[];
+  literatureContext: string[];
+  clinicalMeaning: string[];
+  limitations: string[];
+  futureWork: string[];
+  cautionNotes: string[];
 }
 
 interface CsvProcessingDefaults {
@@ -2148,6 +2258,27 @@ function App() {
       introductionCitationQualityIssues.length,
       mentorCandidateReferences.length,
       reminderSummary,
+    ],
+  );
+  const writerDiscussionDraft = useMemo(
+    () =>
+      buildWriterDiscussionDraft({
+        protocol,
+        qualityReport,
+        statisticsReport,
+        writerMethodsResultsDraft,
+        reviewerDeepComments,
+        candidateReferenceCount: mentorCandidateReferences.length,
+        citationIssueCount: introductionCitationQualityIssues.length,
+      }),
+    [
+      protocol,
+      qualityReport,
+      statisticsReport,
+      writerMethodsResultsDraft,
+      reviewerDeepComments,
+      mentorCandidateReferences.length,
+      introductionCitationQualityIssues.length,
     ],
   );
   const pipelineSteps = useMemo(
@@ -3200,6 +3331,55 @@ function App() {
     try {
       link.href = url;
       link.download = "methods-results-draft.md";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  function handleDownloadDiscussionDraft() {
+    if (!writerDiscussionDraft) {
+      return;
+    }
+
+    const content = [
+      "# Discussion 草稿",
+      "",
+      `导出时间：${new Date().toLocaleString("zh-CN")}`,
+      selectedProject ? `关联项目：${selectedProject.name} / ${selectedProject.title}` : "关联项目：未指定",
+      protocol?.research_question ? `研究问题：${protocol.research_question}` : "研究问题：待补充",
+      qualityReport ? `数据文件：${qualityReport.file_name}` : "数据文件：待补充",
+      "",
+      "## 主要发现",
+      ...writerDiscussionDraft.keyFindings.map((item) => `- ${item}`),
+      "",
+      "## 结果解释",
+      ...writerDiscussionDraft.interpretationParagraphs.flatMap((paragraph) => [paragraph, ""]),
+      "## 与既有研究的关系",
+      ...writerDiscussionDraft.literatureContext.map((item) => `- ${item}`),
+      "",
+      "## 临床或方法学意义",
+      ...writerDiscussionDraft.clinicalMeaning.map((item) => `- ${item}`),
+      "",
+      "## 局限性",
+      ...writerDiscussionDraft.limitations.map((item) => `- ${item}`),
+      "",
+      "## 下一步研究方向",
+      ...writerDiscussionDraft.futureWork.map((item) => `- ${item}`),
+      "",
+      "## 使用边界",
+      ...writerDiscussionDraft.cautionNotes.map((item) => `- ${item}`),
+      "",
+    ].join("\n");
+
+    const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    try {
+      link.href = url;
+      link.download = "discussion-draft.md";
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -6838,6 +7018,14 @@ function App() {
                           <Download aria-hidden="true" size={15} />
                           <span>导出结果</span>
                         </button>
+                        <button
+                          type="button"
+                          onClick={handleDownloadDiscussionDraft}
+                          disabled={!writerDiscussionDraft}
+                        >
+                          <Download aria-hidden="true" size={15} />
+                          <span>导出 Discussion</span>
+                        </button>
                         <FileText aria-hidden="true" size={20} />
                       </div>
                     </div>
@@ -6951,6 +7139,75 @@ function App() {
                         <p className="writer-empty">
                           先在 Dr. Data Lin 中加载预备 DATA 或上传脱敏 CSV，并生成统计草案；这里会整理 Methods
                           和 Results 写作草稿。
+                        </p>
+                      )}
+                    </section>
+
+                    <section className="writer-methods-results-card writer-discussion-card">
+                      <div className="mentor-section-head">
+                        <strong>Discussion 草稿</strong>
+                        <span>{writerDiscussionDraft ? "来自统计结果与审稿意见" : "等待 Methods / Results"}</span>
+                      </div>
+                      {writerDiscussionDraft ? (
+                        <div className="writer-methods-results-layout">
+                          <article>
+                            <strong>主要发现</strong>
+                            <ul>
+                              {writerDiscussionDraft.keyFindings.map((item) => (
+                                <li key={item}>{item}</li>
+                              ))}
+                            </ul>
+                          </article>
+                          <article>
+                            <strong>结果解释</strong>
+                            {writerDiscussionDraft.interpretationParagraphs.map((paragraph) => (
+                              <p key={paragraph}>{paragraph}</p>
+                            ))}
+                          </article>
+                          <article>
+                            <strong>与既有研究的关系</strong>
+                            <ul>
+                              {writerDiscussionDraft.literatureContext.map((item) => (
+                                <li key={item}>{item}</li>
+                              ))}
+                            </ul>
+                          </article>
+                          <article>
+                            <strong>临床或方法学意义</strong>
+                            <ul>
+                              {writerDiscussionDraft.clinicalMeaning.map((item) => (
+                                <li key={item}>{item}</li>
+                              ))}
+                            </ul>
+                          </article>
+                          <article>
+                            <strong>局限性</strong>
+                            <ul>
+                              {writerDiscussionDraft.limitations.map((item) => (
+                                <li key={item}>{item}</li>
+                              ))}
+                            </ul>
+                          </article>
+                          <article>
+                            <strong>下一步研究方向</strong>
+                            <ul>
+                              {writerDiscussionDraft.futureWork.map((item) => (
+                                <li key={item}>{item}</li>
+                              ))}
+                            </ul>
+                          </article>
+                          <article className="writer-methods-results-wide">
+                            <strong>使用边界</strong>
+                            <ul>
+                              {writerDiscussionDraft.cautionNotes.map((item) => (
+                                <li key={item}>{item}</li>
+                              ))}
+                            </ul>
+                          </article>
+                        </div>
+                      ) : (
+                        <p className="writer-empty">
+                          先完成 Data Lin 统计草案并生成 Methods / Results；Discussion 会基于真实统计摘要、引用状态和 Reviewer 意见生成。
                         </p>
                       )}
                     </section>
