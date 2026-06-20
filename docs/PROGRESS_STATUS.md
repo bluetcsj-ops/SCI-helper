@@ -4,14 +4,14 @@
 
 ## 总体判断
 
-当前项目已经推进到“可带公开医学示例数据跑通论文写作、后端版本归档、真实审稿意见映射和高级统计模型计划”的阶段。整体完成度约 **96%**；如果只看 5 个核心智能体能力，平均完成度约 **85%**。
+当前项目已经推进到“可带公开医学示例数据跑通论文写作、后端版本归档、真实审稿意见映射和高级统计模型计划，并可执行第一版线性回归模型拟合”的阶段。整体完成度约 **97%**；如果只看 5 个核心智能体能力，平均完成度约 **86%**。
 
 当前主链路已经闭环：
 
 ```text
 Mentor 选题与引用
 → Vera Protocol 研究方案
-→ Data Lin 数据质控、统计草案、高级模型计划
+→ Data Lin 数据质控、统计草案、高级模型计划、线性回归拟合
 → Alex Writer 英文论文草稿、投稿材料、后端版本库
 → Helena Reviewer 投稿前审查、真实审稿意见映射、英文回复草稿
 ```
@@ -22,8 +22,8 @@ Mentor 选题与引用
 |---|---:|---|
 | Prof. RadOnc Mentor | 74% | 可生成课题推荐、加载预备真实引用、复核候选引用、导出引用清单，并将推荐写入方案 |
 | Dr. Vera Protocol | 78% | 可编辑/保存研究方案，生成方案草案和执行计划草案，完成方案质量检查、方案-数据一致性检查、方案版本快照与导出 |
-| Dr. Data Lin | 88% | 可上传 CSV、加载预备 DATA、做质控/隐私检查/统计草案/图表/审计、一键联调 Writer，生成自主分析计划和高级模型计划 |
-| Alex Writer | 94% | 可生成英文 Introduction、Methods / Results、Discussion、Abstract、Cover Letter、投稿包检查清单、目标期刊模板，并支持后端版本归档与恢复 Introduction |
+| Dr. Data Lin | 91% | 可上传 CSV、加载预备 DATA、做质控/隐私检查/统计草案/图表/审计、一键联调 Writer，生成自主分析计划和高级模型计划，并可在人工确认后执行第一版 linear regression |
+| Alex Writer | 95% | 可生成英文 Introduction、Methods / Results、Discussion、Abstract、Cover Letter、投稿包检查清单、目标期刊模板，并支持后端版本归档、恢复 Introduction、版本差异查看和历史章节复制 |
 | Rev. Dr. Helena Skov | 89% | 可生成投稿前规则清单、深度审稿意见、Response to Reviewers 草稿，并支持真实审稿意见导入、逐条映射和英文回复导出 |
 
 ## 已完成的关键闭环
@@ -75,10 +75,14 @@ Mentor 选题与引用
   - Cox proportional hazards model
   - mixed-effects model
 - 高级模型计划导出 `advanced-model-plan.md`。
+- 高级模型执行第一版：
+  - 在人工确认研究设计、终点、脱敏、缺失、假设和多重性边界后执行。
+  - 当前支持 multivariable linear regression。
+  - 输出英文 Methods / Results 草稿、系数表、R-squared、adjusted R-squared、警示项和导出 `advanced-linear-model-fit.md`。
 
 当前仍未完成：
 
-- 真实回归、生存分析、混合效应模型拟合。
+- logistic regression、生存分析、混合效应模型拟合。
 - SciPy / statsmodels / lifelines 等专用统计库完整生产路径。
 - 真实放疗专科数据接入。
 
@@ -97,11 +101,14 @@ Mentor 选题与引用
   - 保存当前英文稿件快照
   - 查看历史版本
   - 恢复 Introduction
+  - 查看当前稿件与历史快照的章节差异
+  - 复制历史版本中的派生章节
+  - 导出 `writer-version-diff.md`
 - 版本快照导出 `draft-version-snapshot.md`。
 
 当前仍未完成：
 
-- 全文多版本 diff。
+- 全文自动恢复。
 - 目标期刊官网规则实时抓取。
 - 写作风格学习。
 

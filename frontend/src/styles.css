@@ -1679,12 +1679,14 @@ button {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  flex-wrap: wrap;
 }
 
 .writer-version-toolbar p,
 .writer-version-empty,
 .writer-version-notice,
-.writer-version-preview p {
+.writer-version-preview p,
+.writer-version-preview small {
   margin: 0;
   color: #4f6074;
   line-height: 1.55;
@@ -1776,14 +1778,107 @@ button {
 
 .writer-version-preview {
   display: grid;
-  gap: 8px;
+  gap: 12px;
   border: 1px solid rgba(47, 126, 168, 0.16);
   border-radius: 8px;
   padding: 12px;
   background: #ffffff;
 }
 
-.writer-version-preview p {
+.writer-version-preview-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.writer-version-preview-head span {
+  border-radius: 999px;
+  padding: 4px 9px;
+  color: #24546f;
+  background: #e6f2f7;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.writer-version-diff-list,
+.writer-version-section-list {
+  display: grid;
+  gap: 8px;
+}
+
+.writer-version-diff-list article {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) auto;
+  gap: 5px 10px;
+  border-left: 4px solid #9aa6b2;
+  border-radius: 8px;
+  padding: 10px;
+  background: #f8fbff;
+}
+
+.writer-version-diff-list article.status-same {
+  border-left-color: #2fa37c;
+}
+
+.writer-version-diff-list article.status-changed {
+  border-left-color: #d97706;
+}
+
+.writer-version-diff-list article.status-added {
+  border-left-color: #2f7ea8;
+}
+
+.writer-version-diff-list article.status-removed {
+  border-left-color: #c43f3f;
+}
+
+.writer-version-diff-list span {
+  border-radius: 999px;
+  padding: 4px 8px;
+  color: #4f6074;
+  background: #ffffff;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.writer-version-diff-list small {
+  grid-column: 1 / -1;
+}
+
+.writer-version-section-list article {
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(36, 48, 64, 0.1);
+  border-radius: 8px;
+  padding: 10px;
+  background: #fbfdff;
+}
+
+.writer-version-section-list article > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.writer-version-section-list button {
+  border: 1px solid rgba(47, 126, 168, 0.2);
+  border-radius: 8px;
+  padding: 7px 10px;
+  color: #24546f;
+  background: #e6f2f7;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.writer-version-section-list button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.writer-version-section-list p {
   display: -webkit-box;
   overflow: hidden;
   -webkit-box-orient: vertical;
@@ -3373,6 +3468,17 @@ button {
   opacity: 0.58;
 }
 
+.advanced-model-readiness {
+  margin: 0;
+  border-radius: 8px;
+  padding: 9px 11px;
+  color: #24546f;
+  background: #e6f2f7;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
 .advanced-model-list {
   display: grid;
   gap: 10px;
@@ -3433,6 +3539,91 @@ button {
   gap: 4px;
   margin: 0;
   padding-left: 18px;
+}
+
+.advanced-model-fit {
+  display: grid;
+  gap: 10px;
+  border: 1px solid rgba(47, 163, 124, 0.18);
+  border-radius: 8px;
+  padding: 12px;
+  background: #ffffff;
+}
+
+.advanced-model-fit-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.advanced-model-fit-head div {
+  display: grid;
+  gap: 4px;
+}
+
+.advanced-model-fit-head strong {
+  color: #22354a;
+}
+
+.advanced-model-fit-head small {
+  color: #4f6074;
+  line-height: 1.45;
+}
+
+.advanced-model-fit-head span {
+  border-radius: 999px;
+  padding: 4px 9px;
+  color: #24644f;
+  background: #e8f7f1;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.advanced-model-coefficients {
+  display: grid;
+  gap: 8px;
+}
+
+.advanced-model-coefficients article {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) repeat(3, auto);
+  gap: 8px;
+  align-items: start;
+  border-radius: 8px;
+  padding: 10px;
+  background: #f8fbff;
+}
+
+.advanced-model-coefficients strong {
+  color: #22354a;
+  min-width: 0;
+}
+
+.advanced-model-coefficients span {
+  border-radius: 999px;
+  padding: 4px 8px;
+  color: #24546f;
+  background: #e6f2f7;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.advanced-model-coefficients small {
+  grid-column: 1 / -1;
+  color: #4f6074;
+  line-height: 1.45;
+}
+
+.advanced-model-warnings {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding-left: 18px;
+  color: #8c4d10;
+  line-height: 1.5;
 }
 
 .stat-summary-item {

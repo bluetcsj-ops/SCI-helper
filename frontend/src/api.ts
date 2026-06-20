@@ -1,5 +1,6 @@
 import type {
   AgentProfile,
+  AdvancedModelFitReport,
   AdvancedModelPlan,
   ChatRequest,
   ChatResponse,
@@ -345,6 +346,50 @@ export async function uploadAdvancedModelPlan(
   }
 
   return response.json() as Promise<AdvancedModelPlan>;
+}
+
+export async function uploadAdvancedModelFitReport(
+  projectId: string,
+  file: File,
+  groupColumn: string,
+  outcomeColumns: string[],
+  confirmation: FormalTestConfirmation,
+  modelId = "linear_regression",
+): Promise<AdvancedModelFitReport> {
+  const params = new URLSearchParams({
+    file_name: file.name,
+    model_id: modelId,
+    outcome_columns: outcomeColumns.join(","),
+    confirmed_by: confirmation.confirmed_by,
+    design_confirmed: String(confirmation.design_confirmed),
+    endpoints_confirmed: String(confirmation.endpoints_confirmed),
+    deidentified_confirmed: String(confirmation.deidentified_confirmed),
+    missing_data_reviewed: String(confirmation.missing_data_reviewed),
+    assumptions_reviewed: String(confirmation.assumptions_reviewed),
+    multiplicity_reviewed: String(confirmation.multiplicity_reviewed),
+    notes: confirmation.notes,
+  });
+  if (groupColumn) {
+    params.set("group_column", groupColumn);
+  }
+
+  const response = await fetch(
+    `${API_BASE_URL}/api/projects/${projectId}/data/model-fit?${params.toString()}`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": file.type || "text/csv",
+      },
+      body: file,
+    },
+  );
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text || `Request failed with status ${response.status}`);
+  }
+
+  return response.json() as Promise<AdvancedModelFitReport>;
 }
 
 export async function uploadFormalTestReport(

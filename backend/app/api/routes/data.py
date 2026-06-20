@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from app.data.models import (
+    AdvancedModelFitReport,
     AdvancedModelPlan,
     DataAuditLog,
     DataAnalysisRecord,
@@ -340,4 +341,81 @@ async def create_data_model_plan(
             outcome_columns=selected_outcomes,
         )
     except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/{project_id}/data/model-fit", response_model=AdvancedModelFitReport)
+async def create_data_model_fit_report(
+    project_id: str,
+    request: Request,
+    file_name: str = Query(default="uploaded.csv"),
+    model_id: str = Query(default="linear_regression"),
+    group_column: str | None = Query(default=None),
+    outcome_columns: str = Query(default=""),
+    confirmed_by: str = Query(default=""),
+    design_confirmed: bool = Query(default=False),
+    endpoints_confirmed: bool = Query(default=False),
+    deidentified_confirmed: bool = Query(default=False),
+    missing_data_reviewed: bool = Query(default=False),
+    assumptions_reviewed: bool = Query(default=False),
+    multiplicity_reviewed: bool = Query(default=False),
+    notes: str = Query(default=""),
+    current_user: UserProfile = Depends(get_current_user),
+) -> AdvancedModelFitReport:
+    project = project_repository.get_project(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    ensure_project_access(project_id, current_user, ProjectAccessLevel.editor)
+
+    content = await request.body()
+    if not content:
+        raise HTTPException(status_code=400, detail="CSV file is required")
+
+    protocol = protocol_repository.get_protocol(project_id)
+    selected_outcomes = [
+        column.strip()
+        for column in outcome_columns.split(",")
+        if column.strip()
+    ]
+    confirmation = FormalTestConfirmation(
+        confirmed_by=confirmed_by,
+        design_confirmed=design_confirmed,
+        endpoints_confirmed=endpoints_confirmed,
+        deidentified_confirmed=deidentified_confirmed,
+        missing_data_reviewed=missing_data_reviewed,
+        assumptions_reviewed=assumptions_reviewed,
+        multiplicity_reviewed=multiplicity_reviewed,
+        notes=notes,
+    )
+    try:
+        report = data_workspace_service.build_advanced_model_fit_report(
+            project=project,
+            protocol=protocol,
+            file_name=file_name,
+            content=content,
+            confirmation=confirmation,
+            model_id=model_id,
+            group_column=group_column,
+            outcome_columns=selected_outcomes,
+        )
+        data_audit_log_repository.record_event(
+            project_id=project_id,
+            action="advanced_model_fit_executed",
+            file_name=file_name,
+            row_count=report.complete_case_count,
+            column_count=len(report.predictor_columns),
+            risk_level=RiskLevel.green,
+            summary=report.audit_summary,
+            raw_data_saved=False,
+        )
+        return report
+    except ValueError as exc:
+        data_audit_log_repository.record_event(
+            project_id=project_id,
+            action="advanced_model_fit_blocked",
+            file_name=file_name,
+            risk_level=RiskLevel.orange,
+            summary=f"高级模型未执行：{exc} 未保存原始 CSV。",
+            raw_data_saved=False,
+        )
         raise HTTPException(status_code=400, detail=str(exc)) from exc

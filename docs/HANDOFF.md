@@ -8,15 +8,14 @@
 
 ## 当前状态
 
-当前 `main` 分支包含未提交改动，主要是本阶段大功能集合：
+当前 `main` 分支在上一轮已提交 Writer 版本库、Reviewer 映射和高级模型计划。本轮新增未提交改动主要是 Data Lin 高级模型执行第一版：
 
-- Writer 后端版本库。
-- Reviewer 真实审稿意见导入与逐条英文回复映射。
-- Data Lin 高级统计模型计划。
-- 主流程快捷入口与状态串联。
-- 进度与交接文档更新。
+- 人工确认后执行 multivariable linear regression。
+- 输出英文 Methods / Results 草稿、系数表、R-squared、adjusted R-squared 和模型警示项。
+- 将线性回归结果带入 Alex Writer 的 Methods / Results 草稿。
+- 新增模型结果导出 `advanced-linear-model-fit.md`。
 
-当前整体完成度约 **96%**。主链路已经闭环：
+当前整体完成度约 **97%**。主链路已经闭环：
 
 ```text
 Mentor → Vera Protocol → Data Lin → Alex Writer → Reviewer
@@ -78,6 +77,8 @@ Mentor → Vera Protocol → Data Lin → Alex Writer → Reviewer
   - 保存当前英文稿件快照
   - 查看版本列表
   - 恢复版本的 Introduction
+  - 查看当前稿件与历史快照的章节差异
+  - 复制历史版本中的派生章节
 - 导出：
   - `alex-writer-outline.md`
   - `introduction-draft.md`
@@ -128,6 +129,16 @@ $env:DATABASE_URL='sqlite:///:memory:'
 - Writer version create/list/restore。
 - Reviewer comment import/update。
 - Data Lin advanced model plan。
+- Data Lin linear regression model fit：
+  - 正向 CSV 返回 `linear_regression`、8 个完整病例、R-squared 0.9977、4 个系数项。
+  - 人工确认不完整时阻止执行。
+  - CSV 含疑似直接身份标识时阻止执行。
+  - 最新审计日志返回 `raw_data_saved=false`。
+
+本轮验收发现并修复：
+
+- 实际 SQLite `data_audit_logs.raw_data_saved` 列是 `VARCHAR(8)`，旧 ORM Boolean 映射会把字符串 `"0"` 读成 `true`。
+- 已改为按字符串 `"0"/"1"` 写入，并在仓库层显式转换为布尔值，保证页面显示“未保存原始 CSV”与接口字段一致。
 
 ## 手动验收清单
 
@@ -148,13 +159,15 @@ $env:DATABASE_URL='sqlite:///:memory:'
    - 质控报告
    - 统计报告
    - 高级模型计划
+   - 运行线性回归
+   - 导出 `advanced-linear-model-fit.md`
    - 正式检验确认区
 6. 在 Alex Writer 中检查：
    - 英文 Methods / Results
    - Discussion
    - Abstract
    - Cover Letter
-   - 后端版本库保存与恢复
+   - 后端版本库保存、恢复 Introduction、版本 diff 和历史章节复制
 7. 在 Reviewer 中检查：
    - 投稿前审稿清单
    - Deep review comments
@@ -166,8 +179,9 @@ $env:DATABASE_URL='sqlite:///:memory:'
 ## 当前限制
 
 - 当前预备 CSV 是 ICU/EHR 示例数据，不是放疗专科数据；用于流程联调，不代表正式课题数据。
-- 高级模型计划只判断适配性和生成英文模板，不拟合真实模型，不报告系数、OR、HR 或 P 值。
-- Writer 版本库第一版主要恢复 Introduction；派生章节作为历史快照保留。
+- 高级模型执行第一版已支持 linear regression；logistic regression、Cox 和 mixed-effects 仍只停留在计划/待开发阶段。
+- Linear regression 输出是探索性拟合结果，仍需要人工统计复核，不应直接作为最终 SCI 结论。
+- Writer 版本库当前恢复 Introduction；派生章节支持历史快照预览、diff、复制和导出，但不自动覆盖当前全文。
 - Reviewer 真实意见拆分是规则型，复杂 decision letter 仍需人工校正。
 - 当前期刊模板不是实时抓取官网 Author Guidelines。
 - Reviewer 是规则型自查，不替代真实同行评审。
@@ -192,10 +206,10 @@ npm.cmd run dev -- --host 127.0.0.1 --port 3000
 ## 下一步建议
 
 1. 人工跑完整 UI 验收。
-2. 阶段性提交当前大功能集合。
+2. 完成 Data Lin linear regression UI 验收后，再决定是否阶段性提交本轮改动。
 3. 后续补真实高级统计模型拟合：
-   - regression
+   - logistic regression
    - survival analysis
    - mixed-effects model
-4. 做 Writer 版本 diff 和全文恢复。
+4. 做 Writer 全文自动恢复。
 5. 接入真实放疗专科样例数据。

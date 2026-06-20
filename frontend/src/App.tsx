@@ -54,6 +54,7 @@ import {
   sendChat,
   updateTaskStatus,
   updateReviewerCommentThread,
+  uploadAdvancedModelFitReport,
   uploadAdvancedModelPlan,
   uploadDataQualityReport,
   uploadDataStatisticsReport,
@@ -62,6 +63,7 @@ import {
 import type {
   AgentId,
   AgentProfile,
+  AdvancedModelFitReport,
   AdvancedModelPlan,
   ChartSpec,
   ChatMessage,
@@ -885,6 +887,7 @@ function buildDataAnalysisPlanSuggestion(params: {
 function buildWriterMethodsResultsDraft(
   qualityReport: DataQualityReport | null,
   statisticsReport: DataStatisticsReport | null,
+  advancedModelFitReport: AdvancedModelFitReport | null,
 ): WriterMethodsResultsDraft | null {
   if (!qualityReport || !statisticsReport) {
     return null;
@@ -929,6 +932,9 @@ function buildWriterMethodsResultsDraft(
     formalTestReport
       ? null
       : "Formal hypothesis testing has not yet been performed; the manuscript Results should remain descriptive.",
+    advancedModelFitReport?.warnings.length
+      ? `The advanced model fit has ${advancedModelFitReport.warnings.length} warning(s) requiring statistical review.`
+      : null,
     statisticsReport.next_step || null,
   ].filter(Boolean) as string[];
 
@@ -939,6 +945,9 @@ function buildWriterMethodsResultsDraft(
       formalTestReport
         ? `Formal testing was performed only after manual confirmation of the study design, endpoint definitions, de-identification status, missing-data handling, statistical assumptions, and multiplicity boundaries. The current method version is ${formalTestReport.method_version}.`
         : "Formal hypothesis testing has not yet been performed; P-value-based analyses should be described only as planned or pending analyses.",
+      advancedModelFitReport
+        ? advancedModelFitReport.methods_draft
+        : "Advanced regression model fitting has not yet been completed; regression estimates should be described only as planned exploratory analyses.",
     ],
     resultsParagraphs: [
       statisticsReport.results_draft,
@@ -951,6 +960,9 @@ function buildWriterMethodsResultsDraft(
       formalTestReport
         ? `Formal testing summary: ${formalTestLines.join("; ")}.`
         : "Formal testing has not yet been performed; therefore, this draft does not report P values or statistical significance.",
+      advancedModelFitReport
+        ? advancedModelFitReport.results_draft
+        : "No fitted advanced regression model is available for this draft.",
     ],
     formalTestLines,
     chartLines,
@@ -1491,6 +1503,100 @@ function buildDraftVersionSnapshot(params: {
   };
 }
 
+function buildCurrentWriterSectionMap(params: {
+  writerIntroductionDraftForm: WriterIntroductionDraftUpdate;
+  writerMethodsResultsDraft: WriterMethodsResultsDraft | null;
+  writerDiscussionDraft: WriterDiscussionDraft | null;
+  writerAbstractDraft: WriterAbstractDraft | null;
+  writerCoverLetterDraft: WriterCoverLetterDraft | null;
+}): Record<string, string> {
+  const {
+    writerIntroductionDraftForm,
+    writerMethodsResultsDraft,
+    writerDiscussionDraft,
+    writerAbstractDraft,
+    writerCoverLetterDraft,
+  } = params;
+  return {
+    "Introduction": [
+      writerIntroductionDraftForm.background_paragraph,
+      writerIntroductionDraftForm.gap_paragraph,
+      writerIntroductionDraftForm.objective_paragraph,
+    ]
+      .map((paragraph) => paragraph.trim())
+      .filter(Boolean)
+      .join("\n\n"),
+    "Methods / Results": writerMethodsResultsDraft
+      ? [
+          ...writerMethodsResultsDraft.methodsParagraphs,
+          ...writerMethodsResultsDraft.resultsParagraphs,
+          ...writerMethodsResultsDraft.formalTestLines,
+          ...writerMethodsResultsDraft.chartLines,
+        ].join("\n\n")
+      : "",
+    "Discussion": writerDiscussionDraft
+      ? [
+          ...writerDiscussionDraft.interpretationParagraphs,
+          ...writerDiscussionDraft.literatureContext,
+          ...writerDiscussionDraft.clinicalMeaning,
+          ...writerDiscussionDraft.limitations,
+          ...writerDiscussionDraft.futureWork,
+        ].join("\n\n")
+      : "",
+    "Abstract": writerAbstractDraft
+      ? [
+          writerAbstractDraft.background,
+          writerAbstractDraft.objective,
+          writerAbstractDraft.methods,
+          writerAbstractDraft.results,
+          writerAbstractDraft.conclusions,
+        ].join("\n\n")
+      : "",
+    "Cover Letter": writerCoverLetterDraft
+      ? [
+          writerCoverLetterDraft.greeting,
+          writerCoverLetterDraft.manuscriptLine,
+          ...writerCoverLetterDraft.contributionParagraphs,
+          ...writerCoverLetterDraft.transparencyStatements,
+          writerCoverLetterDraft.closingParagraph,
+        ].join("\n\n")
+      : "",
+  };
+}
+
+function buildWriterVersionSectionDiffs(
+  currentSections: Record<string, string>,
+  version: WriterDraftVersion | null,
+): WriterVersionSectionDiff[] {
+  if (!version) {
+    return [];
+  }
+  const sectionNames = Array.from(
+    new Set([...Object.keys(currentSections), ...Object.keys(version.derived_sections)]),
+  );
+  return sectionNames.map((section) => {
+    const currentValue = (currentSections[section] ?? "").trim();
+    const versionValue = (version.derived_sections[section] ?? "").trim();
+    const currentLength = currentValue.length;
+    const versionLength = versionValue.length;
+    let status: WriterVersionSectionDiff["status"] = "same";
+    if (currentValue && !versionValue) {
+      status = "added";
+    } else if (!currentValue && versionValue) {
+      status = "removed";
+    } else if (currentValue !== versionValue) {
+      status = "changed";
+    }
+    return {
+      section,
+      status,
+      currentLength,
+      versionLength,
+      delta: currentLength - versionLength,
+    };
+  });
+}
+
 function buildReviewerChecks(params: {
   protocolHasContent: boolean;
   protocol: ProjectProtocol | null;
@@ -1785,6 +1891,7 @@ function buildPipelineSteps(params: {
   qualityReport: DataQualityReport | null;
   statisticsReport: DataStatisticsReport | null;
   advancedModelPlan: AdvancedModelPlan | null;
+  advancedModelFitReport: AdvancedModelFitReport | null;
   writerMethodsResultsDraft: WriterMethodsResultsDraft | null;
   introductionHasText: boolean;
   writerVersionCount: number;
@@ -1797,6 +1904,7 @@ function buildPipelineSteps(params: {
     qualityReport,
     statisticsReport,
     advancedModelPlan,
+    advancedModelFitReport,
     writerMethodsResultsDraft,
     introductionHasText,
     writerVersionCount,
@@ -1825,14 +1933,16 @@ function buildPipelineSteps(params: {
       id: "data",
       agentId: "data_analyst",
       title: "数据与统计",
-      status: advancedModelPlan || statisticsReport
-        ? statisticsReport?.formal_test_report
+      status: advancedModelFitReport || advancedModelPlan || statisticsReport
+        ? advancedModelFitReport || statisticsReport?.formal_test_report
           ? "ready"
           : "in_progress"
         : qualityReport
           ? "in_progress"
           : "not_started",
-      detail: advancedModelPlan
+      detail: advancedModelFitReport
+        ? "高级模型已拟合"
+        : advancedModelPlan
         ? "高级分析已规划"
         : statisticsReport
         ? statisticsReport.formal_test_report
@@ -2272,6 +2382,14 @@ interface DraftVersionSnapshot {
   submissionStatus: string;
   exportFiles: string[];
   nextActions: string[];
+}
+
+interface WriterVersionSectionDiff {
+  section: string;
+  status: "same" | "changed" | "added" | "removed";
+  currentLength: number;
+  versionLength: number;
+  delta: number;
 }
 
 interface DataAnalysisPlanSuggestion {
@@ -2934,6 +3052,8 @@ function App() {
   const [qualityReport, setQualityReport] = useState<DataQualityReport | null>(null);
   const [statisticsReport, setStatisticsReport] = useState<DataStatisticsReport | null>(null);
   const [advancedModelPlan, setAdvancedModelPlan] = useState<AdvancedModelPlan | null>(null);
+  const [advancedModelFitReport, setAdvancedModelFitReport] =
+    useState<AdvancedModelFitReport | null>(null);
   const [uploadedCsvFile, setUploadedCsvFile] = useState<File | null>(null);
   const [selectedJournalTemplateId, setSelectedJournalTemplateId] =
     useState<JournalTemplateId>("medical_physics");
@@ -2976,6 +3096,7 @@ function App() {
   const [isCsvUploading, setIsCsvUploading] = useState(false);
   const [isStatisticsLoading, setIsStatisticsLoading] = useState(false);
   const [isAdvancedModelPlanLoading, setIsAdvancedModelPlanLoading] = useState(false);
+  const [isAdvancedModelFitLoading, setIsAdvancedModelFitLoading] = useState(false);
   const [isFormalTestLoading, setIsFormalTestLoading] = useState(false);
   const [isWriterDrafting, setIsWriterDrafting] = useState(false);
   const [isWriterDraftLoading, setIsWriterDraftLoading] = useState(false);
@@ -3173,8 +3294,8 @@ function App() {
   }, [mentorCandidateReferences, protocol]);
 
   const writerMethodsResultsDraft = useMemo(
-    () => buildWriterMethodsResultsDraft(qualityReport, statisticsReport),
-    [qualityReport, statisticsReport],
+    () => buildWriterMethodsResultsDraft(qualityReport, statisticsReport, advancedModelFitReport),
+    [qualityReport, statisticsReport, advancedModelFitReport],
   );
 
   const numericColumnOptions = useMemo(() => {
@@ -3462,6 +3583,27 @@ function App() {
       null,
     [selectedWriterDraftVersionId, writerDraftVersions],
   );
+  const currentWriterSections = useMemo(
+    () =>
+      buildCurrentWriterSectionMap({
+        writerIntroductionDraftForm,
+        writerMethodsResultsDraft,
+        writerDiscussionDraft,
+        writerAbstractDraft,
+        writerCoverLetterDraft,
+      }),
+    [
+      writerIntroductionDraftForm,
+      writerMethodsResultsDraft,
+      writerDiscussionDraft,
+      writerAbstractDraft,
+      writerCoverLetterDraft,
+    ],
+  );
+  const selectedWriterVersionDiffs = useMemo(
+    () => buildWriterVersionSectionDiffs(currentWriterSections, selectedWriterDraftVersion),
+    [currentWriterSections, selectedWriterDraftVersion],
+  );
   const reviewerResponseDraft = useMemo(
     () =>
       buildReviewerResponseDraft({
@@ -3480,6 +3622,7 @@ function App() {
         qualityReport,
         statisticsReport,
         advancedModelPlan,
+        advancedModelFitReport,
         writerMethodsResultsDraft,
         introductionHasText,
         writerVersionCount: writerDraftVersions.length,
@@ -3492,6 +3635,7 @@ function App() {
       qualityReport,
       statisticsReport,
       advancedModelPlan,
+      advancedModelFitReport,
       writerMethodsResultsDraft,
       introductionHasText,
       writerDraftVersions.length,
@@ -3506,6 +3650,30 @@ function App() {
       formalTestConfirmationItems.every((item) => formalTestConfirmation[item.key])
     );
   }, [formalTestConfirmation]);
+  const advancedModelFitReadinessMessage = useMemo(() => {
+    if (!uploadedCsvFile) {
+      return "先上传 CSV 或加载预备 DATA。";
+    }
+    if (hasBlockingPrivacyRisk) {
+      return "当前 CSV 存在红色隐私风险，完成脱敏前不能运行模型。";
+    }
+    if (!selectedOutcomeColumns.length) {
+      return "先选择至少一个数值结局列。";
+    }
+    if (!isFormalTestReady) {
+      return "先在下方人工确认区填写确认人，并勾选研究设计、终点、脱敏、缺失值、统计假设和多重性边界。";
+    }
+    if (advancedModelFitReport) {
+      return "线性回归已完成；结果仍需人工统计复核后再写入 SCI 结论。";
+    }
+    return "已满足执行条件，可运行线性回归；输出将作为英文 Methods / Results 草稿素材。";
+  }, [
+    advancedModelFitReport,
+    hasBlockingPrivacyRisk,
+    isFormalTestReady,
+    selectedOutcomeColumns.length,
+    uploadedCsvFile,
+  ]);
   const parsedPairedConditions = useMemo(
     () =>
       pairedConditionList
@@ -3552,6 +3720,8 @@ function App() {
     setProjectAccess(null);
     setQualityReport(null);
     setStatisticsReport(null);
+    setAdvancedModelPlan(null);
+    setAdvancedModelFitReport(null);
     setDataAuditLogs([]);
     setWriterIntroductionDraft(null);
     setWriterIntroductionDraftForm(createWriterIntroductionDraftForm());
@@ -5602,6 +5772,8 @@ function App() {
       setUploadedCsvFile(file);
       setQualityReport(report);
       setStatisticsReport(null);
+      setAdvancedModelPlan(null);
+      setAdvancedModelFitReport(null);
       setWorkflowSummary({
         source: file.name === preparedDataSampleFileName ? "prepared" : "manual",
         fileName: report.file_name,
@@ -5718,6 +5890,8 @@ function App() {
         defaults.outcomeColumns,
       );
       setStatisticsReport(statistics);
+      setAdvancedModelPlan(null);
+      setAdvancedModelFitReport(null);
       setFormalTestConfirmation(createFormalTestConfirmation(currentUser?.display_name ?? ""));
       setWorkflowStatus("正在保存分析记录...");
       const savedRecord = await saveAnalysisRecordFromReports(file.name, defaults.report, statistics);
@@ -5762,6 +5936,7 @@ function App() {
     });
     setStatisticsReport(null);
     setAdvancedModelPlan(null);
+    setAdvancedModelFitReport(null);
     setFormalTestConfirmation(createFormalTestConfirmation(currentUser?.display_name ?? ""));
   }
 
@@ -5782,6 +5957,7 @@ function App() {
         selectedOutcomeColumns,
       );
       setStatisticsReport(report);
+      setAdvancedModelFitReport(null);
       if (qualityReport) {
         setWorkflowSummary({
           source: uploadedCsvFile.name === preparedDataSampleFileName ? "prepared" : "manual",
@@ -5825,6 +6001,31 @@ function App() {
       setError(caughtError instanceof Error ? caughtError.message : "高级模型计划生成失败。");
     } finally {
       setIsAdvancedModelPlanLoading(false);
+    }
+  }
+
+  async function handleRunAdvancedLinearModel() {
+    if (!selectedProjectId || !uploadedCsvFile || isAdvancedModelFitLoading || !canEditSelectedProject) {
+      return;
+    }
+
+    setIsAdvancedModelFitLoading(true);
+    setError(null);
+    try {
+      const report = await uploadAdvancedModelFitReport(
+        selectedProjectId,
+        uploadedCsvFile,
+        selectedGroupColumn,
+        selectedOutcomeColumns,
+        formalTestConfirmation,
+      );
+      setAdvancedModelFitReport(report);
+      await refreshDataAuditLogs(selectedProjectId);
+      setWorkflowStatus("线性回归模型已完成，结果需人工统计复核。");
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "线性回归模型执行失败。");
+    } finally {
+      setIsAdvancedModelFitLoading(false);
     }
   }
 
@@ -5876,6 +6077,74 @@ function App() {
     try {
       link.href = url;
       link.download = "advanced-model-plan.md";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  function handleDownloadAdvancedModelFitReport() {
+    if (!advancedModelFitReport) {
+      return;
+    }
+
+    const content = [
+      "# Advanced Linear Model Fit Report",
+      "",
+      `Generated at: ${new Date().toLocaleString("zh-CN")}`,
+      `Source file: ${advancedModelFitReport.file_name}`,
+      `Model: ${advancedModelFitReport.model_name}`,
+      `Outcome: ${advancedModelFitReport.outcome_column}`,
+      `Predictors: ${advancedModelFitReport.predictor_columns.join(", ") || "none"}`,
+      `Complete cases: ${advancedModelFitReport.complete_case_count}`,
+      `Excluded rows: ${advancedModelFitReport.excluded_row_count}`,
+      `R-squared: ${advancedModelFitReport.r_squared ?? "NA"}`,
+      `Adjusted R-squared: ${advancedModelFitReport.adjusted_r_squared ?? "NA"}`,
+      "",
+      "## Methods draft",
+      "",
+      advancedModelFitReport.methods_draft,
+      "",
+      "## Results draft",
+      "",
+      advancedModelFitReport.results_draft,
+      "",
+      "## Coefficients",
+      "",
+      "| Term | Estimate | SE | t | P | 95% CI |",
+      "|---|---:|---:|---:|---:|---|",
+      ...advancedModelFitReport.coefficients.map((coefficient) => [
+        coefficient.term,
+        coefficient.estimate,
+        coefficient.standard_error ?? "NA",
+        coefficient.statistic ?? "NA",
+        coefficient.p_value ?? "NA",
+        coefficient.confidence_interval_low !== null &&
+        coefficient.confidence_interval_low !== undefined &&
+        coefficient.confidence_interval_high !== null &&
+        coefficient.confidence_interval_high !== undefined
+          ? `${coefficient.confidence_interval_low} to ${coefficient.confidence_interval_high}`
+          : "NA",
+      ].join(" | ")).map((line) => `| ${line} |`),
+      "",
+      "## Warnings",
+      "",
+      ...advancedModelFitReport.warnings.map((warning) => `- ${warning}`),
+      "",
+      "## Next step",
+      "",
+      advancedModelFitReport.next_step,
+      "",
+    ].join("\n");
+
+    const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    try {
+      link.href = url;
+      link.download = "advanced-linear-model-fit.md";
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -6149,51 +6418,7 @@ function App() {
       const savedVersion = await createWriterDraftVersion(selectedProjectId, {
         title: draftVersionSnapshot.label,
         introduction: writerIntroductionDraftForm,
-        derived_sections: {
-          "Introduction": [
-            writerIntroductionDraftForm.background_paragraph,
-            writerIntroductionDraftForm.gap_paragraph,
-            writerIntroductionDraftForm.objective_paragraph,
-          ]
-            .map((paragraph) => paragraph.trim())
-            .filter(Boolean)
-            .join("\n\n"),
-          "Methods / Results": writerMethodsResultsDraft
-            ? [
-                ...writerMethodsResultsDraft.methodsParagraphs,
-                ...writerMethodsResultsDraft.resultsParagraphs,
-                ...writerMethodsResultsDraft.formalTestLines,
-                ...writerMethodsResultsDraft.chartLines,
-              ].join("\n\n")
-            : "",
-          "Discussion": writerDiscussionDraft
-            ? [
-                ...writerDiscussionDraft.interpretationParagraphs,
-                ...writerDiscussionDraft.literatureContext,
-                ...writerDiscussionDraft.clinicalMeaning,
-                ...writerDiscussionDraft.limitations,
-                ...writerDiscussionDraft.futureWork,
-              ].join("\n\n")
-            : "",
-          "Abstract": writerAbstractDraft
-            ? [
-                writerAbstractDraft.background,
-                writerAbstractDraft.objective,
-                writerAbstractDraft.methods,
-                writerAbstractDraft.results,
-                writerAbstractDraft.conclusions,
-              ].join("\n\n")
-            : "",
-          "Cover Letter": writerCoverLetterDraft
-            ? [
-                writerCoverLetterDraft.greeting,
-                writerCoverLetterDraft.manuscriptLine,
-                ...writerCoverLetterDraft.contributionParagraphs,
-                ...writerCoverLetterDraft.transparencyStatements,
-                writerCoverLetterDraft.closingParagraph,
-              ].join("\n\n")
-            : "",
-        },
+        derived_sections: currentWriterSections,
         metadata: {
           submission_status: draftVersionSnapshot.submissionStatus,
           selected_journal_template: draftVersionSnapshot.selectedJournalTemplate,
@@ -6242,6 +6467,68 @@ function App() {
       setError(caughtError instanceof Error ? caughtError.message : "Writer 版本恢复失败。");
     } finally {
       setRestoringWriterVersionId(null);
+    }
+  }
+
+  async function handleCopyWriterVersionSection(sectionName: string) {
+    const value = selectedWriterDraftVersion?.derived_sections[sectionName]?.trim();
+    if (!value) {
+      setWriterVersionNotice("该历史版本没有可复制的章节内容。");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(value);
+      setWriterVersionNotice(`已复制 ${sectionName} 历史章节内容。`);
+    } catch {
+      setWriterVersionNotice("浏览器剪贴板不可用，请在预览区手动选择文本复制。");
+    }
+  }
+
+  function handleDownloadWriterVersionDiff() {
+    if (!selectedWriterDraftVersion) {
+      return;
+    }
+    const content = [
+      "# Writer Version Diff",
+      "",
+      `Generated at: ${new Date().toLocaleString("zh-CN")}`,
+      selectedProject ? `Project: ${selectedProject.name} / ${selectedProject.title}` : "Project: not specified",
+      `Version: ${selectedWriterDraftVersion.version_label}`,
+      `Created at: ${new Date(selectedWriterDraftVersion.created_at).toLocaleString("zh-CN")}`,
+      "",
+      "## Section summary",
+      "",
+      "| Section | Status | Current chars | Version chars | Delta |",
+      "|---|---|---:|---:|---:|",
+      ...selectedWriterVersionDiffs.map((diff) =>
+        `| ${diff.section} | ${diff.status} | ${diff.currentLength} | ${diff.versionLength} | ${diff.delta} |`,
+      ),
+      "",
+      "## Historical sections",
+      "",
+      ...Object.entries(selectedWriterDraftVersion.derived_sections).flatMap(([section, value]) => [
+        `### ${section}`,
+        "",
+        value || "No content in this version.",
+        "",
+      ]),
+      "## Safety note",
+      "",
+      "This diff compares the current generated Writer workspace with a saved backend snapshot. Restoring from the backend currently overwrites Introduction only; other sections are retained as historical reference text for manual review.",
+      "",
+    ].join("\n");
+
+    const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    try {
+      link.href = url;
+      link.download = "writer-version-diff.md";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } finally {
+      URL.revokeObjectURL(url);
     }
   }
 
@@ -6480,6 +6767,8 @@ function App() {
   function handleRestoreAnalysisRecord(record: DataAnalysisRecord) {
     setQualityReport(record.quality_report);
     setStatisticsReport(record.statistics_report ?? null);
+    setAdvancedModelPlan(null);
+    setAdvancedModelFitReport(null);
     setUploadedCsvFile(null);
     setSelectedGroupColumn(record.statistics_report?.group_column ?? "");
     setSelectedOutcomeColumns(
@@ -7833,6 +8122,8 @@ function App() {
                               onChange={(event) => {
                                 setSelectedGroupColumn(event.target.value);
                                 setStatisticsReport(null);
+                                setAdvancedModelPlan(null);
+                                setAdvancedModelFitReport(null);
                                 setFormalTestConfirmation(
                                   createFormalTestConfirmation(currentUser?.display_name ?? ""),
                                 );
@@ -7978,8 +8269,38 @@ function App() {
                                     <Download aria-hidden="true" size={15} />
                                     <span>导出计划</span>
                                   </button>
+                                  <button
+                                    type="button"
+                                    onClick={handleRunAdvancedLinearModel}
+                                    disabled={
+                                      !canEditSelectedProject ||
+                                      !uploadedCsvFile ||
+                                      isAdvancedModelFitLoading ||
+                                      hasBlockingPrivacyRisk ||
+                                      !selectedOutcomeColumns.length ||
+                                      !isFormalTestReady
+                                    }
+                                  >
+                                    {isAdvancedModelFitLoading ? (
+                                      <Loader2 aria-hidden="true" className="spin" size={15} />
+                                    ) : (
+                                      <Activity aria-hidden="true" size={15} />
+                                    )}
+                                    <span>{isAdvancedModelFitLoading ? "运行中" : "运行线性回归"}</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={handleDownloadAdvancedModelFitReport}
+                                    disabled={!advancedModelFitReport}
+                                  >
+                                    <Download aria-hidden="true" size={15} />
+                                    <span>导出结果</span>
+                                  </button>
                                 </div>
                               </div>
+                              <p className="advanced-model-readiness">
+                                {advancedModelFitReadinessMessage}
+                              </p>
                               {advancedModelPlan ? (
                                 <div className="advanced-model-list">
                                   {advancedModelPlan.candidates.map((candidate) => (
@@ -8014,6 +8335,48 @@ function App() {
                                   是否适合当前 CSV。
                                 </p>
                               )}
+                              {advancedModelFitReport ? (
+                                <div className="advanced-model-fit">
+                                  <div className="advanced-model-fit-head">
+                                    <div>
+                                      <strong>{advancedModelFitReport.model_name}</strong>
+                                      <small>
+                                        {advancedModelFitReport.complete_case_count} 个完整病例 · R²{" "}
+                                        {advancedModelFitReport.r_squared ?? "NA"} · adj. R²{" "}
+                                        {advancedModelFitReport.adjusted_r_squared ?? "NA"}
+                                      </small>
+                                    </div>
+                                    <span>{advancedModelFitReport.method_version}</span>
+                                  </div>
+                                  <div className="statistics-copy-block">
+                                    <strong>Methods draft</strong>
+                                    <p>{advancedModelFitReport.methods_draft}</p>
+                                  </div>
+                                  <div className="statistics-copy-block">
+                                    <strong>Results draft</strong>
+                                    <p>{advancedModelFitReport.results_draft}</p>
+                                  </div>
+                                  <div className="advanced-model-coefficients">
+                                    {advancedModelFitReport.coefficients.map((coefficient) => (
+                                      <article key={coefficient.term}>
+                                        <strong>{coefficient.term}</strong>
+                                        <span>β {coefficient.estimate}</span>
+                                        <span>SE {coefficient.standard_error ?? "NA"}</span>
+                                        <span>P {coefficient.p_value ?? "NA"}</span>
+                                        <small>{coefficient.interpretation}</small>
+                                      </article>
+                                    ))}
+                                  </div>
+                                  {advancedModelFitReport.warnings.length ? (
+                                    <ul className="advanced-model-warnings">
+                                      {advancedModelFitReport.warnings.map((warning) => (
+                                        <li key={warning}>{warning}</li>
+                                      ))}
+                                    </ul>
+                                  ) : null}
+                                  <p className="data-empty">{advancedModelFitReport.next_step}</p>
+                                </div>
+                              ) : null}
                             </section>
 
                             <div className="formal-test-panel">
@@ -9785,7 +10148,7 @@ function App() {
                       </div>
                       <div className="writer-version-toolbar">
                         <p>
-                          保存当前英文 SCI 稿件快照；恢复时只覆盖 Introduction，其他派生章节作为历史记录保留。
+                          保存当前英文 SCI 稿件快照；恢复时只覆盖 Introduction，其他章节可对比、预览和复制。
                         </p>
                         <button
                           type="button"
@@ -9802,6 +10165,14 @@ function App() {
                             <Save aria-hidden="true" size={15} />
                           )}
                           <span>{isWriterVersionSaving ? "保存中" : "保存当前版本"}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleDownloadWriterVersionDiff}
+                          disabled={!selectedWriterDraftVersion}
+                        >
+                          <Download aria-hidden="true" size={15} />
+                          <span>导出版本差异</span>
                         </button>
                       </div>
                       {writerVersionNotice ? (
@@ -9863,12 +10234,47 @@ function App() {
                       )}
                       {selectedWriterDraftVersion ? (
                         <div className="writer-version-preview">
-                          <strong>{selectedWriterDraftVersion.version_label} 预览</strong>
-                          <p>
-                            {selectedWriterDraftVersion.derived_sections.Abstract ||
-                              selectedWriterDraftVersion.derived_sections.Introduction ||
-                              "该版本没有可预览的英文正文。"}
-                          </p>
+                          <div className="writer-version-preview-head">
+                            <strong>{selectedWriterDraftVersion.version_label} 预览与差异</strong>
+                            <span>当前稿件 vs 历史快照</span>
+                          </div>
+                          <div className="writer-version-diff-list">
+                            {selectedWriterVersionDiffs.map((diff) => (
+                              <article className={`status-${diff.status}`} key={diff.section}>
+                                <strong>{diff.section}</strong>
+                                <span>
+                                  {diff.status === "same"
+                                    ? "一致"
+                                    : diff.status === "changed"
+                                      ? "已修改"
+                                      : diff.status === "added"
+                                        ? "当前新增"
+                                        : "历史有内容"}
+                                </span>
+                                <small>
+                                  当前 {diff.currentLength} 字符 · 历史 {diff.versionLength} 字符 · 差值{" "}
+                                  {diff.delta >= 0 ? `+${diff.delta}` : diff.delta}
+                                </small>
+                              </article>
+                            ))}
+                          </div>
+                          <div className="writer-version-section-list">
+                            {Object.entries(selectedWriterDraftVersion.derived_sections).map(([section, value]) => (
+                              <article key={section}>
+                                <div>
+                                  <strong>{section}</strong>
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleCopyWriterVersionSection(section)}
+                                    disabled={!value.trim()}
+                                  >
+                                    复制章节
+                                  </button>
+                                </div>
+                                <p>{value || "该版本没有保存本章节内容。"}</p>
+                              </article>
+                            ))}
+                          </div>
                         </div>
                       ) : null}
                     </section>

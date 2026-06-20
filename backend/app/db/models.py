@@ -178,7 +178,7 @@ class DataAuditLogRecord(Base):
     column_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     risk_level: Mapped[str] = mapped_column(String(24), nullable=False, default="green")
     summary: Mapped[str] = mapped_column(Text, nullable=False)
-    raw_data_saved: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    raw_data_saved: Mapped[str] = mapped_column(String(8), nullable=False, default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
 

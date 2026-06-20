@@ -567,6 +567,41 @@ export interface AdvancedModelPlan {
   next_step: string;
 }
 
+export interface AdvancedModelCoefficient {
+  term: string;
+  estimate: number;
+  standard_error?: number | null;
+  statistic?: number | null;
+  p_value?: number | null;
+  confidence_interval_low?: number | null;
+  confidence_interval_high?: number | null;
+  interpretation: string;
+}
+
+export interface AdvancedModelFitReport {
+  project_id: string;
+  file_name: string;
+  model_id: string;
+  model_name: string;
+  outcome_column: string;
+  predictor_columns: string[];
+  row_count: number;
+  complete_case_count: number;
+  excluded_row_count: number;
+  degrees_of_freedom: number;
+  r_squared?: number | null;
+  adjusted_r_squared?: number | null;
+  coefficients: AdvancedModelCoefficient[];
+  methods_draft: string;
+  results_draft: string;
+  warnings: string[];
+  confirmation: FormalTestConfirmation;
+  method_version: string;
+  raw_csv_saved: boolean;
+  audit_summary: string;
+  next_step: string;
+}
+
 export interface DataAnalysisRecordCreate {
   file_name: string;
   quality_report: DataQualityReport;

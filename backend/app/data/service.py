@@ -15,6 +15,8 @@ except ImportError:  # pragma: no cover - optional precision dependency
     scipy_stats = None
 
 from app.data.models import (
+    AdvancedModelCoefficient,
+    AdvancedModelFitReport,
     AdvancedModelCandidate,
     AdvancedModelPlan,
     CategoricalLevel,
@@ -417,6 +419,251 @@ class DataWorkspaceService:
                 "a validated statistical environment."
             ),
         )
+
+    def build_advanced_model_fit_report(
+        self,
+        project: Project,
+        protocol: ProjectProtocol,
+        file_name: str,
+        content: bytes,
+        confirmation: FormalTestConfirmation,
+        model_id: str = "linear_regression",
+        group_column: str | None = None,
+        outcome_columns: list[str] | None = None,
+    ) -> AdvancedModelFitReport:
+        if model_id != "linear_regression":
+            raise ValueError("当前高级模型执行第一版仅支持 linear_regression。")
+
+        missing_confirmations = self._missing_formal_test_confirmations(confirmation)
+        if missing_confirmations:
+            raise ValueError(f"高级模型拟合前还需要确认：{'、'.join(missing_confirmations)}。")
+
+        privacy_report = self.build_privacy_report_for_csv(content)
+        if privacy_report.risk_level == RiskLevel.red:
+            raise ValueError("CSV 含疑似直接身份标识。请先完成脱敏，再执行高级模型。")
+
+        headers, rows = self._parse_csv(content)
+        if not rows:
+            raise ValueError("CSV 文件没有可分析的数据行。")
+
+        columns = [self._analyze_column(header, rows) for header in headers]
+        numeric_columns = [column.name for column in columns if column.inferred_type == "numeric"]
+        if not numeric_columns:
+            raise ValueError("CSV 文件中没有可用于线性回归的数值列。")
+
+        selected_outcomes = self._select_outcome_columns(
+            numeric_columns=numeric_columns,
+            requested_columns=outcome_columns or [],
+        )
+        outcome_column = selected_outcomes[0]
+        valid_group_column = self._resolve_group_column(group_column, headers)
+        numeric_predictors = [
+            column
+            for column in numeric_columns
+            if column != outcome_column
+        ][:4]
+        if not numeric_predictors and not valid_group_column:
+            raise ValueError("线性回归至少需要一个数值协变量或一个分组预测变量。")
+
+        fit = self._fit_linear_regression(
+            rows=rows,
+            outcome_column=outcome_column,
+            numeric_predictors=numeric_predictors,
+            group_column=valid_group_column,
+        )
+        coefficient_count = len(fit["coefficients"])
+        warnings = list(fit["warnings"])
+        if fit["complete_case_count"] < 20:
+            warnings.append("Complete-case sample size is small; estimates should be treated as exploratory.")
+        if fit["degrees_of_freedom"] <= 0:
+            warnings.append("Residual degrees of freedom are not sufficient for inferential reporting.")
+        if protocol.statistical_plan.strip():
+            warnings.append("Confirm that this fitted model matches the pre-specified statistical plan.")
+        else:
+            warnings.append("The project protocol does not yet contain a finalized statistical model specification.")
+
+        predictor_text = ", ".join(fit["predictor_columns"]) if fit["predictor_columns"] else "no predictors"
+        methods_draft = (
+            f"A multivariable linear regression model was fitted for {outcome_column} using complete-case "
+            f"records from {file_name}. Candidate predictors were {predictor_text}. Categorical predictors "
+            "were represented with indicator variables, and model outputs are reported as exploratory "
+            "estimates pending expert review of assumptions, collinearity, and influential observations."
+        )
+        result_terms = [
+            f"{coefficient.term}: beta={coefficient.estimate}"
+            + (
+                f", 95% CI {coefficient.confidence_interval_low} to {coefficient.confidence_interval_high}"
+                if coefficient.confidence_interval_low is not None and coefficient.confidence_interval_high is not None
+                else ""
+            )
+            + (
+                f", P={self._format_p_value(coefficient.p_value)}"
+                if coefficient.p_value is not None
+                else ""
+            )
+            for coefficient in fit["coefficients"]
+            if coefficient.term != "Intercept"
+        ][:4]
+        results_draft = (
+            f"The linear regression model included {fit['complete_case_count']} complete cases "
+            f"and {coefficient_count} coefficient term(s), with R-squared={fit['r_squared']} "
+            f"and adjusted R-squared={fit['adjusted_r_squared']}. "
+            + (
+                f"Key exploratory estimates were: {'; '.join(result_terms)}."
+                if result_terms
+                else "No non-intercept predictor estimates were available for reporting."
+            )
+            + " These results require manual statistical review before manuscript-level inference."
+        )
+        audit_summary = (
+            f"已在人工确认后执行 linear regression：{fit['complete_case_count']} 个完整病例，"
+            f"{len(fit['predictor_columns'])} 个预测字段；未保存原始 CSV。"
+        )
+
+        return AdvancedModelFitReport(
+            project_id=project.id,
+            file_name=file_name,
+            model_id="linear_regression",
+            model_name="Multivariable linear regression",
+            outcome_column=outcome_column,
+            predictor_columns=fit["predictor_columns"],
+            row_count=len(rows),
+            complete_case_count=fit["complete_case_count"],
+            excluded_row_count=len(rows) - fit["complete_case_count"],
+            degrees_of_freedom=fit["degrees_of_freedom"],
+            r_squared=fit["r_squared"],
+            adjusted_r_squared=fit["adjusted_r_squared"],
+            coefficients=fit["coefficients"],
+            methods_draft=methods_draft,
+            results_draft=results_draft,
+            warnings=warnings,
+            confirmation=confirmation,
+            raw_csv_saved=False,
+            audit_summary=audit_summary,
+            next_step="把模型系数、置信区间和诊断边界交给 Alex Writer 写入英文 Methods/Results 前，请先完成人工统计复核。",
+        )
+
+    def _fit_linear_regression(
+        self,
+        rows: list[dict[str, str]],
+        outcome_column: str,
+        numeric_predictors: list[str],
+        group_column: str | None,
+    ) -> dict[str, object]:
+        group_levels = sorted(
+            {
+                row.get(group_column, "").strip()
+                for row in rows
+                if group_column and row.get(group_column, "").strip().lower() not in MISSING_TOKENS
+            }
+        )
+        group_reference = group_levels[0] if group_levels else None
+        encoded_group_levels = group_levels[1:] if group_reference else []
+        term_names = [
+            "Intercept",
+            *numeric_predictors,
+            *[f"{group_column}={level}" for level in encoded_group_levels],
+        ]
+        predictor_columns = [
+            *numeric_predictors,
+            *([group_column] if group_column else []),
+        ]
+        design_matrix: list[list[float]] = []
+        outcome_values: list[float] = []
+        for row in rows:
+            outcome_value = self._parse_float(row.get(outcome_column, ""))
+            if outcome_value is None:
+                continue
+            predictor_values: list[float] = [1.0]
+            skip_row = False
+            for predictor in numeric_predictors:
+                predictor_value = self._parse_float(row.get(predictor, ""))
+                if predictor_value is None:
+                    skip_row = True
+                    break
+                predictor_values.append(predictor_value)
+            if skip_row:
+                continue
+            if group_column and group_reference:
+                group_value = row.get(group_column, "").strip()
+                if group_value.lower() in MISSING_TOKENS:
+                    continue
+                predictor_values.extend(1.0 if group_value == level else 0.0 for level in encoded_group_levels)
+            design_matrix.append(predictor_values)
+            outcome_values.append(outcome_value)
+
+        complete_case_count = len(outcome_values)
+        parameter_count = len(term_names)
+        if complete_case_count <= parameter_count:
+            raise ValueError("完整病例数量不足以拟合线性回归模型。")
+
+        xtx = self._matrix_xtx(design_matrix)
+        xty = self._matrix_xty(design_matrix, outcome_values)
+        inverse_xtx = self._invert_matrix(xtx)
+        coefficients_raw = self._matrix_vector_multiply(inverse_xtx, xty)
+        fitted_values = [
+            sum(value * coefficients_raw[index] for index, value in enumerate(row))
+            for row in design_matrix
+        ]
+        residuals = [
+            outcome_values[index] - fitted_values[index]
+            for index in range(complete_case_count)
+        ]
+        y_mean = fmean(outcome_values)
+        ss_residual = sum(residual ** 2 for residual in residuals)
+        ss_total = sum((value - y_mean) ** 2 for value in outcome_values)
+        degrees_of_freedom = complete_case_count - parameter_count
+        residual_variance = ss_residual / degrees_of_freedom if degrees_of_freedom > 0 else 0.0
+        r_squared = 1 - ss_residual / ss_total if ss_total > 0 else 0.0
+        adjusted_r_squared = (
+            1 - (1 - r_squared) * (complete_case_count - 1) / degrees_of_freedom
+            if degrees_of_freedom > 0 and complete_case_count > 1
+            else None
+        )
+        t_critical = self._student_t_critical_975(degrees_of_freedom)
+        coefficients: list[AdvancedModelCoefficient] = []
+        for index, term in enumerate(term_names):
+            estimate = coefficients_raw[index]
+            standard_error = sqrt(max(residual_variance * inverse_xtx[index][index], 0.0))
+            statistic = estimate / standard_error if standard_error > 0 else None
+            p_value = (
+                self._student_t_two_sided_p_value(statistic, degrees_of_freedom)
+                if statistic is not None and degrees_of_freedom > 0
+                else None
+            )
+            ci_low = estimate - t_critical * standard_error if t_critical is not None else None
+            ci_high = estimate + t_critical * standard_error if t_critical is not None else None
+            coefficients.append(
+                AdvancedModelCoefficient(
+                    term=term,
+                    estimate=round(estimate, 4),
+                    standard_error=round(standard_error, 4),
+                    statistic=round(statistic, 4) if statistic is not None else None,
+                    p_value=round(p_value, 6) if p_value is not None else None,
+                    confidence_interval_low=round(ci_low, 4) if ci_low is not None else None,
+                    confidence_interval_high=round(ci_high, 4) if ci_high is not None else None,
+                    interpretation=(
+                        "Exploratory intercept estimate."
+                        if term == "Intercept"
+                        else f"Holding other included predictors constant, {term} is associated with an estimated change of {round(estimate, 4)} in {outcome_column}."
+                    ),
+                )
+            )
+
+        warnings: list[str] = []
+        if group_column and group_reference:
+            warnings.append(f"{group_column} reference level: {group_reference}.")
+        if len(numeric_predictors) > 3:
+            warnings.append("Multiple numeric predictors were included; collinearity should be reviewed.")
+        return {
+            "complete_case_count": complete_case_count,
+            "degrees_of_freedom": degrees_of_freedom,
+            "predictor_columns": predictor_columns,
+            "r_squared": round(r_squared, 4),
+            "adjusted_r_squared": round(adjusted_r_squared, 4) if adjusted_r_squared is not None else None,
+            "coefficients": coefficients,
+            "warnings": warnings,
+        }
 
     def _build_advanced_model_candidates(
         self,
@@ -951,6 +1198,99 @@ class DataWorkspaceService:
             except ValueError:
                 continue
         return numeric_values
+
+    def _parse_float(self, value: str | None) -> float | None:
+        cleaned = str(value or "").strip()
+        if self._is_missing(cleaned):
+            return None
+        try:
+            return float(cleaned.replace(",", ""))
+        except ValueError:
+            return None
+
+    def _matrix_xtx(self, matrix: list[list[float]]) -> list[list[float]]:
+        column_count = len(matrix[0])
+        return [
+            [
+                sum(row[first] * row[second] for row in matrix)
+                for second in range(column_count)
+            ]
+            for first in range(column_count)
+        ]
+
+    def _matrix_xty(self, matrix: list[list[float]], values: list[float]) -> list[float]:
+        column_count = len(matrix[0])
+        return [
+            sum(row[column_index] * values[row_index] for row_index, row in enumerate(matrix))
+            for column_index in range(column_count)
+        ]
+
+    def _matrix_vector_multiply(
+        self,
+        matrix: list[list[float]],
+        vector: list[float],
+    ) -> list[float]:
+        return [
+            sum(row[index] * vector[index] for index in range(len(vector)))
+            for row in matrix
+        ]
+
+    def _invert_matrix(self, matrix: list[list[float]]) -> list[list[float]]:
+        size = len(matrix)
+        augmented = [
+            [
+                *[float(value) for value in matrix[row_index]],
+                *[1.0 if row_index == column_index else 0.0 for column_index in range(size)],
+            ]
+            for row_index in range(size)
+        ]
+        for pivot_index in range(size):
+            pivot_row = max(
+                range(pivot_index, size),
+                key=lambda row_index: abs(augmented[row_index][pivot_index]),
+            )
+            if abs(augmented[pivot_row][pivot_index]) < 1e-12:
+                raise ValueError("线性回归设计矩阵不可逆，请减少高度相关或重复编码的预测变量。")
+            if pivot_row != pivot_index:
+                augmented[pivot_index], augmented[pivot_row] = augmented[pivot_row], augmented[pivot_index]
+            pivot_value = augmented[pivot_index][pivot_index]
+            augmented[pivot_index] = [
+                value / pivot_value
+                for value in augmented[pivot_index]
+            ]
+            for row_index in range(size):
+                if row_index == pivot_index:
+                    continue
+                factor = augmented[row_index][pivot_index]
+                if factor == 0:
+                    continue
+                augmented[row_index] = [
+                    value - factor * augmented[pivot_index][column_index]
+                    for column_index, value in enumerate(augmented[row_index])
+                ]
+        return [row[size:] for row in augmented]
+
+    def _student_t_critical_975(self, degrees_of_freedom: int) -> float | None:
+        if degrees_of_freedom <= 0:
+            return None
+        if scipy_stats is not None:
+            try:
+                return float(scipy_stats.t.ppf(0.975, degrees_of_freedom))
+            except (FloatingPointError, ValueError):
+                pass
+        if degrees_of_freedom == 1:
+            return 12.706
+        if degrees_of_freedom == 2:
+            return 4.303
+        if degrees_of_freedom <= 5:
+            return 2.776
+        if degrees_of_freedom <= 10:
+            return 2.262
+        if degrees_of_freedom <= 20:
+            return 2.086
+        if degrees_of_freedom <= 30:
+            return 2.042
+        return 1.96
 
     def _select_outcome_columns(
         self,

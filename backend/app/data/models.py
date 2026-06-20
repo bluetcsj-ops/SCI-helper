@@ -273,6 +273,41 @@ class AdvancedModelPlan(BaseModel):
     next_step: str
 
 
+class AdvancedModelCoefficient(BaseModel):
+    term: str
+    estimate: float
+    standard_error: float | None = None
+    statistic: float | None = None
+    p_value: float | None = None
+    confidence_interval_low: float | None = None
+    confidence_interval_high: float | None = None
+    interpretation: str
+
+
+class AdvancedModelFitReport(BaseModel):
+    project_id: str
+    file_name: str
+    model_id: str
+    model_name: str
+    outcome_column: str
+    predictor_columns: list[str] = Field(default_factory=list)
+    row_count: int
+    complete_case_count: int
+    excluded_row_count: int
+    degrees_of_freedom: int
+    r_squared: float | None = None
+    adjusted_r_squared: float | None = None
+    coefficients: list[AdvancedModelCoefficient] = Field(default_factory=list)
+    methods_draft: str
+    results_draft: str
+    warnings: list[str] = Field(default_factory=list)
+    confirmation: FormalTestConfirmation
+    method_version: str = "advanced-linear-v1"
+    raw_csv_saved: bool = False
+    audit_summary: str
+    next_step: str
+
+
 class DataAnalysisRecordCreate(BaseModel):
     file_name: str
     quality_report: DataQualityReport
