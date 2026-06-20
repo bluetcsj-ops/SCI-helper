@@ -1393,6 +1393,131 @@ button {
   grid-column: 1 / -1;
 }
 
+.writer-cover-letter-card {
+  background: #fdfbf7;
+}
+
+.writer-cover-letter-layout {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.writer-cover-letter-layout article {
+  display: grid;
+  gap: 8px;
+  border-radius: 8px;
+  padding: 12px;
+  background: #ffffff;
+}
+
+.writer-cover-letter-layout strong {
+  color: #22354a;
+}
+
+.writer-cover-letter-layout p,
+.writer-cover-letter-layout li {
+  margin: 0;
+  color: #4f6074;
+  line-height: 1.5;
+}
+
+.writer-cover-letter-layout ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.writer-cover-letter-wide {
+  grid-column: 1 / -1;
+}
+
+.writer-submission-card {
+  background: #f8fbf9;
+}
+
+.submission-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.submission-summary-grid article {
+  border-radius: 8px;
+  padding: 12px;
+  background: #ffffff;
+}
+
+.submission-summary-grid span {
+  color: #4f6074;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.submission-summary-grid strong {
+  display: block;
+  margin-top: 4px;
+  color: #22354a;
+  font-size: 24px;
+}
+
+.submission-summary-grid .risk-green {
+  background: #eef8f1;
+}
+
+.submission-summary-grid .risk-orange {
+  background: #fff8eb;
+}
+
+.submission-summary-grid .risk-red {
+  background: #fff0f0;
+}
+
+.submission-checklist {
+  display: grid;
+  gap: 10px;
+}
+
+.submission-check-item {
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(36, 48, 64, 0.1);
+  border-left-width: 5px;
+  border-radius: 8px;
+  padding: 12px;
+  background: #ffffff;
+}
+
+.submission-check-item.status-ready {
+  border-left-color: #2d6e52;
+}
+
+.submission-check-item.status-review {
+  border-left-color: #d97706;
+}
+
+.submission-check-item.status-blocked {
+  border-left-color: #c43f3f;
+}
+
+.submission-check-item > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.submission-check-item strong {
+  color: #22354a;
+}
+
+.submission-check-item p {
+  margin: 0;
+  color: #4f6074;
+  line-height: 1.5;
+}
+
 .reviewer-panel {
   display: grid;
   gap: 14px;
@@ -3627,9 +3752,11 @@ button {
   .writer-outline-grid,
   .writer-methods-results-layout,
   .writer-abstract-layout,
+  .writer-cover-letter-layout,
   .writer-draft-grid,
   .mentor-preview-grid,
   .reviewer-summary-grid,
+  .submission-summary-grid,
   .reviewer-deep-grid,
   .mentor-preview-actions {
     grid-template-columns: 1fr;

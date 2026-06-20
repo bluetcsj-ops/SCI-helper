@@ -992,6 +992,194 @@ function buildWriterAbstractDraft(params: {
   };
 }
 
+function buildWriterCoverLetterDraft(params: {
+  selectedProject: Project | null | undefined;
+  protocol: ProjectProtocol | null;
+  qualityReport: DataQualityReport | null;
+  statisticsReport: DataStatisticsReport | null;
+  writerAbstractDraft: WriterAbstractDraft | null;
+  reviewerChecks: ReviewerCheckItem[];
+  reviewerDeepComments: ReviewerDeepComments | null;
+}): WriterCoverLetterDraft | null {
+  const {
+    selectedProject,
+    protocol,
+    qualityReport,
+    statisticsReport,
+    writerAbstractDraft,
+    reviewerChecks,
+    reviewerDeepComments,
+  } = params;
+
+  if (!selectedProject || !writerAbstractDraft) {
+    return null;
+  }
+
+  const highRiskCount = reviewerChecks.filter((item) => item.severity === "red").length;
+  const reviewNeededCount = reviewerChecks.filter((item) => item.severity === "orange").length;
+  const formalTestReport = statisticsReport?.formal_test_report ?? null;
+  const manuscriptTitle = protocol?.research_question?.trim() || selectedProject.title;
+  const contributionParagraphs = [
+    `We are pleased to submit the manuscript entitled "${manuscriptTitle}" for consideration. This work is prepared within a structured radiation therapy research workflow that links protocol definition, data quality review, statistical reporting, manuscript drafting, and pre-submission review.`,
+    writerAbstractDraft.objective,
+    formalTestReport
+      ? "The current draft includes formal statistical outputs, but all inferential claims should remain aligned with the approved analysis plan and expert review before final submission."
+      : "The current draft remains conservative because formal hypothesis testing has not yet been finalized; the manuscript should avoid unsupported significance claims.",
+  ];
+  const transparencyStatements = [
+    qualityReport
+      ? `Data transparency: the current analysis workflow used ${qualityReport.file_name}, containing ${qualityReport.row_count} rows and ${qualityReport.column_count} columns. Original CSV files are not persistently stored by the writing workflow.`
+      : "Data transparency: the final manuscript must specify the verified clinical dataset, data extraction period, inclusion/exclusion criteria, and de-identification process.",
+    statisticsReport
+      ? `Methods transparency: statistical summaries were generated through the Data Lin workflow, with ${statisticsReport.numeric_summaries.length} numeric summaries and ${statisticsReport.chart_specs.length} chart specifications available for manuscript handoff.`
+      : "Methods transparency: statistical reporting must be completed and approved before submission.",
+    reviewerDeepComments
+      ? `Pre-submission review status: ${reviewerDeepComments.decision}.`
+      : "Pre-submission review status: Reviewer checks should be completed before final submission.",
+  ];
+  const compliancePlaceholders = [
+    "[Ethics approval / IRB number: to be completed manually]",
+    "[Patient consent or waiver statement: to be completed manually]",
+    "[Conflict of interest statement: to be completed manually]",
+    "[Funding statement: to be completed manually]",
+    "[Corresponding author contact information: to be completed manually]",
+  ];
+  const manualChecklist = [
+    "Replace the generic editor greeting with the target journal editor name if available.",
+    "Confirm that the manuscript title matches the final title page.",
+    "Verify ethics approval, data availability, conflicts of interest, funding, and author contribution statements.",
+    highRiskCount
+      ? `Resolve ${highRiskCount} high-risk Reviewer item(s) before submission.`
+      : "Confirm no high-risk Reviewer items remain before submission.",
+    reviewNeededCount
+      ? `Manually review ${reviewNeededCount} orange Reviewer item(s) before freezing the submission package.`
+      : "Perform final manual format review against the target journal instructions.",
+  ];
+
+  return {
+    greeting: "Dear Editor,",
+    manuscriptLine: `Manuscript title: ${manuscriptTitle}`,
+    contributionParagraphs,
+    transparencyStatements,
+    compliancePlaceholders,
+    closingParagraph:
+      "We believe this manuscript may be of interest to readers focused on radiation therapy research methods, clinical data workflows, and reproducible manuscript development. Thank you for considering our submission.",
+    manualChecklist,
+  };
+}
+
+function buildSubmissionPackageChecklist(params: {
+  writerOutlineDraft: WriterOutlineDraft | null;
+  writerMethodsResultsDraft: WriterMethodsResultsDraft | null;
+  writerDiscussionDraft: WriterDiscussionDraft | null;
+  writerAbstractDraft: WriterAbstractDraft | null;
+  writerCoverLetterDraft: WriterCoverLetterDraft | null;
+  qualityReport: DataQualityReport | null;
+  statisticsReport: DataStatisticsReport | null;
+  reviewerChecks: ReviewerCheckItem[];
+  candidateReferenceCount: number;
+  citationIssueCount: number;
+  protocolHasContent: boolean;
+}): SubmissionPackageChecklist {
+  const {
+    writerOutlineDraft,
+    writerMethodsResultsDraft,
+    writerDiscussionDraft,
+    writerAbstractDraft,
+    writerCoverLetterDraft,
+    qualityReport,
+    statisticsReport,
+    reviewerChecks,
+    candidateReferenceCount,
+    citationIssueCount,
+    protocolHasContent,
+  } = params;
+  const reviewerRedCount = reviewerChecks.filter((item) => item.severity === "red").length;
+  const reviewerOrangeCount = reviewerChecks.filter((item) => item.severity === "orange").length;
+  const formalTestReport = statisticsReport?.formal_test_report ?? null;
+  const items: SubmissionChecklistItem[] = [
+    {
+      title: "研究方案",
+      status: protocolHasContent ? "ready" : "blocked",
+      detail: protocolHasContent ? "已形成可追溯研究问题和方案字段。" : "缺少完整研究问题、终点或方案字段。",
+    },
+    {
+      title: "数据与统计",
+      status: qualityReport && statisticsReport ? (formalTestReport ? "ready" : "review") : "blocked",
+      detail:
+        qualityReport && statisticsReport
+          ? formalTestReport
+            ? "已生成数据质控、统计草案和正式检验记录。"
+            : "已有数据质控和描述性统计；如需推断性结论，仍需正式检验。"
+          : "缺少可审查数据质控或统计报告。",
+    },
+    {
+      title: "Introduction",
+      status: writerOutlineDraft ? (candidateReferenceCount && !citationIssueCount ? "ready" : "review") : "blocked",
+      detail: writerOutlineDraft
+        ? citationIssueCount
+          ? `已形成写作骨架，但仍有 ${citationIssueCount} 项引用质控问题。`
+          : `已有 ${candidateReferenceCount} 条候选引用支撑写作骨架。`
+        : "缺少 Introduction 写作骨架。",
+    },
+    {
+      title: "Methods / Results",
+      status: writerMethodsResultsDraft
+        ? writerMethodsResultsDraft.missingItems.length
+          ? "review"
+          : "ready"
+        : "blocked",
+      detail: writerMethodsResultsDraft
+        ? writerMethodsResultsDraft.missingItems.length
+          ? `仍有 ${writerMethodsResultsDraft.missingItems.length} 个待补充项。`
+          : "Methods / Results 草稿已形成。"
+        : "缺少 Methods / Results 草稿。",
+    },
+    {
+      title: "Discussion",
+      status: writerDiscussionDraft ? "ready" : "blocked",
+      detail: writerDiscussionDraft ? "Discussion 草稿已形成，需人工复核解释边界。" : "缺少 Discussion 草稿。",
+    },
+    {
+      title: "Abstract",
+      status: writerAbstractDraft ? "ready" : "blocked",
+      detail: writerAbstractDraft ? "结构化摘要已形成。" : "缺少 Abstract 草稿。",
+    },
+    {
+      title: "Cover Letter",
+      status: writerCoverLetterDraft ? "review" : "blocked",
+      detail: writerCoverLetterDraft
+        ? "投稿信草稿已形成，但伦理、通讯作者、利益冲突和期刊信息必须人工补充。"
+        : "缺少 Cover Letter 草稿。",
+    },
+    {
+      title: "Reviewer 风险",
+      status: reviewerRedCount ? "blocked" : reviewerOrangeCount ? "review" : "ready",
+      detail: reviewerRedCount
+        ? `仍有 ${reviewerRedCount} 项高风险问题。`
+        : reviewerOrangeCount
+          ? `仍有 ${reviewerOrangeCount} 项需要人工复核。`
+          : "规则型 Reviewer 检查未发现阻断项。",
+    },
+  ];
+  const readyCount = items.filter((item) => item.status === "ready").length;
+  const reviewCount = items.filter((item) => item.status === "review").length;
+  const blockedCount = items.filter((item) => item.status === "blocked").length;
+  const overallStatus = blockedCount
+    ? "暂不建议投稿"
+    : reviewCount
+      ? "可进入投稿前人工复核"
+      : "可准备最终投稿包";
+
+  return {
+    readyCount,
+    reviewCount,
+    blockedCount,
+    overallStatus,
+    items,
+  };
+}
+
 function buildReviewerChecks(params: {
   protocolHasContent: boolean;
   protocol: ProjectProtocol | null;
@@ -1426,6 +1614,43 @@ interface WriterAbstractDraft {
   conclusions: string;
   keywords: string[];
   cautionNotes: string[];
+}
+
+interface WriterCoverLetterDraft {
+  greeting: string;
+  manuscriptLine: string;
+  contributionParagraphs: string[];
+  transparencyStatements: string[];
+  compliancePlaceholders: string[];
+  closingParagraph: string;
+  manualChecklist: string[];
+}
+
+interface WriterOutlineDraft {
+  introductionParagraphs: {
+    title: string;
+    purpose: string;
+    writingCue: string;
+  }[];
+  referenceTitles: string[];
+  discussionDeferredNote: string;
+  remainingChecks: string[];
+}
+
+type SubmissionChecklistStatus = "ready" | "review" | "blocked";
+
+interface SubmissionChecklistItem {
+  title: string;
+  status: SubmissionChecklistStatus;
+  detail: string;
+}
+
+interface SubmissionPackageChecklist {
+  readyCount: number;
+  reviewCount: number;
+  blockedCount: number;
+  overallStatus: string;
+  items: SubmissionChecklistItem[];
 }
 
 interface CsvProcessingDefaults {
@@ -2374,6 +2599,56 @@ function App() {
       writerMethodsResultsDraft,
       writerDiscussionDraft,
       mentorCandidateReferences.length,
+    ],
+  );
+  const writerCoverLetterDraft = useMemo(
+    () =>
+      buildWriterCoverLetterDraft({
+        selectedProject,
+        protocol,
+        qualityReport,
+        statisticsReport,
+        writerAbstractDraft,
+        reviewerChecks,
+        reviewerDeepComments,
+      }),
+    [
+      selectedProject,
+      protocol,
+      qualityReport,
+      statisticsReport,
+      writerAbstractDraft,
+      reviewerChecks,
+      reviewerDeepComments,
+    ],
+  );
+  const submissionPackageChecklist = useMemo(
+    () =>
+      buildSubmissionPackageChecklist({
+        writerOutlineDraft,
+        writerMethodsResultsDraft,
+        writerDiscussionDraft,
+        writerAbstractDraft,
+        writerCoverLetterDraft,
+        qualityReport,
+        statisticsReport,
+        reviewerChecks,
+        candidateReferenceCount: mentorCandidateReferences.length,
+        citationIssueCount: introductionCitationQualityIssues.length,
+        protocolHasContent,
+      }),
+    [
+      writerOutlineDraft,
+      writerMethodsResultsDraft,
+      writerDiscussionDraft,
+      writerAbstractDraft,
+      writerCoverLetterDraft,
+      qualityReport,
+      statisticsReport,
+      reviewerChecks,
+      mentorCandidateReferences.length,
+      introductionCitationQualityIssues.length,
+      protocolHasContent,
     ],
   );
   const pipelineSteps = useMemo(
@@ -3523,6 +3798,94 @@ function App() {
     try {
       link.href = url;
       link.download = "abstract-draft.md";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  function handleDownloadCoverLetterDraft() {
+    if (!writerCoverLetterDraft) {
+      return;
+    }
+
+    const content = [
+      "# Cover Letter 草稿",
+      "",
+      `导出时间：${new Date().toLocaleString("zh-CN")}`,
+      selectedProject ? `关联项目：${selectedProject.name} / ${selectedProject.title}` : "关联项目：未指定",
+      "",
+      writerCoverLetterDraft.greeting,
+      "",
+      writerCoverLetterDraft.manuscriptLine,
+      "",
+      ...writerCoverLetterDraft.contributionParagraphs.flatMap((paragraph) => [paragraph, ""]),
+      "## Transparency statements",
+      ...writerCoverLetterDraft.transparencyStatements.map((item) => `- ${item}`),
+      "",
+      "## Compliance placeholders",
+      ...writerCoverLetterDraft.compliancePlaceholders.map((item) => `- ${item}`),
+      "",
+      writerCoverLetterDraft.closingParagraph,
+      "",
+      "Sincerely,",
+      "[Corresponding author name]",
+      "",
+      "## 投稿前人工补充清单",
+      ...writerCoverLetterDraft.manualChecklist.map((item) => `- ${item}`),
+      "",
+    ].join("\n");
+
+    const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    try {
+      link.href = url;
+      link.download = "cover-letter-draft.md";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  function handleDownloadSubmissionPackageChecklist() {
+    const content = [
+      "# Submission Package Checklist",
+      "",
+      `导出时间：${new Date().toLocaleString("zh-CN")}`,
+      selectedProject ? `关联项目：${selectedProject.name} / ${selectedProject.title}` : "关联项目：未指定",
+      "",
+      "## 总体状态",
+      `- ${submissionPackageChecklist.overallStatus}`,
+      `- 已就绪：${submissionPackageChecklist.readyCount}`,
+      `- 需复核：${submissionPackageChecklist.reviewCount}`,
+      `- 阻断项：${submissionPackageChecklist.blockedCount}`,
+      "",
+      "## 检查项",
+      ...submissionPackageChecklist.items.flatMap((item, index) => [
+        `### ${index + 1}. ${item.title}`,
+        `- 状态：${
+          item.status === "ready" ? "已就绪" : item.status === "review" ? "需人工复核" : "阻断"
+        }`,
+        `- 说明：${item.detail}`,
+        "",
+      ]),
+      "## 使用边界",
+      "- 该清单用于投稿包准备自查，不替代目标期刊投稿系统、伦理办公室或通讯作者最终确认。",
+      "- 所有伦理审批、利益冲突、资助、作者贡献、数据可用性和目标期刊格式要求必须人工确认。",
+      "",
+    ].join("\n");
+
+    const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    try {
+      link.href = url;
+      link.download = "submission-package-checklist.md";
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -7177,6 +7540,18 @@ function App() {
                           <Download aria-hidden="true" size={15} />
                           <span>导出 Abstract</span>
                         </button>
+                        <button
+                          type="button"
+                          onClick={handleDownloadCoverLetterDraft}
+                          disabled={!writerCoverLetterDraft}
+                        >
+                          <Download aria-hidden="true" size={15} />
+                          <span>导出 Cover Letter</span>
+                        </button>
+                        <button type="button" onClick={handleDownloadSubmissionPackageChecklist}>
+                          <Download aria-hidden="true" size={15} />
+                          <span>导出投稿清单</span>
+                        </button>
                         <FileText aria-hidden="true" size={20} />
                       </div>
                     </div>
@@ -7408,6 +7783,90 @@ function App() {
                           先生成 Methods / Results 和 Discussion；Abstract 会压缩已有内容，并在没有正式检验时保持保守结论。
                         </p>
                       )}
+                    </section>
+
+                    <section className="writer-methods-results-card writer-cover-letter-card">
+                      <div className="mentor-section-head">
+                        <strong>Cover Letter 草稿</strong>
+                        <span>{writerCoverLetterDraft ? "投稿信模板" : "等待 Abstract"}</span>
+                      </div>
+                      {writerCoverLetterDraft ? (
+                        <div className="writer-cover-letter-layout">
+                          <article className="writer-cover-letter-wide">
+                            <strong>{writerCoverLetterDraft.greeting}</strong>
+                            <p>{writerCoverLetterDraft.manuscriptLine}</p>
+                            {writerCoverLetterDraft.contributionParagraphs.map((paragraph) => (
+                              <p key={paragraph}>{paragraph}</p>
+                            ))}
+                            <p>{writerCoverLetterDraft.closingParagraph}</p>
+                          </article>
+                          <article>
+                            <strong>Transparency statements</strong>
+                            <ul>
+                              {writerCoverLetterDraft.transparencyStatements.map((item) => (
+                                <li key={item}>{item}</li>
+                              ))}
+                            </ul>
+                          </article>
+                          <article>
+                            <strong>Compliance placeholders</strong>
+                            <ul>
+                              {writerCoverLetterDraft.compliancePlaceholders.map((item) => (
+                                <li key={item}>{item}</li>
+                              ))}
+                            </ul>
+                          </article>
+                          <article className="writer-cover-letter-wide">
+                            <strong>投稿前人工补充清单</strong>
+                            <ul>
+                              {writerCoverLetterDraft.manualChecklist.map((item) => (
+                                <li key={item}>{item}</li>
+                              ))}
+                            </ul>
+                          </article>
+                        </div>
+                      ) : (
+                        <p className="writer-empty">
+                          先生成 Abstract；Cover Letter 会复用项目标题、摘要、数据透明性和 Reviewer 风险状态生成投稿信草稿。
+                        </p>
+                      )}
+                    </section>
+
+                    <section className="writer-methods-results-card writer-submission-card">
+                      <div className="mentor-section-head">
+                        <strong>投稿包检查清单</strong>
+                        <span>{submissionPackageChecklist.overallStatus}</span>
+                      </div>
+                      <div className="submission-summary-grid">
+                        <article className="risk-green">
+                          <span>已就绪</span>
+                          <strong>{submissionPackageChecklist.readyCount}</strong>
+                        </article>
+                        <article className="risk-orange">
+                          <span>需复核</span>
+                          <strong>{submissionPackageChecklist.reviewCount}</strong>
+                        </article>
+                        <article className="risk-red">
+                          <span>阻断项</span>
+                          <strong>{submissionPackageChecklist.blockedCount}</strong>
+                        </article>
+                      </div>
+                      <div className="submission-checklist">
+                        {submissionPackageChecklist.items.map((item) => (
+                          <article className={`submission-check-item status-${item.status}`} key={item.title}>
+                            <div>
+                              <span className={`status-badge risk-${
+                                item.status === "ready" ? "green" : item.status === "review" ? "orange" : "red"
+                              }`}
+                              >
+                                {item.status === "ready" ? "已就绪" : item.status === "review" ? "需复核" : "阻断"}
+                              </span>
+                              <strong>{item.title}</strong>
+                            </div>
+                            <p>{item.detail}</p>
+                          </article>
+                        ))}
+                      </div>
                     </section>
 
                     <section className="writer-draft-card">
