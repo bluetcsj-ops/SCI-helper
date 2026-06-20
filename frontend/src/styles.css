@@ -1518,6 +1518,109 @@ button {
   line-height: 1.5;
 }
 
+.writer-journal-template-card {
+  background: #f8fbff;
+}
+
+.journal-template-selector label {
+  display: grid;
+  max-width: 360px;
+  gap: 6px;
+}
+
+.journal-template-selector span {
+  color: #6f5d4b;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.journal-template-selector select {
+  min-height: 38px;
+  border: 1px solid rgba(36, 48, 64, 0.14);
+  border-radius: 8px;
+  padding: 0 10px;
+  color: #243040;
+  background: #ffffff;
+  font-weight: 800;
+}
+
+.journal-template-layout {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.journal-template-layout article {
+  display: grid;
+  gap: 6px;
+  border-radius: 8px;
+  padding: 12px;
+  background: #ffffff;
+}
+
+.journal-template-layout strong {
+  color: #22354a;
+}
+
+.journal-template-layout p,
+.journal-template-layout li,
+.journal-template-layout small {
+  margin: 0;
+  color: #4f6074;
+  line-height: 1.5;
+}
+
+.journal-template-layout ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.journal-template-wide {
+  grid-column: 1 / -1;
+}
+
+.writer-version-card {
+  background: #fbfbff;
+}
+
+.version-snapshot-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.version-snapshot-grid article {
+  display: grid;
+  gap: 6px;
+  border-radius: 8px;
+  padding: 12px;
+  background: #ffffff;
+}
+
+.version-snapshot-grid strong {
+  color: #22354a;
+}
+
+.version-snapshot-grid p,
+.version-snapshot-grid li {
+  margin: 0;
+  color: #4f6074;
+  line-height: 1.5;
+}
+
+.version-snapshot-grid ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.version-snapshot-wide {
+  grid-column: 1 / -1;
+}
+
 .reviewer-panel {
   display: grid;
   gap: 14px;
@@ -3754,6 +3857,8 @@ button {
   .writer-abstract-layout,
   .writer-cover-letter-layout,
   .writer-draft-grid,
+  .journal-template-layout,
+  .version-snapshot-grid,
   .mentor-preview-grid,
   .reviewer-summary-grid,
   .submission-summary-grid,

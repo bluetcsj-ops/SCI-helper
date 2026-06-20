@@ -1180,6 +1180,183 @@ function buildSubmissionPackageChecklist(params: {
   };
 }
 
+function buildJournalTemplateReadiness(params: {
+  template: JournalSubmissionTemplate;
+  writerAbstractDraft: WriterAbstractDraft | null;
+  writerCoverLetterDraft: WriterCoverLetterDraft | null;
+  submissionPackageChecklist: SubmissionPackageChecklist;
+  reviewerChecks: ReviewerCheckItem[];
+  citationIssueCount: number;
+}): JournalTemplateReadiness {
+  const {
+    template,
+    writerAbstractDraft,
+    writerCoverLetterDraft,
+    submissionPackageChecklist,
+    reviewerChecks,
+    citationIssueCount,
+  } = params;
+  const reviewerRedCount = reviewerChecks.filter((item) => item.severity === "red").length;
+  const reviewerOrangeCount = reviewerChecks.filter((item) => item.severity === "orange").length;
+  const abstractSectionsReady = writerAbstractDraft
+    ? template.abstractStructure.every((section) => {
+        const key = section.toLowerCase();
+        return (
+          (key.includes("purpose") || key.includes("objective") || key.includes("background")
+            ? writerAbstractDraft.objective || writerAbstractDraft.background
+            : key.includes("method")
+              ? writerAbstractDraft.methods
+              : key.includes("result")
+                ? writerAbstractDraft.results
+                : key.includes("conclusion")
+                  ? writerAbstractDraft.conclusions
+                  : "")
+        );
+      })
+    : false;
+  const checks: JournalTemplateCheck[] = [
+    {
+      title: "摘要结构",
+      status: writerAbstractDraft ? (abstractSectionsReady ? "ready" : "review") : "blocked",
+      detail: writerAbstractDraft
+        ? `当前摘要可映射到：${template.abstractStructure.join(" / ")}。`
+        : "缺少 Abstract 草稿。",
+    },
+    {
+      title: "关键词",
+      status: writerAbstractDraft?.keywords.length ? "review" : "blocked",
+      detail: writerAbstractDraft?.keywords.length
+        ? `当前关键词：${writerAbstractDraft.keywords.join("; ")}。${template.keywordLimit}`
+        : "缺少关键词。",
+    },
+    {
+      title: "投稿信",
+      status: writerCoverLetterDraft ? "review" : "blocked",
+      detail: writerCoverLetterDraft
+        ? "Cover Letter 草稿已形成，但目标期刊名、编辑称谓和通讯作者信息仍需人工补充。"
+        : "缺少 Cover Letter 草稿。",
+    },
+    {
+      title: "必需声明",
+      status: writerCoverLetterDraft ? "review" : "blocked",
+      detail: `需人工补齐：${template.requiredStatements.join("、")}。`,
+    },
+    {
+      title: "引用格式",
+      status: citationIssueCount ? "review" : "ready",
+      detail: citationIssueCount
+        ? `仍有 ${citationIssueCount} 项引用质控问题；${template.referenceStyle}`
+        : template.referenceStyle,
+    },
+    {
+      title: "Reviewer 风险",
+      status: reviewerRedCount ? "blocked" : reviewerOrangeCount ? "review" : "ready",
+      detail: reviewerRedCount
+        ? `仍有 ${reviewerRedCount} 项高风险问题，暂不应进入目标期刊格式化。`
+        : reviewerOrangeCount
+          ? `仍有 ${reviewerOrangeCount} 项需要人工复核。`
+          : "未发现规则型阻断项。",
+    },
+    {
+      title: "投稿包完整性",
+      status: submissionPackageChecklist.blockedCount
+        ? "blocked"
+        : submissionPackageChecklist.reviewCount
+          ? "review"
+          : "ready",
+      detail: `${submissionPackageChecklist.overallStatus}；已就绪 ${submissionPackageChecklist.readyCount}，需复核 ${submissionPackageChecklist.reviewCount}，阻断 ${submissionPackageChecklist.blockedCount}。`,
+    },
+  ];
+  const readyCount = checks.filter((item) => item.status === "ready").length;
+  const reviewCount = checks.filter((item) => item.status === "review").length;
+  const blockedCount = checks.filter((item) => item.status === "blocked").length;
+
+  return {
+    template,
+    readyCount,
+    reviewCount,
+    blockedCount,
+    checks,
+  };
+}
+
+function buildDraftVersionSnapshot(params: {
+  selectedProject: Project | null | undefined;
+  writerOutlineDraft: WriterOutlineDraft | null;
+  writerMethodsResultsDraft: WriterMethodsResultsDraft | null;
+  writerDiscussionDraft: WriterDiscussionDraft | null;
+  writerAbstractDraft: WriterAbstractDraft | null;
+  writerCoverLetterDraft: WriterCoverLetterDraft | null;
+  submissionPackageChecklist: SubmissionPackageChecklist;
+  journalTemplateReadiness: JournalTemplateReadiness;
+  reviewerChecks: ReviewerCheckItem[];
+}): DraftVersionSnapshot {
+  const {
+    selectedProject,
+    writerOutlineDraft,
+    writerMethodsResultsDraft,
+    writerDiscussionDraft,
+    writerAbstractDraft,
+    writerCoverLetterDraft,
+    submissionPackageChecklist,
+    journalTemplateReadiness,
+    reviewerChecks,
+  } = params;
+  const sectionPairs = [
+    ["Introduction", Boolean(writerOutlineDraft)],
+    ["Methods / Results", Boolean(writerMethodsResultsDraft)],
+    ["Discussion", Boolean(writerDiscussionDraft)],
+    ["Abstract", Boolean(writerAbstractDraft)],
+    ["Cover Letter", Boolean(writerCoverLetterDraft)],
+    ["Submission Checklist", true],
+    ["Journal Template", true],
+  ] as const;
+  const completedSections = sectionPairs.filter(([, ready]) => ready).map(([label]) => label);
+  const missingSections = sectionPairs.filter(([, ready]) => !ready).map(([label]) => label);
+  const high = reviewerChecks.filter((item) => item.severity === "red").length;
+  const review = reviewerChecks.filter((item) => item.severity === "orange").length;
+  const passed = reviewerChecks.filter((item) => item.severity === "green").length;
+  const exportFiles = [
+    writerOutlineDraft ? "alex-writer-outline.md" : null,
+    "introduction-draft.md",
+    writerMethodsResultsDraft ? "methods-results-draft.md" : null,
+    writerDiscussionDraft ? "discussion-draft.md" : null,
+    writerAbstractDraft ? "abstract-draft.md" : null,
+    writerCoverLetterDraft ? "cover-letter-draft.md" : null,
+    "submission-package-checklist.md",
+    "journal-submission-template.md",
+  ].filter(Boolean) as string[];
+  const nextActions = [
+    missingSections.length ? `补齐缺失稿件：${missingSections.join("、")}。` : null,
+    high ? `先处理 ${high} 项 Reviewer 高风险问题。` : null,
+    review ? `人工复核 ${review} 项 Reviewer 橙色问题。` : null,
+    journalTemplateReadiness.blockedCount
+      ? `目标期刊模板仍有 ${journalTemplateReadiness.blockedCount} 个阻断项。`
+      : null,
+    submissionPackageChecklist.blockedCount
+      ? `投稿包仍有 ${submissionPackageChecklist.blockedCount} 个阻断项。`
+      : null,
+    "正式投稿前人工核对目标期刊 Author Guidelines、伦理声明、利益冲突、资助和作者信息。",
+  ].filter(Boolean) as string[];
+  const labelParts = [
+    selectedProject?.name ?? "Project",
+    journalTemplateReadiness.template.name,
+    submissionPackageChecklist.blockedCount ? "blocked" : review || journalTemplateReadiness.reviewCount ? "review" : "ready",
+  ];
+
+  return {
+    label: labelParts.join(" / "),
+    createdAt: new Date().toLocaleString("zh-CN"),
+    completedSections,
+    missingSections,
+    reviewerRiskCounts: { high, review, passed },
+    selectedJournalTemplate: journalTemplateReadiness.template.name,
+    submissionStatus: submissionPackageChecklist.overallStatus,
+    exportFiles,
+    nextActions,
+  };
+}
+
 function buildReviewerChecks(params: {
   protocolHasContent: boolean;
   protocol: ProjectProtocol | null;
@@ -1652,6 +1829,82 @@ interface SubmissionPackageChecklist {
   overallStatus: string;
   items: SubmissionChecklistItem[];
 }
+
+type JournalTemplateId = "medical_physics" | "frontiers" | "general_oncology";
+
+interface JournalSubmissionTemplate {
+  id: JournalTemplateId;
+  name: string;
+  abstractStructure: string[];
+  abstractWordLimit: string;
+  keywordLimit: string;
+  figureTableGuidance: string;
+  referenceStyle: string;
+  requiredStatements: string[];
+}
+
+interface JournalTemplateCheck {
+  title: string;
+  status: SubmissionChecklistStatus;
+  detail: string;
+}
+
+interface JournalTemplateReadiness {
+  template: JournalSubmissionTemplate;
+  readyCount: number;
+  reviewCount: number;
+  blockedCount: number;
+  checks: JournalTemplateCheck[];
+}
+
+interface DraftVersionSnapshot {
+  label: string;
+  createdAt: string;
+  completedSections: string[];
+  missingSections: string[];
+  reviewerRiskCounts: {
+    high: number;
+    review: number;
+    passed: number;
+  };
+  selectedJournalTemplate: string;
+  submissionStatus: string;
+  exportFiles: string[];
+  nextActions: string[];
+}
+
+const journalSubmissionTemplates: JournalSubmissionTemplate[] = [
+  {
+    id: "medical_physics",
+    name: "Medical Physics / physics-style",
+    abstractStructure: ["Purpose", "Methods", "Results", "Conclusions"],
+    abstractWordLimit: "通常按目标期刊 Author Guidelines 人工核对；先按 250-300 words 控制。",
+    keywordLimit: "建议 3-6 个关键词。",
+    figureTableGuidance: "图表应能回溯到统计输出，剂量学或物理学指标需在 Methods 中定义。",
+    referenceStyle: "期刊格式优先；当前系统导出仅作为 Vancouver 候选清单。",
+    requiredStatements: ["Ethics / IRB", "Conflict of interest", "Funding", "Data availability", "Author contributions"],
+  },
+  {
+    id: "frontiers",
+    name: "Frontiers-style",
+    abstractStructure: ["Background", "Methods", "Results", "Conclusion"],
+    abstractWordLimit: "通常要求结构化摘要；具体字数以 Frontiers 当前 Author Guidelines 为准。",
+    keywordLimit: "通常 5-8 个关键词，正式投稿前人工核对。",
+    figureTableGuidance: "图题需自洽，统计标注、缩写和伦理声明需与正文一致。",
+    referenceStyle: "Frontiers 目标期刊格式优先；当前引用清单需投稿前格式化。",
+    requiredStatements: ["Ethics statement", "Author contributions", "Conflict of interest", "Funding", "Data availability"],
+  },
+  {
+    id: "general_oncology",
+    name: "General oncology journal",
+    abstractStructure: ["Background", "Methods", "Results", "Conclusions"],
+    abstractWordLimit: "先按 250 words 左右控制；目标期刊可能要求 structured 或 unstructured。",
+    keywordLimit: "建议 3-6 个关键词。",
+    figureTableGuidance: "限制图表数量，优先保留直接回答主要终点的图表。",
+    referenceStyle: "Vancouver 或期刊自定义格式；正式投稿前人工核对。",
+    requiredStatements: ["Ethics approval", "Consent / waiver", "Conflict of interest", "Funding", "Data availability"],
+  },
+];
 
 interface CsvProcessingDefaults {
   report: DataQualityReport;
@@ -2224,6 +2477,8 @@ function App() {
   const [qualityReport, setQualityReport] = useState<DataQualityReport | null>(null);
   const [statisticsReport, setStatisticsReport] = useState<DataStatisticsReport | null>(null);
   const [uploadedCsvFile, setUploadedCsvFile] = useState<File | null>(null);
+  const [selectedJournalTemplateId, setSelectedJournalTemplateId] =
+    useState<JournalTemplateId>("medical_physics");
   const [workflowStatus, setWorkflowStatus] = useState<string | null>(null);
   const [workflowSummary, setWorkflowSummary] = useState<WorkflowSummary | null>(null);
   const [selectedGroupColumn, setSelectedGroupColumn] = useState("");
@@ -2649,6 +2904,56 @@ function App() {
       mentorCandidateReferences.length,
       introductionCitationQualityIssues.length,
       protocolHasContent,
+    ],
+  );
+  const selectedJournalTemplate = useMemo(
+    () =>
+      journalSubmissionTemplates.find((template) => template.id === selectedJournalTemplateId) ??
+      journalSubmissionTemplates[0],
+    [selectedJournalTemplateId],
+  );
+  const journalTemplateReadiness = useMemo(
+    () =>
+      buildJournalTemplateReadiness({
+        template: selectedJournalTemplate,
+        writerAbstractDraft,
+        writerCoverLetterDraft,
+        submissionPackageChecklist,
+        reviewerChecks,
+        citationIssueCount: introductionCitationQualityIssues.length,
+      }),
+    [
+      selectedJournalTemplate,
+      writerAbstractDraft,
+      writerCoverLetterDraft,
+      submissionPackageChecklist,
+      reviewerChecks,
+      introductionCitationQualityIssues.length,
+    ],
+  );
+  const draftVersionSnapshot = useMemo(
+    () =>
+      buildDraftVersionSnapshot({
+        selectedProject,
+        writerOutlineDraft,
+        writerMethodsResultsDraft,
+        writerDiscussionDraft,
+        writerAbstractDraft,
+        writerCoverLetterDraft,
+        submissionPackageChecklist,
+        journalTemplateReadiness,
+        reviewerChecks,
+      }),
+    [
+      selectedProject,
+      writerOutlineDraft,
+      writerMethodsResultsDraft,
+      writerDiscussionDraft,
+      writerAbstractDraft,
+      writerCoverLetterDraft,
+      submissionPackageChecklist,
+      journalTemplateReadiness,
+      reviewerChecks,
     ],
   );
   const pipelineSteps = useMemo(
@@ -3886,6 +4191,108 @@ function App() {
     try {
       link.href = url;
       link.download = "submission-package-checklist.md";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  function handleDownloadJournalSubmissionTemplate() {
+    const content = [
+      "# Journal Submission Template",
+      "",
+      `导出时间：${new Date().toLocaleString("zh-CN")}`,
+      selectedProject ? `关联项目：${selectedProject.name} / ${selectedProject.title}` : "关联项目：未指定",
+      "",
+      "## 目标期刊模板",
+      `- 模板：${journalTemplateReadiness.template.name}`,
+      `- 摘要结构：${journalTemplateReadiness.template.abstractStructure.join(" / ")}`,
+      `- 摘要字数：${journalTemplateReadiness.template.abstractWordLimit}`,
+      `- 关键词：${journalTemplateReadiness.template.keywordLimit}`,
+      `- 图表：${journalTemplateReadiness.template.figureTableGuidance}`,
+      `- 引用：${journalTemplateReadiness.template.referenceStyle}`,
+      "",
+      "## 必需声明",
+      ...journalTemplateReadiness.template.requiredStatements.map((item) => `- ${item}`),
+      "",
+      "## 适配检查",
+      `- 已就绪：${journalTemplateReadiness.readyCount}`,
+      `- 需复核：${journalTemplateReadiness.reviewCount}`,
+      `- 阻断项：${journalTemplateReadiness.blockedCount}`,
+      "",
+      ...journalTemplateReadiness.checks.flatMap((item, index) => [
+        `### ${index + 1}. ${item.title}`,
+        `- 状态：${
+          item.status === "ready" ? "已就绪" : item.status === "review" ? "需人工复核" : "阻断"
+        }`,
+        `- 说明：${item.detail}`,
+        "",
+      ]),
+      "## 使用边界",
+      "- 该模板不是实时期刊官网规则，正式投稿前必须人工核对目标期刊 Author Guidelines。",
+      "- 摘要字数、关键词数量、图表限制、引用格式和必需声明以投稿系统当前要求为准。",
+      "",
+    ].join("\n");
+
+    const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    try {
+      link.href = url;
+      link.download = "journal-submission-template.md";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  function handleDownloadDraftVersionSnapshot() {
+    const content = [
+      "# Draft Version Snapshot",
+      "",
+      `生成时间：${draftVersionSnapshot.createdAt}`,
+      `版本标签：${draftVersionSnapshot.label}`,
+      selectedProject ? `关联项目：${selectedProject.name} / ${selectedProject.title}` : "关联项目：未指定",
+      "",
+      "## 状态摘要",
+      `- 投稿状态：${draftVersionSnapshot.submissionStatus}`,
+      `- 目标期刊模板：${draftVersionSnapshot.selectedJournalTemplate}`,
+      `- Reviewer 高风险：${draftVersionSnapshot.reviewerRiskCounts.high}`,
+      `- Reviewer 需复核：${draftVersionSnapshot.reviewerRiskCounts.review}`,
+      `- Reviewer 已通过：${draftVersionSnapshot.reviewerRiskCounts.passed}`,
+      "",
+      "## 已完成章节",
+      ...(draftVersionSnapshot.completedSections.length
+        ? draftVersionSnapshot.completedSections.map((item) => `- ${item}`)
+        : ["- 暂无"]),
+      "",
+      "## 缺失章节",
+      ...(draftVersionSnapshot.missingSections.length
+        ? draftVersionSnapshot.missingSections.map((item) => `- ${item}`)
+        : ["- 暂无"]),
+      "",
+      "## 可导出文件",
+      ...draftVersionSnapshot.exportFiles.map((item) => `- ${item}`),
+      "",
+      "## 下一步动作",
+      ...draftVersionSnapshot.nextActions.map((item) => `- ${item}`),
+      "",
+      "## 使用边界",
+      "- 该快照是当前页面状态的导出记录，不是数据库持久化版本。",
+      "- 如需真正回退版本，后续需要加入后端存储或本地持久化设计。",
+      "",
+    ].join("\n");
+
+    const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    try {
+      link.href = url;
+      link.download = "draft-version-snapshot.md";
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -7552,6 +7959,14 @@ function App() {
                           <Download aria-hidden="true" size={15} />
                           <span>导出投稿清单</span>
                         </button>
+                        <button type="button" onClick={handleDownloadJournalSubmissionTemplate}>
+                          <Download aria-hidden="true" size={15} />
+                          <span>导出期刊模板</span>
+                        </button>
+                        <button type="button" onClick={handleDownloadDraftVersionSnapshot}>
+                          <Download aria-hidden="true" size={15} />
+                          <span>导出版本快照</span>
+                        </button>
                         <FileText aria-hidden="true" size={20} />
                       </div>
                     </div>
@@ -7866,6 +8281,143 @@ function App() {
                             <p>{item.detail}</p>
                           </article>
                         ))}
+                      </div>
+                    </section>
+
+                    <section className="writer-methods-results-card writer-journal-template-card">
+                      <div className="mentor-section-head">
+                        <strong>目标期刊模板</strong>
+                        <span>{journalTemplateReadiness.template.name}</span>
+                      </div>
+                      <div className="journal-template-selector">
+                        <label>
+                          <span>模板</span>
+                          <select
+                            value={selectedJournalTemplateId}
+                            onChange={(event) =>
+                              setSelectedJournalTemplateId(event.currentTarget.value as JournalTemplateId)
+                            }
+                          >
+                            {journalSubmissionTemplates.map((template) => (
+                              <option value={template.id} key={template.id}>
+                                {template.name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      </div>
+                      <div className="journal-template-layout">
+                        <article>
+                          <strong>Abstract structure</strong>
+                          <p>{journalTemplateReadiness.template.abstractStructure.join(" / ")}</p>
+                          <small>{journalTemplateReadiness.template.abstractWordLimit}</small>
+                        </article>
+                        <article>
+                          <strong>Keywords</strong>
+                          <p>{journalTemplateReadiness.template.keywordLimit}</p>
+                        </article>
+                        <article>
+                          <strong>Figures / tables</strong>
+                          <p>{journalTemplateReadiness.template.figureTableGuidance}</p>
+                        </article>
+                        <article>
+                          <strong>References</strong>
+                          <p>{journalTemplateReadiness.template.referenceStyle}</p>
+                        </article>
+                        <article className="journal-template-wide">
+                          <strong>Required statements</strong>
+                          <ul>
+                            {journalTemplateReadiness.template.requiredStatements.map((item) => (
+                              <li key={item}>{item}</li>
+                            ))}
+                          </ul>
+                        </article>
+                      </div>
+                      <div className="submission-summary-grid">
+                        <article className="risk-green">
+                          <span>已就绪</span>
+                          <strong>{journalTemplateReadiness.readyCount}</strong>
+                        </article>
+                        <article className="risk-orange">
+                          <span>需复核</span>
+                          <strong>{journalTemplateReadiness.reviewCount}</strong>
+                        </article>
+                        <article className="risk-red">
+                          <span>阻断项</span>
+                          <strong>{journalTemplateReadiness.blockedCount}</strong>
+                        </article>
+                      </div>
+                      <div className="submission-checklist">
+                        {journalTemplateReadiness.checks.map((item) => (
+                          <article className={`submission-check-item status-${item.status}`} key={item.title}>
+                            <div>
+                              <span className={`status-badge risk-${
+                                item.status === "ready" ? "green" : item.status === "review" ? "orange" : "red"
+                              }`}
+                              >
+                                {item.status === "ready" ? "已就绪" : item.status === "review" ? "需复核" : "阻断"}
+                              </span>
+                              <strong>{item.title}</strong>
+                            </div>
+                            <p>{item.detail}</p>
+                          </article>
+                        ))}
+                      </div>
+                    </section>
+
+                    <section className="writer-methods-results-card writer-version-card">
+                      <div className="mentor-section-head">
+                        <strong>版本快照</strong>
+                        <span>{draftVersionSnapshot.label}</span>
+                      </div>
+                      <div className="version-snapshot-grid">
+                        <article>
+                          <strong>生成时间</strong>
+                          <p>{draftVersionSnapshot.createdAt}</p>
+                        </article>
+                        <article>
+                          <strong>投稿状态</strong>
+                          <p>{draftVersionSnapshot.submissionStatus}</p>
+                        </article>
+                        <article>
+                          <strong>目标期刊模板</strong>
+                          <p>{draftVersionSnapshot.selectedJournalTemplate}</p>
+                        </article>
+                        <article>
+                          <strong>Reviewer 风险</strong>
+                          <p>
+                            高风险 {draftVersionSnapshot.reviewerRiskCounts.high} / 需复核{" "}
+                            {draftVersionSnapshot.reviewerRiskCounts.review} / 已通过{" "}
+                            {draftVersionSnapshot.reviewerRiskCounts.passed}
+                          </p>
+                        </article>
+                        <article>
+                          <strong>已完成章节</strong>
+                          <ul>
+                            {draftVersionSnapshot.completedSections.map((item) => (
+                              <li key={item}>{item}</li>
+                            ))}
+                          </ul>
+                        </article>
+                        <article>
+                          <strong>缺失章节</strong>
+                          <ul>
+                            {(draftVersionSnapshot.missingSections.length
+                              ? draftVersionSnapshot.missingSections
+                              : ["暂无"]
+                            ).map((item) => (
+                              <li key={item}>{item}</li>
+                            ))}
+                          </ul>
+                        </article>
+                        <article className="version-snapshot-wide">
+                          <strong>下一步动作</strong>
+                          <ul>
+                            {draftVersionSnapshot.nextActions.map((item) => (
+                              <li key={item}>{item}</li>
+                            ))}
+                          </ul>
+                        </article>
                       </div>
                     </section>
 
