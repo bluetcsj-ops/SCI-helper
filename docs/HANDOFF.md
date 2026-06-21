@@ -299,10 +299,21 @@ npm.cmd run dev -- --host 127.0.0.1 --port 3000
 
 ## 下一步建议
 
-1. 人工跑完整 UI 验收。
-2. 完成 Data Lin linear/logistic regression UI 验收后，再决定是否阶段性提交本轮改动。
-3. 后续补真实高级统计模型拟合：
-   - survival analysis
-   - mixed-effects model
-4. 接入真实放疗专科样例数据。
-5. 扩展目标期刊 PDF / 强 JS 页面规则抓取。
+1. 先跑完整 UI 验收：
+   - 预备引用
+   - 预备 DATA
+   - Data Lin 高级模型
+   - Writer 英文稿件与版本库
+   - Reviewer 样例 decision letter、章节归属、Writer 修改提醒和导出
+2. 下一阶段优先级：
+   - Data Lin survival analysis / mixed-effects model 第一版
+   - 真实放疗专科数据适配与数据许可核对
+   - Writer 写作风格学习和目标期刊英文表达偏好
+   - Author Guidelines PDF / 强 JS 页面处理
+3. 稳定化原则：
+   - 页面和交互继续保持中文
+   - 论文正文、投稿材料、Response to Reviewers 和导出稿件继续保持英文
+   - 高级统计和 Reviewer 输出继续标注人工核验边界
+4. Git 节奏：
+   - 小功能本地阶段性提交
+   - 一组完整大功能或阶段复盘后再推送 GitHub
