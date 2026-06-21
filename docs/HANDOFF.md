@@ -137,6 +137,10 @@ Mentor → Vera Protocol → Data Lin → Alex Writer → Reviewer
 - 深度审稿意见。
 - Response to Reviewers 草稿。
 - 真实审稿意见导入。
+- 复杂审稿信规则增强拆分：
+  - 先识别 Editor / Reviewer 分块
+  - 再按 Major / Minor / Editorial、Comment / Point / Concern、数字或字母编号拆分条目
+  - 保留 Reviewer 标签，供英文 response draft、状态管理和章节映射复用
 - Major / Minor / Editorial 初分。
 - 逐条英文 response draft。
 - 条目状态管理。
@@ -238,7 +242,7 @@ $env:DATABASE_URL='sqlite:///:memory:'
 - 高级模型执行第一版已支持 linear regression 和 logistic regression；Cox 和 mixed-effects 仍只停留在计划/待开发阶段。
 - Linear/logistic regression 输出是探索性拟合结果，仍需要人工统计复核，不应直接作为最终 SCI 结论。
 - Writer 版本库当前恢复 Introduction；派生章节可作为历史恢复内容优先显示、逐字段编辑、预览、diff、复制、导出，并可纳入新的版本快照，但不会直接写回后端全文字段。
-- Reviewer 真实意见拆分是规则型，复杂 decision letter 仍需人工校正。
+- Reviewer 真实意见拆分已支持 Editor / Reviewer 分块和多种编号条目，但仍是规则型，复杂 decision letter 仍需人工校正。
 - Reviewer 到 Writer 的章节映射支持人工修正和持久化保存，但仍需人工对照原始 decision letter 最终确认。
 - 当前 Author Guidelines 校验支持普通 HTML URL 抓取和手动粘贴；PDF、登录、强 JS 或反爬页面仍需手动粘贴，正式投稿仍需在投稿系统中最终核对。
 - Reviewer 是规则型自查，不替代真实同行评审。

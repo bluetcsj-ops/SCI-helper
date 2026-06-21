@@ -24,7 +24,7 @@ Mentor 选题与引用
 | Dr. Vera Protocol | 78% | 可编辑/保存研究方案，生成方案草案和执行计划草案，完成方案质量检查、方案-数据一致性检查、方案版本快照与导出 |
 | Dr. Data Lin | 95% | 可上传 CSV、选择预备 DATA、做质控/隐私检查/统计草案/图表/审计、一键联调 Writer，生成自主分析计划和高级模型计划，并可执行第一版 exploratory linear/logistic regression |
 | Alex Writer | 99% | 可生成英文 Introduction、Methods / Results、Discussion、Abstract、Cover Letter、投稿包检查清单、目标期刊模板和 Author Guidelines URL 抓取/本地规则校验，并支持放疗计划质量字段解读、高级模型结果来源与人工核验提示、后端版本归档、恢复 Introduction、版本差异查看、历史章节复制、全文恢复逐字段编辑和 Reviewer 修改提醒 |
-| Rev. Dr. Helena Skov | 96% | 可生成投稿前规则清单、深度审稿意见、Response to Reviewers 草稿，并支持放疗专科风险检查、高级模型 OR 报告边界检查、AI 写作痕迹/模板化风险检查、真实审稿意见导入、逐条映射、英文回复导出、返修写作清单和章节归属持久化修正 |
+| Rev. Dr. Helena Skov | 97% | 可生成投稿前规则清单、深度审稿意见、Response to Reviewers 草稿，并支持放疗专科风险检查、高级模型 OR 报告边界检查、AI 写作痕迹/模板化风险检查、复杂审稿信规则增强拆分、真实审稿意见导入、逐条映射、英文回复导出、返修写作清单和章节归属持久化修正 |
 
 ## 已完成的关键闭环
 
@@ -137,6 +137,10 @@ Mentor 选题与引用
 - 深度审稿意见和导出 `reviewer-deep-comments.md`。
 - Response to Reviewers 草稿和导出 `response-to-reviewers-draft.md`。
 - 真实审稿意见导入。
+- 复杂审稿信规则增强拆分：
+  - 先识别 Editor / Reviewer 分块。
+  - 再按 Major / Minor / Editorial、Comment / Point / Concern、数字或字母编号拆分条目。
+  - 拆分后保留 Reviewer 标签，并用于英文 response draft、状态管理和章节映射。
 - Major / Minor / Editorial 自动初分。
 - 逐条英文 response draft。
 - 条目状态管理：草稿、处理中、已解决、暂缓。
@@ -152,7 +156,6 @@ Mentor 选题与引用
 
 当前仍未完成：
 
-- 复杂审稿信的高精度语义拆分。
 - 目标期刊专属审稿维度。
 
 ## 当前优先级建议

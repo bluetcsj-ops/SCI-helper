@@ -93,25 +93,99 @@ class ReviewerCommentRepository:
             return self._to_thread(record)
 
     def _split_raw_comments(self, raw_text: str) -> list[str]:
-        cleaned = raw_text.replace("\r\n", "\n").strip()
+        cleaned = self._normalize_raw_text(raw_text)
         if not cleaned:
             return []
 
-        pattern = re.compile(
-            r"(?im)^\s*(?=(?:reviewer\s+\d+|comment\s+\d+|major\s+comment|minor\s+comment|point\s+\d+|[0-9]+[.)])\b)"
-        )
-        starts = [match.start() for match in pattern.finditer(cleaned)]
-        if len(starts) <= 1:
-            paragraphs = [item.strip() for item in re.split(r"\n\s*\n+", cleaned) if item.strip()]
-            return paragraphs if len(paragraphs) > 1 else [cleaned]
-
-        starts.append(len(cleaned))
-        comments = [
-            cleaned[starts[index] : starts[index + 1]].strip()
-            for index in range(len(starts) - 1)
-            if cleaned[starts[index] : starts[index + 1]].strip()
-        ]
+        comments: list[str] = []
+        for heading, body in self._split_reviewer_blocks(cleaned):
+            body_comments = self._split_comment_body(body)
+            if not body_comments and heading:
+                body_comments = [heading]
+            for comment in body_comments:
+                if heading and heading.lower() not in comment[:180].lower():
+                    comments.append(f"{heading}\n{comment}".strip())
+                else:
+                    comments.append(comment.strip())
         return self._merge_heading_only_comments(comments) or [cleaned]
+
+    def _normalize_raw_text(self, raw_text: str) -> str:
+        cleaned = raw_text.replace("\r\n", "\n").replace("\r", "\n")
+        cleaned = cleaned.replace("•", "-").replace("·", "-")
+        cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+        return cleaned.strip()
+
+    def _split_reviewer_blocks(self, cleaned: str) -> list[tuple[str, str]]:
+        block_heading_pattern = re.compile(
+            r"(?im)^\s*(?:[-*]\s*)?"
+            r"((?:reviewer|referee)\s*#?\s*\d+|(?:associate|handling)?\s*editor|"
+            r"editorial\s+office|decision\s+letter)"
+            r"(?:\s*(?:comments?|report|remarks|recommendation))?\s*:?\s*$"
+        )
+        matches = list(block_heading_pattern.finditer(cleaned))
+        if not matches:
+            return [("", cleaned)]
+
+        blocks: list[tuple[str, str]] = []
+        if matches[0].start() > 0:
+            preface = cleaned[: matches[0].start()].strip()
+            if preface:
+                blocks.append(("Editor", preface))
+        for index, match in enumerate(matches):
+            heading = match.group(1).strip()
+            start = match.end()
+            end = matches[index + 1].start() if index + 1 < len(matches) else len(cleaned)
+            body = cleaned[start:end].strip()
+            blocks.append((self._normalize_reviewer_heading(heading), body))
+        return blocks
+
+    def _split_comment_body(self, body: str) -> list[str]:
+        body = body.strip()
+        if not body:
+            return []
+
+        marker_pattern = re.compile(
+            r"(?im)^\s*(?=(?:[-*]\s*)?(?:"
+            r"(?:major|minor|editorial)\s+(?:comment|point|concern|issue)s?\s*(?:#?\s*\d+)?"
+            r"|(?:comment|point|concern|issue|question|recommendation)\s*(?:#?\s*\d+|[A-Z])"
+            r"|(?:[0-9]{1,2}|[A-Za-z])[\).\]]"
+            r"|\([0-9]{1,2}\)"
+            r")\s*[:.)\]-]?\s+\S)"
+        )
+        starts = [match.start() for match in marker_pattern.finditer(body)]
+        if len(starts) > 1 or (starts and starts[0] == 0):
+            starts.append(len(body))
+            comments = [
+                body[starts[index] : starts[index + 1]].strip()
+                for index in range(len(starts) - 1)
+                if body[starts[index] : starts[index + 1]].strip()
+            ]
+            return self._merge_short_fragments(comments)
+
+        paragraphs = [item.strip() for item in re.split(r"\n\s*\n+", body) if item.strip()]
+        if len(paragraphs) > 1 and all(len(paragraph) >= 40 for paragraph in paragraphs):
+            return paragraphs
+        return [body]
+
+    def _merge_short_fragments(self, comments: list[str]) -> list[str]:
+        merged: list[str] = []
+        for comment in comments:
+            if merged and len(comment) < 35:
+                merged[-1] = f"{merged[-1]}\n{comment}"
+            else:
+                merged.append(comment)
+        return merged
+
+    def _normalize_reviewer_heading(self, heading: str) -> str:
+        clean_heading = re.sub(r"\s+", " ", heading.strip())
+        reviewer_match = re.search(r"(?i)(reviewer|referee)\s*#?\s*(\d+)", clean_heading)
+        if reviewer_match:
+            return f"Reviewer {reviewer_match.group(2)}"
+        if re.search(r"(?i)editor", clean_heading):
+            return "Editor"
+        if re.search(r"(?i)decision\s+letter", clean_heading):
+            return "Editor"
+        return clean_heading.title()
 
     def _merge_heading_only_comments(self, comments: list[str]) -> list[str]:
         merged: list[str] = []
@@ -131,10 +205,20 @@ class ReviewerCommentRepository:
         return merged
 
     def _infer_comment_type(self, comment: str) -> str:
-        head = comment[:180].lower()
-        if "minor" in head or "editorial" in head or "typo" in head:
-            return "minor" if "editorial" not in head else "editorial"
-        if "major" in head or "method" in head or "statistic" in head or "sample" in head:
+        head = comment[:260].lower()
+        if re.search(r"\b(editorial|typo|typographical|grammar|formatting|proofread|language)\b", head):
+            return "editorial"
+        if re.search(
+            r"\b(minor|clarify|please add|reference|figure|table|wording|"
+            r"cover letter|data availability|availability statement)\b",
+            head,
+        ):
+            return "minor"
+        if re.search(
+            r"\b(major|method|statistic|sample|endpoint|outcome|bias|validity|"
+            r"analysis|model|regression|data|cohort|inclusion|exclusion|limitation)\b",
+            head,
+        ):
             return "major"
         return "major"
 
