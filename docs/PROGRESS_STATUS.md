@@ -141,6 +141,9 @@ Mentor 选题与引用
   - 先识别 Editor / Reviewer 分块。
   - 再按 Major / Minor / Editorial、Comment / Point / Concern、数字或字母编号拆分条目。
   - 拆分后保留 Reviewer 标签，并用于英文 response draft、状态管理和章节映射。
+- 复杂 decision letter 异常拆分提示：
+  - 导入时识别长信只拆出 1 条、过短碎片、Reviewer 标签缺失等风险。
+  - 前端导入提示和单条审稿意见卡片显示醒目的人工核验提示。
 - Major / Minor / Editorial 自动初分。
 - 逐条英文 response draft。
 - 条目状态管理：草稿、处理中、已解决、暂缓。
@@ -160,7 +163,11 @@ Mentor 选题与引用
 
 当前仍未完成：
 
-- 更细颗粒度的期刊社群/栏目专属审稿口径。
+- Reviewer 98% 收尾清单：
+  - 更细颗粒度的期刊社群/栏目专属审稿口径，例如 Medical Physics、JACMP、Frontiers 不同栏目规则。
+  - Response to Reviewers 页码、行号、修改位置的人工占位与导出核验。
+  - 真实导入审稿意见后的 UI 完整验收，包括拆分、类型修正、状态保存、章节归属持久化、Writer 修改提醒和 3 个导出文件。
+  - 目标期刊专属 Reviewer 检查与 Author Guidelines 抓取结果的人工对照验收。
 
 ## 当前优先级建议
 

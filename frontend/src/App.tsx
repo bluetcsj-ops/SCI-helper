@@ -2196,6 +2196,15 @@ function buildWriterRevisionChecklistGroups(
   });
 }
 
+function getReviewerSplitWarning(thread: ReviewerCommentThread): string {
+  const match = thread.manuscript_change.match(/Split warning:\s*(.+?)\s*Manual correction required/i);
+  return match?.[1]?.trim() ?? "";
+}
+
+function countReviewerSplitWarnings(threads: ReviewerCommentThread[]): number {
+  return threads.filter((thread) => getReviewerSplitWarning(thread)).length;
+}
+
 function buildAiWritingRiskCheck(currentWriterSections: Record<string, string>): ReviewerCheckItem {
   const manuscriptText = Object.entries(currentWriterSections)
     .filter(([section]) => ["Abstract", "Methods / Results", "Discussion", "Cover Letter"].includes(section))
@@ -6221,7 +6230,12 @@ function App() {
       const importedThreads = await importReviewerCommentThreads(selectedProjectId, rawText);
       setReviewerCommentThreads((current) => [...current, ...importedThreads]);
       setReviewerRawImportText("");
-      setReviewerCommentNotice(`已导入 ${importedThreads.length} 条审稿意见，并生成英文回复草稿。`);
+      const splitWarningCount = countReviewerSplitWarnings(importedThreads);
+      setReviewerCommentNotice(
+        splitWarningCount
+          ? `已导入 ${importedThreads.length} 条审稿意见，其中 ${splitWarningCount} 条需要人工核对拆分结果。`
+          : `已导入 ${importedThreads.length} 条审稿意见，并生成英文回复草稿。`,
+      );
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "真实审稿意见导入失败。");
     } finally {
@@ -12320,6 +12334,7 @@ function App() {
                               ? manualSections
                               : inferReviewerRevisionSections(thread);
                             const hasManualRevisionSections = Boolean(manualSections.length);
+                            const splitWarning = getReviewerSplitWarning(thread);
                             return (
                             <article key={thread.id}>
                               <div className="reviewer-thread-head">
@@ -12366,6 +12381,12 @@ function App() {
                                   </select>
                                 </label>
                               </div>
+                              {splitWarning ? (
+                                <p className="reviewer-split-warning">
+                                  <strong>拆分需人工核验</strong>
+                                  <span>{splitWarning}</span>
+                                </p>
+                              ) : null}
                               <div className="reviewer-section-map">
                                 <div className="reviewer-section-map-head">
                                   <span>影响章节</span>

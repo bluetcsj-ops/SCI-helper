@@ -37,12 +37,19 @@ class ReviewerCommentRepository:
 
     def import_threads(self, project_id: str, raw_text: str) -> list[ReviewerCommentThread]:
         self._ensure_schema()
+        cleaned_text = self._normalize_raw_text(raw_text)
         comments = self._split_raw_comments(raw_text)
         with SessionLocal() as session:
             records: list[ReviewerCommentThreadRecord] = []
             for index, comment in enumerate(comments, start=1):
                 comment_type = self._infer_comment_type(comment)
                 reviewer_label = self._infer_reviewer_label(comment) or f"Reviewer import {index}"
+                split_warnings = self._detect_split_warnings(
+                    cleaned_text,
+                    comments,
+                    comment,
+                    reviewer_label,
+                )
                 record = ReviewerCommentThreadRecord(
                     project_id=project_id,
                     reviewer_label=reviewer_label,
@@ -50,7 +57,7 @@ class ReviewerCommentRepository:
                     status="draft",
                     comment_text=comment,
                     response_draft=self._build_response_draft(comment, comment_type),
-                    manuscript_change=self._build_manuscript_change(comment_type),
+                    manuscript_change=self._build_manuscript_change(comment_type, split_warnings),
                     manual_revision_sections_json="[]",
                 )
                 session.add(record)
@@ -226,6 +233,22 @@ class ReviewerCommentRepository:
         match = re.search(r"(?i)\b(reviewer\s+\d+|editor|associate editor)\b", comment[:160])
         return match.group(1).title() if match else ""
 
+    def _detect_split_warnings(
+        self,
+        cleaned_text: str,
+        comments: list[str],
+        comment: str,
+        reviewer_label: str,
+    ) -> list[str]:
+        warnings: list[str] = []
+        if len(comments) == 1 and len(cleaned_text) > 900:
+            warnings.append("Only one imported item was detected from a long decision letter.")
+        if len(comment.strip()) < 45:
+            warnings.append("This imported item is unusually short and may be a heading fragment.")
+        if reviewer_label.lower().startswith("reviewer import"):
+            warnings.append("Reviewer label could not be inferred from the imported text.")
+        return warnings
+
     def _build_response_draft(self, comment: str, comment_type: str) -> str:
         focus = "major methodological concern" if comment_type == "major" else "comment"
         return (
@@ -236,12 +259,19 @@ class ReviewerCommentRepository:
             f"Reviewer comment to address: \"{comment[:260].strip()}\""
         )
 
-    def _build_manuscript_change(self, comment_type: str) -> str:
+    def _build_manuscript_change(self, comment_type: str, split_warnings: list[str] | None = None) -> str:
         if comment_type == "editorial":
-            return "Revise wording, terminology, or formatting in the relevant manuscript section."
-        if comment_type == "minor":
-            return "Clarify the relevant sentence or paragraph and verify consistency with the final manuscript."
-        return "Revise the relevant Methods, Results, or Discussion section and add traceable evidence for the response."
+            change = "Revise wording, terminology, or formatting in the relevant manuscript section."
+        elif comment_type == "minor":
+            change = "Clarify the relevant sentence or paragraph and verify consistency with the final manuscript."
+        else:
+            change = "Revise the relevant Methods, Results, or Discussion section and add traceable evidence for the response."
+        if split_warnings:
+            return (
+                f"{change} Split warning: {'; '.join(split_warnings)} "
+                "Manual correction required before final response."
+            )
+        return change
 
     def _normalize_comment_type(self, value: str) -> str:
         clean_value = value.strip().lower()
