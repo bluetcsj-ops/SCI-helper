@@ -131,6 +131,9 @@ Mentor → Vera Protocol → Data Lin → Alex Writer → Reviewer
 - 高级模型 OR 报告边界检查：
   - 确认 Logistic OR 未被写成因果结论或已验证预测模型
   - 核对 `Pass` vs `non-Pass` 编码、事件数、收敛、CI、P 值和样本量限制
+- AI 写作痕迹与模板化风险检查：
+  - 检查未替换占位符、过度宣传或因果化表述、AI 模板语、非英文残留
+  - 联动投稿包中的 Generative AI assistance disclosure 复核项
 - 深度审稿意见。
 - Response to Reviewers 草稿。
 - 真实审稿意见导入。

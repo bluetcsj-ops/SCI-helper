@@ -1454,6 +1454,7 @@ function buildSubmissionPackageChecklist(params: {
   const reviewerRedCount = reviewerChecks.filter((item) => item.severity === "red").length;
   const reviewerOrangeCount = reviewerChecks.filter((item) => item.severity === "orange").length;
   const formalTestReport = statisticsReport?.formal_test_report ?? null;
+  const aiWritingRiskCheck = reviewerChecks.find((item) => item.title === "AI 写作痕迹与模板化风险");
   const items: SubmissionChecklistItem[] = [
     {
       title: "研究方案",
@@ -1541,7 +1542,9 @@ function buildSubmissionPackageChecklist(params: {
       title: "Generative AI assistance disclosure",
       status: writerCoverLetterDraft ? "review" : "blocked",
       detail: writerCoverLetterDraft
-        ? "已生成英文占位声明；如使用 AI 辅助写作或编辑，需人工确认工具名称、版本/模型、来源和人工核查。"
+        ? aiWritingRiskCheck?.severity === "orange"
+          ? `已生成英文占位声明；Reviewer 发现 ${aiWritingRiskCheck.status}，需人工确认 AI 使用披露和逐句润色。`
+          : "已生成英文占位声明；如使用 AI 辅助写作或编辑，需人工确认工具名称、版本/模型、来源和人工核查。"
         : "缺少 AI assistance 英文占位声明。",
     },
     {
@@ -2092,6 +2095,54 @@ function buildWriterRevisionChecklistGroups(
   });
 }
 
+function buildAiWritingRiskCheck(currentWriterSections: Record<string, string>): ReviewerCheckItem {
+  const manuscriptText = Object.entries(currentWriterSections)
+    .filter(([section]) => ["Abstract", "Methods / Results", "Discussion", "Cover Letter"].includes(section))
+    .map(([section, value]) => `${section}\n${value}`)
+    .join("\n\n");
+  const lower = manuscriptText.toLowerCase();
+  const riskFlags: string[] = [];
+
+  if (/\[[^\]]*(to be confirmed|insert|replace|manual|tbd)[^\]]*\]/i.test(manuscriptText)) {
+    riskFlags.push("Unresolved placeholders remain in manuscript-facing text.");
+  }
+  if (/\b(revolutionary|groundbreaking|novel breakthrough|paradigm shift|game-changing|unprecedented)\b/i.test(manuscriptText)) {
+    riskFlags.push("Promotional or overclaiming language may be present.");
+  }
+  if (/\b(proves|demonstrates conclusively|definitively|caused|causal effect|guarantees|predicts with high accuracy)\b/i.test(manuscriptText)) {
+    riskFlags.push("Unsupported causal, definitive, or predictive language may be present.");
+  }
+  if (/\b(as an ai language model|this manuscript was generated|in conclusion, this study highlights the importance of)\b/i.test(manuscriptText)) {
+    riskFlags.push("Template-like or AI-associated wording may be present.");
+  }
+  if (containsCjkText(manuscriptText)) {
+    riskFlags.push("Non-English text remains in manuscript-facing sections.");
+  }
+  if (lower.includes("generative ai use: [to be confirmed") || lower.includes("declaration of generative ai use: [to be confirmed")) {
+    riskFlags.push("Generative AI assistance disclosure remains unresolved.");
+  }
+  if (!manuscriptText.trim()) {
+    riskFlags.push("No manuscript-facing text is available for AI-writing risk review.");
+  }
+
+  const severity: ReviewerCheckSeverity = riskFlags.some((flag) =>
+    /non-english|unsupported causal|unresolved placeholders/i.test(flag)
+  )
+    ? "orange"
+    : riskFlags.length
+      ? "orange"
+      : "green";
+
+  return {
+    title: "AI 写作痕迹与模板化风险",
+    severity,
+    status: riskFlags.length ? `${riskFlags.length} 项需复核` : "未发现明显规则型风险",
+    detail: riskFlags.slice(0, 3).join("；") || "当前规则未发现明显 AI 模板语、未替换占位符或夸大表述。",
+    recommendation:
+      "逐句人工润色英文稿件；确认是否需要 generative AI assistance disclosure，并避免模板化、夸大、因果化或未证实显著性表述。",
+  };
+}
+
 function buildReviewerChecks(params: {
   protocolHasContent: boolean;
   protocol: ProjectProtocol | null;
@@ -2099,6 +2150,7 @@ function buildReviewerChecks(params: {
   statisticsReport: DataStatisticsReport | null;
   advancedModelFitReport: AdvancedModelFitReport | null;
   writerMethodsResultsDraft: WriterMethodsResultsDraft | null;
+  currentWriterSections: Record<string, string>;
   writerIntroductionDraftForm: WriterIntroductionDraftUpdate;
   citationIssueCount: number;
   candidateReferenceCount: number;
@@ -2111,12 +2163,14 @@ function buildReviewerChecks(params: {
     statisticsReport,
     advancedModelFitReport,
     writerMethodsResultsDraft,
+    currentWriterSections,
     writerIntroductionDraftForm,
     citationIssueCount,
     candidateReferenceCount,
     reminderSummary,
   } = params;
   const formalTestReport = statisticsReport?.formal_test_report ?? null;
+  const aiWritingRiskCheck = buildAiWritingRiskCheck(currentWriterSections);
   const advancedModelCheckItem: ReviewerCheckItem | null = advancedModelFitReport
     ? {
         title:
@@ -2242,6 +2296,7 @@ function buildReviewerChecks(params: {
         : "先完成 Data Lin 统计草案，再返回 Alex Writer 生成 Methods / Results。",
     },
     ...(advancedModelCheckItem ? [advancedModelCheckItem] : []),
+    aiWritingRiskCheck,
     ...radiotherapyCheckItems,
     {
       title: "Introduction 引用追溯",
@@ -3985,6 +4040,27 @@ function App() {
     () => buildIntroductionCitationQualityIssues(introductionFieldCitationMaps),
     [introductionFieldCitationMaps],
   );
+  const reviewerManuscriptSections = useMemo<Record<string, string>>(
+    () => ({
+      Introduction: [
+        manuscriptEnglishText(writerIntroductionDraftForm.background_paragraph, ""),
+        manuscriptEnglishText(writerIntroductionDraftForm.gap_paragraph, ""),
+        manuscriptEnglishText(writerIntroductionDraftForm.objective_paragraph, ""),
+      ]
+        .map((paragraph) => paragraph.trim())
+        .filter(Boolean)
+        .join("\n\n"),
+      "Methods / Results": writerMethodsResultsDraft
+        ? [
+            ...writerMethodsResultsDraft.methodsParagraphs,
+            ...writerMethodsResultsDraft.resultsParagraphs,
+            ...writerMethodsResultsDraft.formalTestLines,
+            ...writerMethodsResultsDraft.chartLines,
+          ].join("\n\n")
+        : "",
+    }),
+    [writerIntroductionDraftForm, writerMethodsResultsDraft],
+  );
   const reviewerChecks = useMemo(
     () =>
       buildReviewerChecks({
@@ -3994,6 +4070,7 @@ function App() {
         statisticsReport,
         advancedModelFitReport,
         writerMethodsResultsDraft,
+        currentWriterSections: reviewerManuscriptSections,
         writerIntroductionDraftForm,
         citationIssueCount: introductionCitationQualityIssues.length,
         candidateReferenceCount: mentorCandidateReferences.length,
@@ -4006,11 +4083,16 @@ function App() {
       statisticsReport,
       advancedModelFitReport,
       writerMethodsResultsDraft,
+      reviewerManuscriptSections,
       writerIntroductionDraftForm,
       introductionCitationQualityIssues.length,
       mentorCandidateReferences.length,
       reminderSummary,
     ],
+  );
+  const aiWritingRiskCheck = useMemo(
+    () => reviewerChecks.find((item) => item.title === "AI 写作痕迹与模板化风险"),
+    [reviewerChecks],
   );
   const reviewerDeepComments = useMemo(
     () =>
@@ -4186,7 +4268,7 @@ function App() {
   );
   const currentWriterSections = useMemo(
     () => {
-      const generatedSections = buildCurrentWriterSectionMap({
+      const generatedWriterSections = buildCurrentWriterSectionMap({
         writerIntroductionDraftForm,
         writerMethodsResultsDraft,
         writerDiscussionDraft,
@@ -4197,7 +4279,7 @@ function App() {
         Object.entries(restoredWriterSections).filter(([, value]) => value.trim().length > 0),
       );
       return {
-        ...generatedSections,
+        ...generatedWriterSections,
         ...editedRestoredSections,
       };
     },
@@ -11938,6 +12020,22 @@ function App() {
                         <strong>{reviewerChecks.filter((item) => item.severity === "green").length}</strong>
                       </article>
                     </div>
+
+                    {aiWritingRiskCheck ? (
+                      <section className={`reviewer-ai-risk-card risk-${aiWritingRiskCheck.severity}`}>
+                        <div className="reviewer-check-head">
+                          <div>
+                            <span className={`status-badge risk-${aiWritingRiskCheck.severity}`}>
+                              {riskLabels[aiWritingRiskCheck.severity]}
+                            </span>
+                            <strong>{aiWritingRiskCheck.title}</strong>
+                          </div>
+                          <small>{aiWritingRiskCheck.status}</small>
+                        </div>
+                        <p>{aiWritingRiskCheck.detail}</p>
+                        <em>{aiWritingRiskCheck.recommendation}</em>
+                      </section>
+                    ) : null}
 
                     <section className="reviewer-deep-comments">
                       <div className="reviewer-deep-head">

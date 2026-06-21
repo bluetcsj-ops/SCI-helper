@@ -2218,6 +2218,40 @@ button {
   background: #eef8f1;
 }
 
+.reviewer-ai-risk-card {
+  display: grid;
+  gap: 10px;
+  border: 2px solid rgba(217, 119, 6, 0.42);
+  border-radius: 8px;
+  padding: 14px;
+  background: #fff8eb;
+  box-shadow: 0 14px 32px rgba(217, 119, 6, 0.14);
+}
+
+.reviewer-ai-risk-card.risk-red {
+  border-color: rgba(196, 63, 63, 0.45);
+  background: #fff0f0;
+  box-shadow: 0 14px 32px rgba(196, 63, 63, 0.14);
+}
+
+.reviewer-ai-risk-card.risk-green {
+  border-color: rgba(47, 163, 124, 0.36);
+  background: #eef8f1;
+  box-shadow: 0 14px 32px rgba(47, 163, 124, 0.12);
+}
+
+.reviewer-ai-risk-card p,
+.reviewer-ai-risk-card em {
+  margin: 0;
+  color: #4f6074;
+  line-height: 1.55;
+}
+
+.reviewer-ai-risk-card em {
+  color: #8c4d10;
+  font-weight: 800;
+}
+
 .reviewer-deep-comments {
   display: grid;
   gap: 12px;
