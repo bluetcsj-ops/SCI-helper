@@ -26,6 +26,7 @@ import {
   dismissProjectReminder,
   draftProjectProtocol,
   extractProjectProtocol,
+  fetchJournalGuidelines,
   generateProjectPlanDraftFromProtocol,
   getAgents,
   getCurrentUser,
@@ -543,7 +544,7 @@ function buildChartSvg(chart: ChartSpec, chartStyle: ChartStyleId): string {
   <g font-family="Arial, 'Microsoft YaHei', sans-serif">
 ${rows}
   </g>
-  <text x="40" y="${narrativeY - 26}" font-family="Arial, 'Microsoft YaHei', sans-serif" font-size="16" font-weight="700" fill="${style.titleColor}">图表说明</text>
+  <text x="40" y="${narrativeY - 26}" font-family="Arial, 'Microsoft YaHei', sans-serif" font-size="16" font-weight="700" fill="${style.titleColor}">Chart note</text>
   ${narrative}
 </svg>
 `;
@@ -560,6 +561,67 @@ function hasProtocolContent(protocol: ProjectProtocol | null): boolean {
   }
 
   return protocolFields.some(({ key }) => protocol[key].trim().length > 0);
+}
+
+function containsCjkText(value: string | null | undefined): boolean {
+  return /[\u3400-\u9fff]/.test(value ?? "");
+}
+
+function manuscriptEnglishText(value: string | null | undefined, fallback: string): string {
+  const trimmed = value?.trim() ?? "";
+  if (!trimmed || containsCjkText(trimmed)) {
+    return fallback;
+  }
+  return trimmed;
+}
+
+function manuscriptStudyQuestion(protocol: ProjectProtocol | null, selectedProject?: Project | null): string {
+  const source = protocol?.research_question?.trim() || selectedProject?.title || "";
+  return manuscriptEnglishText(
+    source,
+    "Can planning parameters, patient-specific QA metrics, or treatment delivery log files identify high-risk radiation therapy plans or abnormal quality-assurance results early?",
+  );
+}
+
+function manuscriptStudyDesign(protocol: ProjectProtocol | null): string {
+  return manuscriptEnglishText(
+    protocol?.study_type,
+    "single-center retrospective radiation therapy physics study with de-identified structured data and reproducible analysis workflows",
+  );
+}
+
+function manuscriptStatisticalPlan(protocol: ProjectProtocol | null): string {
+  return manuscriptEnglishText(
+    protocol?.statistical_plan,
+    "Descriptive statistics, between-group differences, and effect sizes will be prioritized; predictive analyses require cross-validation, calibration assessment, and external review.",
+  );
+}
+
+function manuscriptReviewerDecision(value: string | null | undefined): string {
+  return manuscriptEnglishText(
+    value,
+    "The draft can proceed to a pre-submission revision round, with manual review still required.",
+  );
+}
+
+function manuscriptRequiredFieldName(value: string): string {
+  const normalized = value.trim().toLowerCase();
+  const labels: Record<string, string> = {
+    "患者匿名 id": "de-identified patient ID",
+    "计划系统版本": "treatment planning system version",
+    "主要终点指标": "primary endpoint variable",
+    "整合 dicom rtdose, rtstruct, rtplan": "integrated DICOM RTDose, RTStruct, and RTPlan data",
+    "形成计划级特征表": "plan-level feature table",
+    "qa 结果标签和设备/部位分层变量": "QA result labels and device/site stratification variables",
+  };
+  return labels[normalized] ?? manuscriptEnglishText(value, "project-specific field requiring English definition");
+}
+
+function manuscriptChartLine(title: string, narrative: string): string {
+  return `${manuscriptEnglishText(title, "Chart summary")}: ${manuscriptEnglishText(
+    narrative,
+    "Chart narrative requires an English rewrite before manuscript use.",
+  )}`;
 }
 
 function mentorCardToProtocolUpdate(card: MentorRecommendationCard): ProjectProtocolUpdate {
@@ -1002,11 +1064,13 @@ function buildWriterMethodsResultsDraft(
         "Advanced model fitting has not yet been completed; do not report regression estimates, odds ratios, confidence intervals, or P values from an advanced model.",
       ];
   const chartLines = statisticsReport.chart_specs.slice(0, 5).map(
-    (chart) => `${chart.title}: ${chart.narrative}`,
+    (chart) => manuscriptChartLine(chart.title, chart.narrative),
   );
   const missingItems = [
     qualityReport.missing_required_fields.length
-      ? `The data requirement is missing field(s): ${qualityReport.missing_required_fields.join(", ")}.`
+      ? `The data requirement is missing field(s): ${qualityReport.missing_required_fields
+          .map(manuscriptRequiredFieldName)
+          .join(", ")}.`
       : null,
     qualityReport.issues.length
       ? `The CSV quality report still contains ${qualityReport.issues.length} issue(s) requiring review.`
@@ -1026,7 +1090,10 @@ function buildWriterMethodsResultsDraft(
     radiotherapyFields.isRadiotherapyPlanQuality
       ? "Treatment planning system version, dose-calculation algorithm, gamma criteria, and structure naming rules still require manual confirmation."
       : null,
-    statisticsReport.next_step || null,
+      manuscriptEnglishText(
+        statisticsReport.next_step,
+        "Confirm the grouping variable and primary outcome before proceeding to formal statistical testing, figure generation, and Results drafting.",
+      ) || null,
   ].filter(Boolean) as string[];
 
   return {
@@ -1038,7 +1105,10 @@ function buildWriterMethodsResultsDraft(
             ...radiotherapyFields.workflowFields,
           ].join(", ")}. These variables support descriptive summaries of treatment site, technique, prescription dose, target coverage, OAR dose metrics, patient-specific QA, delivery time, monitor units, and plan complexity.`
         : null,
-      statisticsReport.methods_draft,
+      manuscriptEnglishText(
+        statisticsReport.methods_draft,
+        "Descriptive statistics were generated for the selected numeric outcome variables. Descriptive summaries were stratified by the selected grouping variable when available. Formal statistical testing remains pending.",
+      ),
       formalTestReport
         ? `Formal testing was performed only after manual confirmation of the study design, endpoint definitions, de-identification status, missing-data handling, statistical assumptions, and multiplicity boundaries. The current method version is ${formalTestReport.method_version}.`
         : "Formal hypothesis testing has not yet been performed; P-value-based analyses should be described only as planned or pending analyses.",
@@ -1047,7 +1117,10 @@ function buildWriterMethodsResultsDraft(
         : "Advanced regression model fitting has not yet been completed; regression estimates should be described only as planned exploratory analyses.",
     ].filter(Boolean) as string[],
     resultsParagraphs: [
-      statisticsReport.results_draft,
+      manuscriptEnglishText(
+        statisticsReport.results_draft,
+        `The current CSV included ${statisticsReport.row_count} records. Descriptive summaries were generated, but manuscript-level interpretation requires English review and formal statistical confirmation.`,
+      ),
       radiotherapyFields.isRadiotherapyPlanQuality && radiotherapyNumericColumns.length
         ? `Radiotherapy-specific descriptive endpoints included: ${radiotherapyNumericColumns.join("; ")}. These summaries should be interpreted as workflow-test outputs until the treatment planning system version, dose-calculation algorithm, contouring rules, and QA criteria are confirmed.`
         : null,
@@ -1103,7 +1176,7 @@ function buildWriterDiscussionDraft(params: {
     .slice(0, 2)
     .map((comparison) => comparison.interpretation);
   const formalFindings = formalTestReport?.results.length
-    ? formalTestReport.results.slice(0, 3).map((result) => `${result.outcome_column}：${result.interpretation}`)
+    ? formalTestReport.results.slice(0, 3).map((result) => `${result.outcome_column}: ${result.interpretation}`)
     : [];
   const keyFindings = [
     ...numericFindings,
@@ -1112,9 +1185,7 @@ function buildWriterDiscussionDraft(params: {
   ].slice(0, 5);
 
   const interpretationParagraphs = [
-    protocol?.research_question
-      ? `The Discussion should be organized around the study question: ${protocol.research_question}. The current results should be interpreted as preliminary evidence for this specific question rather than as a general conclusion for all radiation therapy settings.`
-      : "The Discussion still requires a clearly defined study question before the main findings can be interpreted around the primary endpoint.",
+    `The Discussion should be organized around the study question: ${manuscriptStudyQuestion(protocol)}. The current results should be interpreted as preliminary evidence for this specific question rather than as a general conclusion for all radiation therapy settings.`,
     formalTestReport
       ? "When formal test results are available, the Discussion may address directionality, effect size, and clinical meaning, but statistical significance should not be equated directly with clinical importance."
       : "Because formal testing has not yet been performed, the Discussion should be limited to descriptive trends, workflow feasibility, and planned validation; it should not claim statistical significance.",
@@ -1152,7 +1223,10 @@ function buildWriterDiscussionDraft(params: {
   const futureWork = [
     "Re-run the Data Lin quality-control, statistical, and Writer handoff workflow using the final de-identified study dataset.",
     "Add journal-specific figures, subgroup analyses, or sensitivity analyses as required by the target journal and study design.",
-    reviewerDeepComments?.revisionPriorities[0] ?? "Complete manual pre-submission review according to the Reviewer checklist.",
+    manuscriptEnglishText(
+      reviewerDeepComments?.revisionPriorities[0],
+      "Complete manual pre-submission review according to the Reviewer checklist.",
+    ),
   ];
 
   const cautionNotes = [
@@ -1200,12 +1274,13 @@ function buildWriterAbstractDraft(params: {
   const background = candidateReferenceCount
     ? `Radiation therapy research increasingly depends on traceable clinical data, reproducible analysis workflows, and transparent citation support. The current draft is supported by ${candidateReferenceCount} candidate references that require final manual verification.`
     : "Radiation therapy research increasingly depends on traceable clinical data and reproducible analysis workflows, but this draft still needs verified literature support before submission.";
-  const objective = protocol?.research_question
-    ? `To evaluate the study question: ${protocol.research_question}`
-    : "To evaluate a radiation therapy research workflow using structured protocol, data quality, statistical summary, and writing-review handoff steps.";
+  const objective = `To evaluate the study question: ${manuscriptStudyQuestion(protocol)}`;
   const methods = [
     `A structured CSV dataset (${qualityReport.file_name}) with ${qualityReport.row_count} rows and ${qualityReport.column_count} columns was processed through field typing, missingness review, privacy screening, and statistical summarization.`,
-    statisticsReport.methods_draft,
+    manuscriptEnglishText(
+      statisticsReport.methods_draft,
+      "Descriptive statistics were generated for the selected numeric outcome variables, and formal statistical testing remains pending.",
+    ),
   ].join(" ");
   const results = firstFormalResult
     ? `The main formal test result was ${firstFormalResult.interpretation}. Descriptive summaries and chart specifications were generated for reviewer and writer handoff.`
@@ -1219,7 +1294,7 @@ function buildWriterAbstractDraft(params: {
     "radiation therapy",
     "clinical data workflow",
     "statistical reporting",
-    protocol?.study_type?.trim() || "manuscript drafting",
+    manuscriptStudyDesign(protocol),
     formalTestReport ? "hypothesis testing" : "descriptive statistics",
   ];
   const cautionNotes = [
@@ -1265,7 +1340,7 @@ function buildWriterCoverLetterDraft(params: {
   const highRiskCount = reviewerChecks.filter((item) => item.severity === "red").length;
   const reviewNeededCount = reviewerChecks.filter((item) => item.severity === "orange").length;
   const formalTestReport = statisticsReport?.formal_test_report ?? null;
-  const manuscriptTitle = protocol?.research_question?.trim() || selectedProject.title;
+  const manuscriptTitle = manuscriptStudyQuestion(protocol, selectedProject);
   const contributionParagraphs = [
     `We are pleased to submit the manuscript entitled "${manuscriptTitle}" for consideration. This work is prepared within a structured radiation therapy research workflow that links protocol definition, data quality review, statistical reporting, manuscript drafting, and pre-submission review.`,
     writerAbstractDraft.objective,
@@ -1281,14 +1356,48 @@ function buildWriterCoverLetterDraft(params: {
       ? `Methods transparency: statistical summaries were generated through the Data Lin workflow, with ${statisticsReport.numeric_summaries.length} numeric summaries and ${statisticsReport.chart_specs.length} chart specifications available for manuscript handoff.`
       : "Methods transparency: statistical reporting must be completed and approved before submission.",
     reviewerDeepComments
-      ? `Pre-submission review status: ${reviewerDeepComments.decision}.`
+      ? `Pre-submission review status: ${manuscriptReviewerDecision(reviewerDeepComments.decision)}.`
       : "Pre-submission review status: Reviewer checks should be completed before final submission.",
+  ];
+  const submissionStatements: SubmissionStatementDraft[] = [
+    {
+      title: "Ethics / IRB statement",
+      statement: "Ethics approval: [to be confirmed; insert IRB committee name, approval number, waiver, or non-human-subjects determination].",
+      status: "review",
+    },
+    {
+      title: "Consent statement",
+      statement: "Informed consent: [to be confirmed; describe consent obtained, consent waiver, or retrospective de-identified data basis].",
+      status: "review",
+    },
+    {
+      title: "Conflict of interest statement",
+      statement: "Conflict of interest: [to be confirmed; declare no conflicts or list relevant financial/non-financial relationships].",
+      status: "review",
+    },
+    {
+      title: "Funding statement",
+      statement: "Funding: [to be confirmed; list grant numbers and funders, or state that no specific funding was received].",
+      status: "review",
+    },
+    {
+      title: "Data availability statement",
+      statement: "Data availability: [to be confirmed; specify repository, access restrictions, institutional approval requirements, or de-identified data sharing limitations].",
+      status: "review",
+    },
+    {
+      title: "Generative AI assistance disclosure",
+      statement: "Declaration of generative AI use: [to be confirmed; if AI-assisted editing was used, disclose tool name, version/model, source, and human verification].",
+      status: "review",
+    },
   ];
   const compliancePlaceholders = [
     "[Ethics approval / IRB number: to be completed manually]",
     "[Patient consent or waiver statement: to be completed manually]",
     "[Conflict of interest statement: to be completed manually]",
     "[Funding statement: to be completed manually]",
+    "[Data availability statement: to be completed manually]",
+    "[Generative AI assistance disclosure: to be completed manually if applicable]",
     "[Corresponding author contact information: to be completed manually]",
   ];
   const manualChecklist = [
@@ -1308,6 +1417,7 @@ function buildWriterCoverLetterDraft(params: {
     manuscriptLine: `Manuscript title: ${manuscriptTitle}`,
     contributionParagraphs,
     transparencyStatements,
+    submissionStatements,
     compliancePlaceholders,
     closingParagraph:
       "We believe this manuscript may be of interest to readers focused on radiation therapy research methods, clinical data workflows, and reproducible manuscript development. Thank you for considering our submission.",
@@ -1398,6 +1508,41 @@ function buildSubmissionPackageChecklist(params: {
       detail: writerCoverLetterDraft
         ? "投稿信草稿已形成，但伦理、通讯作者、利益冲突和期刊信息必须人工补充。"
         : "缺少 Cover Letter 草稿。",
+    },
+    {
+      title: "Ethics / IRB statement",
+      status: writerCoverLetterDraft ? "review" : "blocked",
+      detail: writerCoverLetterDraft
+        ? "已生成英文占位声明；需人工填入 IRB 委员会、批准号、豁免或非人体研究判定。"
+        : "缺少 Ethics / IRB 英文占位声明。",
+    },
+    {
+      title: "Conflict of interest statement",
+      status: writerCoverLetterDraft ? "review" : "blocked",
+      detail: writerCoverLetterDraft
+        ? "已生成英文占位声明；需人工确认是否无利益冲突或列出相关关系。"
+        : "缺少 Conflict of interest 英文占位声明。",
+    },
+    {
+      title: "Funding statement",
+      status: writerCoverLetterDraft ? "review" : "blocked",
+      detail: writerCoverLetterDraft
+        ? "已生成英文占位声明；需人工填写基金名称、编号，或声明无专项资助。"
+        : "缺少 Funding 英文占位声明。",
+    },
+    {
+      title: "Data availability statement",
+      status: writerCoverLetterDraft ? "review" : "blocked",
+      detail: writerCoverLetterDraft
+        ? "已生成英文占位声明；需人工说明数据仓库、访问限制、伦理限制或脱敏共享边界。"
+        : "缺少 Data availability 英文占位声明。",
+    },
+    {
+      title: "Generative AI assistance disclosure",
+      status: writerCoverLetterDraft ? "review" : "blocked",
+      detail: writerCoverLetterDraft
+        ? "已生成英文占位声明；如使用 AI 辅助写作或编辑，需人工确认工具名称、版本/模型、来源和人工核查。"
+        : "缺少 AI assistance 英文占位声明。",
     },
     {
       title: "Reviewer 风险",
@@ -1575,6 +1720,8 @@ function buildJournalGuidelineCheck(params: {
   ]);
   const abstractText = currentWriterSections.Abstract ?? "";
   const abstractWords = countWords(abstractText);
+  const hasSubmissionStatement = (pattern: RegExp) =>
+    submissionPackageChecklist.items.some((item) => pattern.test(item.title));
   const detectedRules = [
     abstractWordLimit ? `Abstract word limit: ${abstractWordLimit} words` : null,
     keywordLimit ? `Keyword limit: ${keywordLimit}` : null,
@@ -1641,12 +1788,14 @@ function buildJournalGuidelineCheck(params: {
     {
       title: "Ethics / IRB statement",
       status: /\bethics?\b|\binstitutional review board\b|\birb\b/i.test(trimmedText)
-        ? submissionPackageChecklist.items.some((item) => item.title.includes("伦理")) ? "review" : "blocked"
+        ? hasSubmissionStatement(/ethics|irb/i) ? "review" : "blocked"
         : hasGuidelineText
           ? "review"
           : "blocked",
       guideline: "Check whether the guideline requires ethics approval, consent, waiver, or IRB statement.",
-      currentEvidence: "当前投稿包仍要求人工确认伦理审批、豁免或数据使用说明。",
+      currentEvidence: hasSubmissionStatement(/ethics|irb/i)
+        ? "Submission package includes an Ethics / IRB placeholder; final approval details still require manual completion."
+        : "当前投稿包仍要求人工确认伦理审批、豁免或数据使用说明。",
     },
     {
       title: "Conflict / funding / data availability",
@@ -1663,7 +1812,7 @@ function buildJournalGuidelineCheck(params: {
           : "Data availability rule not clearly detected.",
       ].join(" "),
       currentEvidence: writerCoverLetterDraft
-        ? "Cover Letter includes transparency placeholders, but final statements require manual completion."
+        ? "Cover Letter includes conflict, funding, and data availability placeholders; final statements require manual completion."
         : "Cover Letter is not generated yet.",
     },
     {
@@ -1802,9 +1951,9 @@ function buildCurrentWriterSectionMap(params: {
   } = params;
   return {
     "Introduction": [
-      writerIntroductionDraftForm.background_paragraph,
-      writerIntroductionDraftForm.gap_paragraph,
-      writerIntroductionDraftForm.objective_paragraph,
+      manuscriptEnglishText(writerIntroductionDraftForm.background_paragraph, ""),
+      manuscriptEnglishText(writerIntroductionDraftForm.gap_paragraph, ""),
+      manuscriptEnglishText(writerIntroductionDraftForm.objective_paragraph, ""),
     ]
       .map((paragraph) => paragraph.trim())
       .filter(Boolean)
@@ -2717,9 +2866,16 @@ interface WriterCoverLetterDraft {
   manuscriptLine: string;
   contributionParagraphs: string[];
   transparencyStatements: string[];
+  submissionStatements: SubmissionStatementDraft[];
   compliancePlaceholders: string[];
   closingParagraph: string;
   manualChecklist: string[];
+}
+
+interface SubmissionStatementDraft {
+  title: string;
+  statement: string;
+  status: "ready" | "review" | "blocked";
 }
 
 interface WriterOutlineDraft {
@@ -3498,6 +3654,8 @@ function App() {
     useState<JournalTemplateId>("medical_physics");
   const [journalGuidelineSourceUrl, setJournalGuidelineSourceUrl] = useState("");
   const [journalGuidelineText, setJournalGuidelineText] = useState("");
+  const [isJournalGuidelineFetching, setIsJournalGuidelineFetching] = useState(false);
+  const [journalGuidelineFetchNotice, setJournalGuidelineFetchNotice] = useState<string | null>(null);
   const [workflowStatus, setWorkflowStatus] = useState<string | null>(null);
   const [workflowSummary, setWorkflowSummary] = useState<WorkflowSummary | null>(null);
   const [selectedGroupColumn, setSelectedGroupColumn] = useState("");
@@ -3704,34 +3862,32 @@ function App() {
       .slice(0, 5);
     const introductionParagraphs = [
       {
-        title: "背景段",
-        purpose: "交代研究方向在放疗物理流程、计划质量、质控或临床执行中的现实意义。",
+        title: "Background paragraph",
+        purpose: "Explain why the topic matters for radiation therapy physics workflows, plan quality, quality assurance, or clinical implementation.",
         writingCue: referenceTitles.length
-          ? `可从这些确认可用文献切入背景：${referenceTitles.slice(0, 3).join("；")}。`
-          : "先用确认可用文献概括该方向为什么值得关注。",
+          ? `Use the confirmed candidate references to introduce the background, including: ${referenceTitles.slice(0, 3).join("; ")}.`
+          : "Use confirmed references to explain why this topic deserves attention.",
       },
       {
-        title: "研究空白段",
-        purpose: "指出既有研究尚未充分回答的本中心、本设备、本流程或本数据问题。",
-        writingCue: "只描述候选文献能支持的研究空白；不要写成系统综述结论或夸大为所有研究一致。",
+        title: "Knowledge gap paragraph",
+        purpose: "Identify the local workflow, equipment, process, or dataset question that prior work has not fully answered.",
+        writingCue: "Describe only the gap supported by the candidate references; do not overstate it as a systematic-review conclusion.",
       },
       {
-        title: "研究目的段",
-        purpose: "把背景和空白收束到本研究的具体问题、对象和主要终点。",
-        writingCue: protocol?.research_question
-          ? `可收束到当前研究问题：${protocol.research_question}`
-          : "补充 Project Protocol 后，再把本段收束到明确研究问题和主要终点。",
+        title: "Objective paragraph",
+        purpose: "Link the background and gap to the specific study question, study population or unit of analysis, and primary endpoint.",
+        writingCue: `Close this paragraph with the current study question: ${manuscriptStudyQuestion(protocol)}.`,
       },
     ];
     return {
       introductionParagraphs,
       referenceTitles,
       discussionDeferredNote:
-        "Discussion 暂不自动生成；请等待 Dr. Data Lin 完成正式结果确认后，再基于真实发现生成解释、对照和局限性段落。",
+        "Discussion is deferred until Data Lin has generated reviewed results; interpretation, comparison with literature, and limitations should be based on verified findings.",
       remainingChecks: [
-        "阅读全文确认候选文献是否真正支持拟写观点。",
-        "补充近 5-7 年同主题研究，确认是否存在更高质量证据。",
-        "在正式写作前核对 PMID、DOI、期刊名和引用格式。",
+        "Read the full text of candidate references to confirm that they support the planned statements.",
+        "Add recent studies from the past 5-7 years and check whether stronger evidence exists.",
+        "Verify PMID, DOI, journal names, and reference format before manuscript submission.",
       ],
     };
   }, [mentorCandidateReferences, protocol]);
@@ -5004,32 +5160,32 @@ function App() {
       "",
       `生成时间：${new Date().toLocaleString("zh-CN")}`,
       selectedProject ? `关联项目：${selectedProject.name} / ${selectedProject.title}` : "关联项目：未指定",
-      protocol?.research_question ? `研究问题：${protocol.research_question}` : "研究问题：待补充",
-      protocol?.primary_endpoint ? `主要终点：${protocol.primary_endpoint}` : "主要终点：待补充",
+      `Study question: ${manuscriptStudyQuestion(protocol, selectedProject)}`,
+      `Primary endpoint: ${manuscriptEnglishText(protocol?.primary_endpoint, "Primary endpoint requires an English definition before manuscript use.")}`,
       "",
-      "## Introduction 段落骨架",
+      "## Introduction Outline",
       ...writerOutlineDraft.introductionParagraphs.flatMap((paragraph) => [
         `### ${paragraph.title}`,
-        `- 写作目的：${paragraph.purpose}`,
-        `- 写作提示：${paragraph.writingCue}`,
+        `- Purpose: ${paragraph.purpose}`,
+        `- Writing cue: ${paragraph.writingCue}`,
         "",
       ]),
       "",
-      "## Introduction 可编辑草稿",
-      "### 背景段",
-      writerIntroductionDraftForm.background_paragraph.trim() ||
+      "## Editable Introduction Draft",
+      "### Background paragraph",
+      manuscriptEnglishText(writerIntroductionDraftForm.background_paragraph, "") ||
         writerOutlineDraft.introductionParagraphs[0]?.writingCue ||
-        "待撰写",
+        "Draft pending.",
       "",
-      "### 研究空白段",
-      writerIntroductionDraftForm.gap_paragraph.trim() ||
+      "### Knowledge gap paragraph",
+      manuscriptEnglishText(writerIntroductionDraftForm.gap_paragraph, "") ||
         writerOutlineDraft.introductionParagraphs[1]?.writingCue ||
-        "待撰写",
+        "Draft pending.",
       "",
-      "### 研究目的段",
-      writerIntroductionDraftForm.objective_paragraph.trim() ||
+      "### Objective paragraph",
+      manuscriptEnglishText(writerIntroductionDraftForm.objective_paragraph, "") ||
         writerOutlineDraft.introductionParagraphs[2]?.writingCue ||
-        "待撰写",
+        "Draft pending.",
       "",
       "## Discussion",
       writerOutlineDraft.discussionDeferredNote,
@@ -5091,19 +5247,19 @@ function App() {
       "",
       `导出时间：${new Date().toLocaleString("zh-CN")}`,
       selectedProject ? `关联项目：${selectedProject.name} / ${selectedProject.title}` : "关联项目：未指定",
-      protocol?.research_question ? `研究问题：${protocol.research_question}` : "研究问题：待补充",
-      protocol?.primary_endpoint ? `主要终点：${protocol.primary_endpoint}` : "主要终点：待补充",
+      `Study question: ${manuscriptStudyQuestion(protocol, selectedProject)}`,
+      `Primary endpoint: ${manuscriptEnglishText(protocol?.primary_endpoint, "Primary endpoint requires an English definition before manuscript use.")}`,
       "",
-      "## 正文草稿",
+      "## Manuscript Draft",
       "",
-      "### 背景段",
-      writerIntroductionDraftForm.background_paragraph.trim() || "待撰写",
+      "### Background paragraph",
+      manuscriptEnglishText(writerIntroductionDraftForm.background_paragraph, "Draft pending."),
       "",
-      "### 研究空白段",
-      writerIntroductionDraftForm.gap_paragraph.trim() || "待撰写",
+      "### Knowledge gap paragraph",
+      manuscriptEnglishText(writerIntroductionDraftForm.gap_paragraph, "Draft pending."),
       "",
-      "### 研究目的段",
-      writerIntroductionDraftForm.objective_paragraph.trim() || "待撰写",
+      "### Objective paragraph",
+      manuscriptEnglishText(writerIntroductionDraftForm.objective_paragraph, "Draft pending."),
       "",
       "## 已使用候选引用",
       ...(matchedReferences.length
@@ -5449,6 +5605,12 @@ function App() {
       "## Transparency statements",
       ...writerCoverLetterDraft!.transparencyStatements.map((item) => `- ${item}`),
       "",
+      "## Submission statements",
+      ...writerCoverLetterDraft!.submissionStatements.flatMap((item) => [
+        `### ${item.title}`,
+        item.statement,
+        "",
+      ]),
       "## Compliance placeholders",
       ...writerCoverLetterDraft!.compliancePlaceholders.map((item) => `- ${item}`),
       "",
@@ -5600,7 +5762,8 @@ function App() {
       ]),
       "## Boundaries",
       "- This is a local extraction from user-provided Author Guidelines text or source notes.",
-      "- It does not fetch or verify the live journal website.",
+      "- The guideline text may come from the URL fetch helper or manual paste.",
+      "- URL fetch can miss PDF, gated, scripted, or anti-bot content; verify the current journal website manually.",
       "- Final submission requirements must be confirmed in the current journal submission system.",
       "",
     ].join("\n");
@@ -5616,6 +5779,35 @@ function App() {
       link.remove();
     } finally {
       URL.revokeObjectURL(url);
+    }
+  }
+
+  async function handleFetchJournalGuidelines() {
+    const url = journalGuidelineSourceUrl.trim();
+    if (!url || isJournalGuidelineFetching) {
+      setJournalGuidelineFetchNotice("请先填写目标期刊 Author Guidelines URL。");
+      return;
+    }
+
+    setIsJournalGuidelineFetching(true);
+    setJournalGuidelineFetchNotice(null);
+    try {
+      const fetched = await fetchJournalGuidelines(url);
+      setJournalGuidelineSourceUrl(fetched.source_url);
+      setJournalGuidelineText(fetched.text);
+      setJournalGuidelineFetchNotice(
+        `${fetched.title ? `${fetched.title} · ` : ""}已抓取 ${fetched.character_count} 字符${
+          fetched.truncated ? "，内容已截断" : ""
+        }。请人工核对后再用于投稿。`,
+      );
+    } catch (caughtError) {
+      setJournalGuidelineFetchNotice(
+        caughtError instanceof Error
+          ? `${caughtError.message} 可改为手动粘贴 Author Guidelines 关键文本。`
+          : "抓取 Author Guidelines 失败，可改为手动粘贴关键文本。",
+      );
+    } finally {
+      setIsJournalGuidelineFetching(false);
     }
   }
 
@@ -10821,6 +11013,25 @@ function App() {
                             </ul>
                           </article>
                           <article className="writer-cover-letter-wide">
+                            <strong>Submission statements</strong>
+                            <div className="submission-checklist compact">
+                              {writerCoverLetterDraft.submissionStatements.map((item) => (
+                                <article className={`submission-check-item status-${item.status}`} key={item.title}>
+                                  <div>
+                                    <span className={`status-badge risk-${
+                                      item.status === "ready" ? "green" : item.status === "review" ? "orange" : "red"
+                                    }`}
+                                    >
+                                      {item.status === "ready" ? "已就绪" : item.status === "review" ? "需复核" : "阻断"}
+                                    </span>
+                                    <strong>{item.title}</strong>
+                                  </div>
+                                  <p>{item.statement}</p>
+                                </article>
+                              ))}
+                            </div>
+                          </article>
+                          <article className="writer-cover-letter-wide">
                             <strong>投稿前人工补充清单</strong>
                             <ul>
                               {writerCoverLetterDraft.manualChecklist.map((item) => (
@@ -10968,12 +11179,32 @@ function App() {
                       <div className="journal-guideline-inputs">
                         <label>
                           <span>Author Guidelines URL / 来源备注</span>
-                          <input
-                            value={journalGuidelineSourceUrl}
-                            placeholder="例如 https://.../author-guidelines"
-                            onChange={(event) => setJournalGuidelineSourceUrl(event.currentTarget.value)}
-                          />
+                          <div className="journal-guideline-url-row">
+                            <input
+                              value={journalGuidelineSourceUrl}
+                              placeholder="例如 https://.../author-guidelines"
+                              onChange={(event) => {
+                                setJournalGuidelineSourceUrl(event.currentTarget.value);
+                                setJournalGuidelineFetchNotice(null);
+                              }}
+                            />
+                            <button
+                              type="button"
+                              onClick={handleFetchJournalGuidelines}
+                              disabled={isJournalGuidelineFetching || !journalGuidelineSourceUrl.trim()}
+                            >
+                              {isJournalGuidelineFetching ? (
+                                <Loader2 aria-hidden="true" className="spin" size={15} />
+                              ) : (
+                                <RefreshCw aria-hidden="true" size={15} />
+                              )}
+                              <span>{isJournalGuidelineFetching ? "抓取中" : "抓取指南"}</span>
+                            </button>
+                          </div>
                         </label>
+                        {journalGuidelineFetchNotice ? (
+                          <p className="journal-guideline-fetch-notice">{journalGuidelineFetchNotice}</p>
+                        ) : null}
                         <label>
                           <span>粘贴 Author Guidelines 关键文本</span>
                           <textarea

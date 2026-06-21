@@ -82,10 +82,18 @@ Mentor → Vera Protocol → Data Lin → Alex Writer → Reviewer
 - Discussion 草稿。
 - Abstract 草稿。
 - Cover Letter 草稿。
+- 投稿声明占位模板：
+  - Ethics / IRB
+  - Consent
+  - Conflict of interest
+  - Funding
+  - Data availability
+  - Generative AI assistance disclosure
 - 投稿包检查清单。
 - 目标期刊模板。
 - Author Guidelines 本地规则校验：
   - 粘贴目标期刊 URL / 来源备注和指南关键文本
+  - 从普通 HTML Author Guidelines URL 抓取标题和正文文本，并自动填入本地规则校验框
   - 提取摘要字数、关键词、伦理、利益冲突、资助、数据可用性、图表和引用格式信号
   - 对照当前 Abstract、Cover Letter、投稿包和引用质控状态
 - 后端版本库：
@@ -229,7 +237,7 @@ $env:DATABASE_URL='sqlite:///:memory:'
 - Writer 版本库当前恢复 Introduction；派生章节可作为历史恢复内容优先显示、逐字段编辑、预览、diff、复制、导出，并可纳入新的版本快照，但不会直接写回后端全文字段。
 - Reviewer 真实意见拆分是规则型，复杂 decision letter 仍需人工校正。
 - Reviewer 到 Writer 的章节映射支持人工修正和持久化保存，但仍需人工对照原始 decision letter 最终确认。
-- 当前 Author Guidelines 校验第一版依赖用户粘贴文本，不自动抓取官网页面；正式投稿仍需在投稿系统中最终核对。
+- 当前 Author Guidelines 校验支持普通 HTML URL 抓取和手动粘贴；PDF、登录、强 JS 或反爬页面仍需手动粘贴，正式投稿仍需在投稿系统中最终核对。
 - Reviewer 是规则型自查，不替代真实同行评审。
 
 ## 本地启动方式
@@ -257,4 +265,4 @@ npm.cmd run dev -- --host 127.0.0.1 --port 3000
    - survival analysis
    - mixed-effects model
 4. 接入真实放疗专科样例数据。
-5. 做目标期刊官网规则自动抓取。
+5. 扩展目标期刊 PDF / 强 JS 页面规则抓取。

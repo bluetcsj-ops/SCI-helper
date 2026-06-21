@@ -14,6 +14,7 @@ import type {
   FormalTestReport,
   DashboardSummary,
   ItemStatus,
+  JournalGuidelineFetchResponse,
   MentorEvidenceReview,
   MentorEvidenceReviewUpdate,
   MentorRecommendationResponse,
@@ -85,6 +86,13 @@ export function getMentorRecommendations(payload: {
   return request<MentorRecommendationResponse>("/api/mentor/recommendations", {
     method: "POST",
     body: JSON.stringify(payload),
+  });
+}
+
+export function fetchJournalGuidelines(url: string): Promise<JournalGuidelineFetchResponse> {
+  return request<JournalGuidelineFetchResponse>("/api/journal/guidelines/fetch", {
+    method: "POST",
+    body: JSON.stringify({ url }),
   });
 }
 

@@ -1739,6 +1739,44 @@ button {
   resize: vertical;
 }
 
+.journal-guideline-url-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.journal-guideline-url-row button {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 8px;
+  padding: 0 14px;
+  background: #2f7ea8;
+  color: #ffffff;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.journal-guideline-url-row button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.journal-guideline-fetch-notice {
+  margin: 0;
+  border: 1px solid rgba(47, 126, 168, 0.14);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #f6fbfd;
+  color: #4f6074;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 .journal-guideline-detected {
   display: grid;
   gap: 8px;
@@ -2010,6 +2048,12 @@ button {
   background: #ffffff;
   font-size: 12px;
   font-weight: 800;
+}
+
+@media (max-width: 720px) {
+  .journal-guideline-url-row {
+    grid-template-columns: 1fr;
+  }
 }
 
 .writer-version-diff-list small {

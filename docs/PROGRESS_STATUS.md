@@ -23,7 +23,7 @@ Mentor 选题与引用
 | Prof. RadOnc Mentor | 74% | 可生成课题推荐、加载预备真实引用、复核候选引用、导出引用清单，并将推荐写入方案 |
 | Dr. Vera Protocol | 78% | 可编辑/保存研究方案，生成方案草案和执行计划草案，完成方案质量检查、方案-数据一致性检查、方案版本快照与导出 |
 | Dr. Data Lin | 95% | 可上传 CSV、选择预备 DATA、做质控/隐私检查/统计草案/图表/审计、一键联调 Writer，生成自主分析计划和高级模型计划，并可执行第一版 exploratory linear/logistic regression |
-| Alex Writer | 98% | 可生成英文 Introduction、Methods / Results、Discussion、Abstract、Cover Letter、投稿包检查清单、目标期刊模板和 Author Guidelines 本地规则校验，并支持放疗计划质量字段解读、高级模型结果来源与人工核验提示、后端版本归档、恢复 Introduction、版本差异查看、历史章节复制、全文恢复逐字段编辑和 Reviewer 修改提醒 |
+| Alex Writer | 99% | 可生成英文 Introduction、Methods / Results、Discussion、Abstract、Cover Letter、投稿包检查清单、目标期刊模板和 Author Guidelines URL 抓取/本地规则校验，并支持放疗计划质量字段解读、高级模型结果来源与人工核验提示、后端版本归档、恢复 Introduction、版本差异查看、历史章节复制、全文恢复逐字段编辑和 Reviewer 修改提醒 |
 | Rev. Dr. Helena Skov | 95% | 可生成投稿前规则清单、深度审稿意见、Response to Reviewers 草稿，并支持放疗专科风险检查、高级模型 OR 报告边界检查、真实审稿意见导入、逐条映射、英文回复导出、返修写作清单和章节归属持久化修正 |
 
 ## 已完成的关键闭环
@@ -104,9 +104,12 @@ Mentor 选题与引用
 - Abstract 草稿和导出 `abstract-draft.md`。
 - Cover Letter 草稿和导出 `cover-letter-draft.md`。
 - 投稿包检查清单和导出 `submission-package-checklist.md`。
+  - 可生成 Ethics / IRB、Consent、Conflict of interest、Funding、Data availability 和 Generative AI assistance disclosure 英文占位声明。
+  - 投稿包规则检查会把上述声明拆成独立复核项，避免 Author Guidelines 校验长期停留在缺材料状态。
 - 目标期刊模板和导出 `journal-submission-template.md`。
 - Author Guidelines 本地规则校验：
   - 可粘贴目标期刊 Author Guidelines URL / 来源备注和关键文本。
+  - 可从普通 HTML Author Guidelines URL 抓取标题和正文文本，自动填入本地规则校验框。
   - 提取 abstract word limit、keywords、ethics / IRB、conflict of interest、funding、data availability、figures / tables、reference style 等规则信号。
   - 与当前 Abstract、Cover Letter、投稿包和引用质控状态对照。
   - 导出 `journal-guideline-check.md`。
@@ -124,7 +127,7 @@ Mentor 选题与引用
 
 当前仍未完成：
 
-- 目标期刊官网规则自动抓取和网页解析。
+- 目标期刊官网规则自动抓取仍为 HTML 第一版；PDF、登录、强 JS 或反爬页面仍需手动粘贴。
 - 写作风格学习。
 
 ### 5. Rev. Dr. Helena Skov
@@ -159,4 +162,4 @@ Mentor 选题与引用
 3. 后续优先补：
    - 真实高级统计模型拟合
    - 真实放疗专科数据适配
-   - 目标期刊官网规则自动抓取
+   - 目标期刊 PDF / 强 JS 页面规则抓取

@@ -4120,18 +4120,18 @@ if __name__ == "__main__":
         if min_value == max_value:
             return ChartSpec(
                 id=f"hist-{self._normalize(column_name)}",
-                title=f"{column_name} 分布",
+                title=f"{column_name} distribution",
                 chart_type="histogram",
                 x_label=column_name,
-                y_label="病例数",
+                y_label="Record count",
                 points=[
                     ChartDataPoint(
                         label=str(round(min_value, 2)),
                         value=len(values),
-                        note="所有非空数值相同",
+                        note="All non-missing values are identical",
                     )
                 ],
-                narrative=f"{column_name} 的非空记录均为 {round(min_value, 4)}。",
+                narrative=f"All non-missing records for {column_name} had the same value: {round(min_value, 4)}.",
             )
 
         bin_count = max(3, min(8, round(sqrt(len(values)))))
@@ -4154,21 +4154,21 @@ if __name__ == "__main__":
 
         return ChartSpec(
             id=f"hist-{self._normalize(column_name)}",
-            title=f"{column_name} 分布",
+            title=f"{column_name} distribution",
             chart_type="histogram",
             x_label=column_name,
-            y_label="病例数",
+            y_label="Record count",
             points=points,
-            narrative=f"{column_name} 的取值范围为 {round(min_value, 4)} 至 {round(max_value, 4)}。",
+            narrative=f"The observed range for {column_name} was {round(min_value, 4)} to {round(max_value, 4)}.",
         )
 
     def _build_categorical_chart(self, summary: CategoricalSummary) -> ChartSpec:
         return ChartSpec(
             id=f"cat-{self._normalize(summary.column)}",
-            title=f"{summary.column} 构成",
+            title=f"{summary.column} composition",
             chart_type="bar",
             x_label=summary.column,
-            y_label="病例数",
+            y_label="Record count",
             points=[
                 ChartDataPoint(
                     label=level.value,
@@ -4177,7 +4177,7 @@ if __name__ == "__main__":
                 )
                 for level in summary.levels[:8]
             ],
-            narrative=f"{summary.column} 共显示前 {min(len(summary.levels), 8)} 个分类水平。",
+            narrative=f"The chart displays the first {min(len(summary.levels), 8)} category level(s) for {summary.column}.",
         )
 
     def _build_group_mean_chart(self, comparison: GroupComparisonDraft) -> ChartSpec | None:
@@ -4186,7 +4186,7 @@ if __name__ == "__main__":
 
         return ChartSpec(
             id=f"group-{self._normalize(comparison.group_column)}-{self._normalize(comparison.column)}",
-            title=f"{comparison.column} 分组均值",
+            title=f"{comparison.column} grouped mean",
             chart_type="bar",
             x_label=comparison.group_column,
             y_label=comparison.column,
@@ -4516,7 +4516,10 @@ if __name__ == "__main__":
             else "No grouping variable was specified. "
         )
         planned_tests = (
-            protocol.statistical_plan.strip()
+            self._english_manuscript_text(
+                protocol.statistical_plan.strip(),
+                "Descriptive statistics, between-group differences, and effect sizes will be prioritized; predictive analyses require cross-validation, calibration assessment, and external review.",
+            )
             or "Formal statistical tests will be selected according to variable distribution and study design."
         )
         return (
@@ -4526,6 +4529,13 @@ if __name__ == "__main__":
             f"At this stage, the workflow generates an exploratory statistical draft only "
             f"and does not report P values. Planned formal statistical approach: {planned_tests}"
         )
+
+    def _english_manuscript_text(self, value: str, fallback: str) -> str:
+        if not value.strip():
+            return fallback
+        if re.search(r"[\u3400-\u9fff]", value):
+            return fallback
+        return value
 
     def _build_results_draft(
         self,

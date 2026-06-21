@@ -102,6 +102,14 @@ export interface MentorRecommendationResponse {
   next_steps: string[];
 }
 
+export interface JournalGuidelineFetchResponse {
+  source_url: string;
+  title?: string | null;
+  text: string;
+  character_count: number;
+  truncated: boolean;
+}
+
 export interface MentorEvidenceReview {
   id: number;
   project_id: string;
