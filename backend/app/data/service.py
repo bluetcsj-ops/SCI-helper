@@ -382,9 +382,19 @@ class DataWorkspaceService:
             for column in columns
             if column.inferred_type != "numeric" and 1 < column.unique_count <= 12
         ]
+        binary_categorical_columns = [
+            column.name
+            for column in columns
+            if column.inferred_type != "numeric" and column.unique_count == 2
+        ]
         selected_outcomes = [
             column for column in (outcome_columns or []) if column in numeric_columns
         ] or numeric_columns[:3]
+        binary_outcome = self._select_binary_outcome(
+            requested_columns=outcome_columns or [],
+            binary_columns=binary_categorical_columns,
+            categorical_columns=categorical_columns,
+        )
         clean_group_column = group_column if group_column in categorical_columns else None
         text_blob = " ".join(
             [
@@ -399,6 +409,7 @@ class DataWorkspaceService:
         repeated_signal = any(token in text_blob for token in ["repeated", "longitudinal", "mixed", "patient-level", "fraction"])
         candidate_pool = self._build_advanced_model_candidates(
             selected_outcomes=selected_outcomes,
+            binary_outcome=binary_outcome,
             numeric_columns=numeric_columns,
             categorical_columns=categorical_columns,
             group_column=clean_group_column,
@@ -431,12 +442,16 @@ class DataWorkspaceService:
         group_column: str | None = None,
         outcome_columns: list[str] | None = None,
     ) -> AdvancedModelFitReport:
-        if model_id != "linear_regression":
-            raise ValueError("当前高级模型执行第一版仅支持 linear_regression。")
+        if model_id not in {"linear_regression", "logistic_regression"}:
+            raise ValueError("当前高级模型执行支持 linear_regression 和 logistic_regression。")
 
         missing_confirmations = self._missing_formal_test_confirmations(confirmation)
-        if missing_confirmations:
-            raise ValueError(f"高级模型拟合前还需要确认：{'、'.join(missing_confirmations)}。")
+        confirmation_warning = (
+            f"Formal-test confirmation is incomplete: {', '.join(missing_confirmations)}. "
+            "Treat this model fit as exploratory draft material until confirmed."
+            if missing_confirmations
+            else None
+        )
 
         privacy_report = self.build_privacy_report_for_csv(content)
         if privacy_report.risk_level == RiskLevel.red:
@@ -449,7 +464,41 @@ class DataWorkspaceService:
         columns = [self._analyze_column(header, rows) for header in headers]
         numeric_columns = [column.name for column in columns if column.inferred_type == "numeric"]
         if not numeric_columns:
-            raise ValueError("CSV 文件中没有可用于线性回归的数值列。")
+            raise ValueError("CSV 文件中没有可用于高级模型的数值列。")
+
+        if model_id == "logistic_regression":
+            categorical_columns = [
+                column.name
+                for column in columns
+                if column.inferred_type != "numeric" and 1 < column.unique_count <= 12
+            ]
+            binary_columns = [
+                column.name
+                for column in columns
+                if column.inferred_type != "numeric" and column.unique_count == 2
+            ]
+            outcome_column = self._select_binary_outcome(
+                requested_columns=outcome_columns or [],
+                binary_columns=binary_columns,
+                categorical_columns=categorical_columns,
+            )
+            if not outcome_column:
+                raise ValueError("logistic regression 需要二分类结局列，或 qa_result 用于 Pass vs non-Pass。")
+            valid_group_column = self._resolve_group_column(group_column, headers)
+            numeric_predictors = [column for column in numeric_columns if column != outcome_column][:4]
+            if not numeric_predictors and not valid_group_column:
+                raise ValueError("logistic regression 至少需要一个数值协变量或一个分组预测变量。")
+            return self._build_logistic_regression_fit_report(
+                project=project,
+                protocol=protocol,
+                file_name=file_name,
+                rows=rows,
+                outcome_column=outcome_column,
+                numeric_predictors=numeric_predictors,
+                group_column=valid_group_column,
+                confirmation=confirmation,
+                confirmation_warning=confirmation_warning,
+            )
 
         selected_outcomes = self._select_outcome_columns(
             numeric_columns=numeric_columns,
@@ -473,6 +522,8 @@ class DataWorkspaceService:
         )
         coefficient_count = len(fit["coefficients"])
         warnings = list(fit["warnings"])
+        if confirmation_warning:
+            warnings.append(confirmation_warning)
         if fit["complete_case_count"] < 20:
             warnings.append("Complete-case sample size is small; estimates should be treated as exploratory.")
         if fit["degrees_of_freedom"] <= 0:
@@ -516,7 +567,7 @@ class DataWorkspaceService:
             + " These results require manual statistical review before manuscript-level inference."
         )
         audit_summary = (
-            f"已在人工确认后执行 linear regression：{fit['complete_case_count']} 个完整病例，"
+            f"已执行 exploratory linear regression：{fit['complete_case_count']} 个完整病例，"
             f"{len(fit['predictor_columns'])} 个预测字段；未保存原始 CSV。"
         )
 
@@ -541,6 +592,99 @@ class DataWorkspaceService:
             raw_csv_saved=False,
             audit_summary=audit_summary,
             next_step="把模型系数、置信区间和诊断边界交给 Alex Writer 写入英文 Methods/Results 前，请先完成人工统计复核。",
+        )
+
+    def _build_logistic_regression_fit_report(
+        self,
+        project: Project,
+        protocol: ProjectProtocol,
+        file_name: str,
+        rows: list[dict[str, str]],
+        outcome_column: str,
+        numeric_predictors: list[str],
+        group_column: str | None,
+        confirmation: FormalTestConfirmation,
+        confirmation_warning: str | None = None,
+    ) -> AdvancedModelFitReport:
+        fit = self._fit_logistic_regression(
+            rows=rows,
+            outcome_column=outcome_column,
+            numeric_predictors=numeric_predictors,
+            group_column=group_column,
+        )
+        warnings = list(fit["warnings"])
+        if confirmation_warning:
+            warnings.append(confirmation_warning)
+        if fit["complete_case_count"] < 30:
+            warnings.append("Complete-case sample size is small for logistic regression; odds ratios are exploratory.")
+        if fit["event_count"] < 10:
+            warnings.append("Event count is low; events-per-variable adequacy should be reviewed before reporting.")
+        if protocol.statistical_plan.strip():
+            warnings.append("Confirm that this fitted logistic model matches the pre-specified statistical plan.")
+        else:
+            warnings.append("The project protocol does not yet contain a finalized logistic model specification.")
+
+        predictor_text = ", ".join(fit["predictor_columns"]) if fit["predictor_columns"] else "no predictors"
+        event_label = str(fit["event_label"])
+        non_event_label = str(fit["non_event_label"])
+        methods_draft = (
+            f"A binary logistic regression model was fitted for {outcome_column}, coded as "
+            f"{event_label} versus {non_event_label}, using complete-case records from {file_name}. "
+            f"Candidate predictors were {predictor_text}. Categorical predictors were represented with "
+            "indicator variables. Odds ratios are exploratory and require manual review of coding, "
+            "events per variable, separation, and model convergence before manuscript-level inference."
+        )
+        result_terms = [
+            f"{coefficient.term}: OR={coefficient.estimate}"
+            + (
+                f", 95% CI {coefficient.confidence_interval_low} to {coefficient.confidence_interval_high}"
+                if coefficient.confidence_interval_low is not None and coefficient.confidence_interval_high is not None
+                else ""
+            )
+            + (
+                f", P={self._format_p_value(coefficient.p_value)}"
+                if coefficient.p_value is not None
+                else ""
+            )
+            for coefficient in fit["coefficients"]
+            if coefficient.term != "Intercept"
+        ][:4]
+        results_draft = (
+            f"The logistic regression model included {fit['complete_case_count']} complete cases, "
+            f"with {fit['event_count']} event(s) coded as {event_label}. "
+            + (
+                f"Key exploratory odds-ratio estimates were: {'; '.join(result_terms)}."
+                if result_terms
+                else "No non-intercept odds-ratio estimates were available for reporting."
+            )
+            + " These results require manual statistical review before any claim about prediction or association."
+        )
+        audit_summary = (
+            f"已执行 exploratory logistic regression：{fit['complete_case_count']} 个完整病例，"
+            f"{fit['event_count']} 个事件，{len(fit['predictor_columns'])} 个预测字段；未保存原始 CSV。"
+        )
+        return AdvancedModelFitReport(
+            project_id=project.id,
+            file_name=file_name,
+            model_id="logistic_regression",
+            model_name="Binary logistic regression",
+            outcome_column=outcome_column,
+            predictor_columns=fit["predictor_columns"],
+            row_count=len(rows),
+            complete_case_count=fit["complete_case_count"],
+            excluded_row_count=len(rows) - fit["complete_case_count"],
+            degrees_of_freedom=fit["degrees_of_freedom"],
+            r_squared=None,
+            adjusted_r_squared=None,
+            coefficients=fit["coefficients"],
+            methods_draft=methods_draft,
+            results_draft=results_draft,
+            warnings=warnings,
+            confirmation=confirmation,
+            method_version="advanced-logistic-v1",
+            raw_csv_saved=False,
+            audit_summary=audit_summary,
+            next_step="把 odds ratio、置信区间、事件数和收敛边界交给 Alex Writer 前，请先完成人工统计复核。",
         )
 
     def _fit_linear_regression(
@@ -665,9 +809,202 @@ class DataWorkspaceService:
             "warnings": warnings,
         }
 
+    def _fit_logistic_regression(
+        self,
+        rows: list[dict[str, str]],
+        outcome_column: str,
+        numeric_predictors: list[str],
+        group_column: str | None,
+    ) -> dict[str, object]:
+        outcome_values = [
+            row.get(outcome_column, "").strip()
+            for row in rows
+            if row.get(outcome_column, "").strip().lower() not in MISSING_TOKENS
+        ]
+        unique_outcomes = sorted(set(outcome_values))
+        if outcome_column == "qa_result" and "Pass" in unique_outcomes:
+            event_label = "Pass"
+            non_event_label = "non-Pass"
+        elif len(unique_outcomes) == 2:
+            non_event_label, event_label = unique_outcomes
+        else:
+            raise ValueError("logistic regression 结局必须是二分类；qa_result 将按 Pass vs non-Pass 处理。")
+
+        numeric_values: dict[str, list[float]] = {predictor: [] for predictor in numeric_predictors}
+        for row in rows:
+            if row.get(outcome_column, "").strip().lower() in MISSING_TOKENS:
+                continue
+            for predictor in numeric_predictors:
+                value = self._parse_float(row.get(predictor, ""))
+                if value is not None:
+                    numeric_values[predictor].append(value)
+        numeric_scales: dict[str, tuple[float, float]] = {}
+        for predictor, values in numeric_values.items():
+            if len(values) < 2:
+                continue
+            center = fmean(values)
+            spread = stdev(values) if len(values) > 1 else 0.0
+            numeric_scales[predictor] = (center, spread if spread > 0 else 1.0)
+
+        group_levels = sorted(
+            {
+                row.get(group_column, "").strip()
+                for row in rows
+                if group_column and row.get(group_column, "").strip().lower() not in MISSING_TOKENS
+            }
+        )
+        group_reference = group_levels[0] if group_levels else None
+        encoded_group_levels = group_levels[1:] if group_reference else []
+        scaled_numeric_predictors = [predictor for predictor in numeric_predictors if predictor in numeric_scales]
+        term_names = [
+            "Intercept",
+            *[f"{predictor} (per SD)" for predictor in scaled_numeric_predictors],
+            *[f"{group_column}={level}" for level in encoded_group_levels],
+        ]
+        predictor_columns = [
+            *scaled_numeric_predictors,
+            *([group_column] if group_column else []),
+        ]
+        design_matrix: list[list[float]] = []
+        binary_outcomes: list[float] = []
+        for row in rows:
+            raw_outcome = row.get(outcome_column, "").strip()
+            if raw_outcome.lower() in MISSING_TOKENS:
+                continue
+            if outcome_column == "qa_result":
+                outcome_value = 1.0 if raw_outcome == event_label else 0.0
+            elif raw_outcome == event_label:
+                outcome_value = 1.0
+            elif raw_outcome == non_event_label:
+                outcome_value = 0.0
+            else:
+                continue
+            predictor_values: list[float] = [1.0]
+            skip_row = False
+            for predictor in scaled_numeric_predictors:
+                value = self._parse_float(row.get(predictor, ""))
+                if value is None:
+                    skip_row = True
+                    break
+                center, spread = numeric_scales[predictor]
+                predictor_values.append((value - center) / spread)
+            if skip_row:
+                continue
+            if group_column and group_reference:
+                group_value = row.get(group_column, "").strip()
+                if group_value.lower() in MISSING_TOKENS:
+                    continue
+                predictor_values.extend(1.0 if group_value == level else 0.0 for level in encoded_group_levels)
+            design_matrix.append(predictor_values)
+            binary_outcomes.append(outcome_value)
+
+        complete_case_count = len(binary_outcomes)
+        event_count = int(sum(binary_outcomes))
+        parameter_count = len(term_names)
+        if complete_case_count <= parameter_count:
+            raise ValueError("完整病例数量不足以拟合 logistic regression。")
+        if event_count == 0 or event_count == complete_case_count:
+            raise ValueError("logistic regression 结局没有同时包含事件和非事件。")
+
+        coefficients_raw = [0.0 for _ in term_names]
+        inverse_information: list[list[float]] | None = None
+        converged = False
+        ridge = 1e-6
+        for _iteration in range(50):
+            probabilities = [
+                self._logistic_probability(sum(value * coefficients_raw[index] for index, value in enumerate(row)))
+                for row in design_matrix
+            ]
+            weights = [max(probability * (1 - probability), 1e-6) for probability in probabilities]
+            z_values = [
+                sum(value * coefficients_raw[index] for index, value in enumerate(row))
+                + (binary_outcomes[row_index] - probabilities[row_index]) / weights[row_index]
+                for row_index, row in enumerate(design_matrix)
+            ]
+            information = [
+                [
+                    sum(weights[row_index] * row[first] * row[second] for row_index, row in enumerate(design_matrix))
+                    + (ridge if first == second else 0.0)
+                    for second in range(parameter_count)
+                ]
+                for first in range(parameter_count)
+            ]
+            target = [
+                sum(weights[row_index] * design_matrix[row_index][column_index] * z_values[row_index] for row_index in range(complete_case_count))
+                for column_index in range(parameter_count)
+            ]
+            inverse_information = self._invert_matrix(information)
+            next_coefficients = self._matrix_vector_multiply(inverse_information, target)
+            delta = max(abs(next_coefficients[index] - coefficients_raw[index]) for index in range(parameter_count))
+            coefficients_raw = next_coefficients
+            if delta < 1e-6:
+                converged = True
+                break
+
+        if inverse_information is None:
+            raise ValueError("logistic regression 未能生成可用的信息矩阵。")
+
+        coefficients: list[AdvancedModelCoefficient] = []
+        for index, term in enumerate(term_names):
+            log_odds = coefficients_raw[index]
+            standard_error = sqrt(max(inverse_information[index][index], 0.0))
+            statistic = log_odds / standard_error if standard_error > 0 else None
+            p_value = self._normal_two_sided_p_value(statistic) if statistic is not None else None
+            ci_low = self._safe_exp(log_odds - 1.96 * standard_error) if standard_error > 0 else None
+            ci_high = self._safe_exp(log_odds + 1.96 * standard_error) if standard_error > 0 else None
+            odds_ratio = self._safe_exp(log_odds)
+            coefficients.append(
+                AdvancedModelCoefficient(
+                    term=term,
+                    estimate=round(odds_ratio, 4),
+                    standard_error=round(standard_error, 4),
+                    statistic=round(statistic, 4) if statistic is not None else None,
+                    p_value=round(p_value, 6) if p_value is not None else None,
+                    confidence_interval_low=round(ci_low, 4) if ci_low is not None else None,
+                    confidence_interval_high=round(ci_high, 4) if ci_high is not None else None,
+                    interpretation=(
+                        "Exploratory intercept odds."
+                        if term == "Intercept"
+                        else f"Adjusted odds ratio for {event_label} versus {non_event_label}, holding other included predictors constant."
+                    ),
+                )
+            )
+
+        warnings: list[str] = []
+        if outcome_column == "qa_result":
+            warnings.append("qa_result was recoded as Pass versus non-Pass for this prototype logistic model.")
+        if group_column and group_reference:
+            warnings.append(f"{group_column} reference level: {group_reference}.")
+        if not converged:
+            warnings.append("IRLS did not fully converge within the iteration limit; estimates require review.")
+        warnings.append("Numeric predictors were standardized; odds ratios are per one standard deviation increase.")
+        if any(abs(coefficient) > 20 for coefficient in coefficients_raw):
+            warnings.append("One or more log-odds estimates were very large; possible separation or sparse cells require review.")
+        return {
+            "complete_case_count": complete_case_count,
+            "event_count": event_count,
+            "degrees_of_freedom": complete_case_count - parameter_count,
+            "predictor_columns": predictor_columns,
+            "event_label": event_label,
+            "non_event_label": non_event_label,
+            "coefficients": coefficients,
+            "warnings": warnings,
+        }
+
+    def _logistic_probability(self, value: float) -> float:
+        if value >= 0:
+            denominator = 1 + exp(-value)
+            return min(max(1 / denominator, 1e-6), 1 - 1e-6)
+        exp_value = exp(value)
+        return min(max(exp_value / (1 + exp_value), 1e-6), 1 - 1e-6)
+
+    def _safe_exp(self, value: float) -> float:
+        return exp(min(max(value, -30), 30))
+
     def _build_advanced_model_candidates(
         self,
         selected_outcomes: list[str],
+        binary_outcome: str | None,
         numeric_columns: list[str],
         categorical_columns: list[str],
         group_column: str | None,
@@ -680,9 +1017,12 @@ class DataWorkspaceService:
             for column in [*numeric_columns[:4], *categorical_columns[:4]]
             if column != primary_outcome and column != group_column
         ][:5]
+        linear_candidate = self._linear_regression_candidate(primary_outcome, covariates, group_column)
+        logistic_candidate = self._logistic_regression_candidate(binary_outcome, covariates, group_column)
         candidates = [
-            self._linear_regression_candidate(primary_outcome, covariates, group_column),
-            self._logistic_regression_candidate(primary_outcome, covariates, group_column),
+            *( [logistic_candidate] if binary_outcome else [] ),
+            linear_candidate,
+            *( [] if binary_outcome else [logistic_candidate] ),
             self._cox_model_candidate(primary_outcome, covariates, has_time_signal),
             self._mixed_effects_candidate(primary_outcome, covariates, group_column, repeated_signal),
         ]
@@ -744,7 +1084,7 @@ class DataWorkspaceService:
         return AdvancedModelCandidate(
             model_id="logistic_regression",
             model_name="Binary logistic regression",
-            readiness="review" if outcome else "needs_fields",
+            readiness="ready" if outcome and (covariates or group_column) else "needs_fields",
             outcome_column=outcome,
             required_fields=["binary outcome", "predictors/covariates"],
             available_fields=available,
@@ -768,6 +1108,22 @@ class DataWorkspaceService:
                 "event counts, and model convergence are verified."
             ),
         )
+
+    def _select_binary_outcome(
+        self,
+        requested_columns: list[str],
+        binary_columns: list[str],
+        categorical_columns: list[str],
+    ) -> str | None:
+        for column in requested_columns:
+            if column in binary_columns or column == "qa_result":
+                return column
+        if "qa_result" in categorical_columns:
+            return "qa_result"
+        for preferred in ["qa_result", "outcome", "event", "response", "status"]:
+            if preferred in binary_columns:
+                return preferred
+        return binary_columns[0] if binary_columns else None
 
     def _cox_model_candidate(
         self,

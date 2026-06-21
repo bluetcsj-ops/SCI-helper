@@ -60,9 +60,15 @@ Mentor → Vera Protocol → Data Lin → Alex Writer → Reviewer
   - logistic regression
   - Cox proportional hazards model
   - linear mixed-effects model
+- 高级模型执行：
+  - multivariable linear regression
+  - binary logistic regression 第一版，支持 `qa_result` 按 `Pass` vs `non-Pass` 编码
+  - 正式确认项未完成时不阻塞 exploratory model fit，但会在 warnings 中提示人工核验边界
 - 导出：
   - `analysis-plan-suggestion.md`
   - `advanced-model-plan.md`
+  - `advanced-linear-model-fit.md`
+  - `advanced-logistic-model-fit.md`
   - analysis parameters JSON
   - reproducible script
 
@@ -71,6 +77,8 @@ Mentor → Vera Protocol → Data Lin → Alex Writer → Reviewer
 - 英文 Introduction 草稿、引用映射和引用质控。
 - Methods / Results 草稿。
   - 可识别放疗计划质量字段，补充 target coverage、OAR dose、patient-specific QA、delivery time、monitor units 和 plan complexity 的英文专科提示。
+  - 可读取高级模型拟合结果，显示高级模型来源与人工核验提示。
+  - Logistic 输出会标注 OR-based exploratory model，提醒复核事件编码、事件数、收敛、CI、P 值和样本量限制。
 - Discussion 草稿。
 - Abstract 草稿。
 - Cover Letter 草稿。
@@ -112,6 +120,9 @@ Mentor → Vera Protocol → Data Lin → Alex Writer → Reviewer
   - PTV/OAR dose metric 定义
   - patient-specific QA 与 gamma criteria
   - treatment planning system version、dose calculation algorithm 和计划审批流程
+- 高级模型 OR 报告边界检查：
+  - 确认 Logistic OR 未被写成因果结论或已验证预测模型
+  - 核对 `Pass` vs `non-Pass` 编码、事件数、收敛、CI、P 值和样本量限制
 - 深度审稿意见。
 - Response to Reviewers 草稿。
 - 真实审稿意见导入。
@@ -156,9 +167,14 @@ $env:DATABASE_URL='sqlite:///:memory:'
 - Data Lin advanced model plan。
 - Data Lin linear regression model fit：
   - 正向 CSV 返回 `linear_regression`、8 个完整病例、R-squared 0.9977、4 个系数项。
-  - 人工确认不完整时阻止执行。
+  - 人工确认不完整时允许 exploratory fit，并在 warnings 中提示缺失确认项。
   - CSV 含疑似直接身份标识时阻止执行。
   - 最新审计日志返回 `raw_data_saved=false`。
+- Data Lin logistic regression model fit：
+  - 放疗样例推荐 `logistic_regression`。
+  - `qa_result` 自动按 `Pass` vs `non-Pass` 编码。
+  - 返回 odds ratio、95% CI、P 值和收敛/稀疏事件警示。
+  - 浏览器 UI 已验收：生成模型计划后可运行推荐模型，并显示 `Binary logistic regression` / OR 输出。
 
 本轮验收发现并修复：
 
@@ -208,8 +224,8 @@ $env:DATABASE_URL='sqlite:///:memory:'
 ## 当前限制
 
 - 当前预备 CSV 包含放疗计划质量脱敏模拟样例和 MIMIC-IV EHR demo；前者用于放疗字段流程联调，后者用于公开医学 EHR 流程联调，二者都不代表正式课题结论。
-- 高级模型执行第一版已支持 linear regression；logistic regression、Cox 和 mixed-effects 仍只停留在计划/待开发阶段。
-- Linear regression 输出是探索性拟合结果，仍需要人工统计复核，不应直接作为最终 SCI 结论。
+- 高级模型执行第一版已支持 linear regression 和 logistic regression；Cox 和 mixed-effects 仍只停留在计划/待开发阶段。
+- Linear/logistic regression 输出是探索性拟合结果，仍需要人工统计复核，不应直接作为最终 SCI 结论。
 - Writer 版本库当前恢复 Introduction；派生章节可作为历史恢复内容优先显示、逐字段编辑、预览、diff、复制、导出，并可纳入新的版本快照，但不会直接写回后端全文字段。
 - Reviewer 真实意见拆分是规则型，复杂 decision letter 仍需人工校正。
 - Reviewer 到 Writer 的章节映射支持人工修正和持久化保存，但仍需人工对照原始 decision letter 最终确认。
@@ -236,9 +252,8 @@ npm.cmd run dev -- --host 127.0.0.1 --port 3000
 ## 下一步建议
 
 1. 人工跑完整 UI 验收。
-2. 完成 Data Lin linear regression UI 验收后，再决定是否阶段性提交本轮改动。
+2. 完成 Data Lin linear/logistic regression UI 验收后，再决定是否阶段性提交本轮改动。
 3. 后续补真实高级统计模型拟合：
-   - logistic regression
    - survival analysis
    - mixed-effects model
 4. 接入真实放疗专科样例数据。

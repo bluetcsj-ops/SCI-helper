@@ -988,6 +988,19 @@ function buildWriterMethodsResultsDraft(
     : [
         "Formal hypothesis testing has not yet been performed; the Results section must not invent P values, confidence intervals, or significance claims.",
       ];
+  const advancedModelLines = advancedModelFitReport
+    ? [
+        `Advanced model source: ${advancedModelFitReport.model_name} (${advancedModelFitReport.method_version}) fitted on ${advancedModelFitReport.complete_case_count} complete cases from ${advancedModelFitReport.file_name}.`,
+        advancedModelFitReport.model_id === "logistic_regression"
+          ? `OR-based exploratory model: outcome ${advancedModelFitReport.outcome_column}; odds ratios require manual review of event coding, events per variable, separation, convergence, confidence intervals, and P values.`
+          : `Exploratory regression model: outcome ${advancedModelFitReport.outcome_column}; estimates require manual review of assumptions, collinearity, influential observations, confidence intervals, and P values.`,
+        advancedModelFitReport.warnings.length
+          ? `Manual verification required before manuscript use: ${advancedModelFitReport.warnings.slice(0, 3).join("; ")}`
+          : "Manual statistical verification is still required before manuscript-level inference.",
+      ]
+    : [
+        "Advanced model fitting has not yet been completed; do not report regression estimates, odds ratios, confidence intervals, or P values from an advanced model.",
+      ];
   const chartLines = statisticsReport.chart_specs.slice(0, 5).map(
     (chart) => `${chart.title}: ${chart.narrative}`,
   );
@@ -1048,10 +1061,11 @@ function buildWriterMethodsResultsDraft(
         ? `Formal testing summary: ${formalTestLines.join("; ")}.`
         : "Formal testing has not yet been performed; therefore, this draft does not report P values or statistical significance.",
       advancedModelFitReport
-        ? advancedModelFitReport.results_draft
+        ? `${advancedModelFitReport.results_draft} ${advancedModelFitReport.model_id === "logistic_regression" ? "Odds ratios are exploratory and must not be interpreted as causal or validated predictive effects without manual statistical review." : "Regression estimates are exploratory and must not be interpreted as finalized inferential evidence without manual statistical review."}`
         : "No fitted advanced regression model is available for this draft.",
     ].filter(Boolean) as string[],
     formalTestLines,
+    advancedModelLines,
     chartLines,
     missingItems,
   };
@@ -1934,6 +1948,7 @@ function buildReviewerChecks(params: {
   protocol: ProjectProtocol | null;
   qualityReport: DataQualityReport | null;
   statisticsReport: DataStatisticsReport | null;
+  advancedModelFitReport: AdvancedModelFitReport | null;
   writerMethodsResultsDraft: WriterMethodsResultsDraft | null;
   writerIntroductionDraftForm: WriterIntroductionDraftUpdate;
   citationIssueCount: number;
@@ -1945,6 +1960,7 @@ function buildReviewerChecks(params: {
     protocol,
     qualityReport,
     statisticsReport,
+    advancedModelFitReport,
     writerMethodsResultsDraft,
     writerIntroductionDraftForm,
     citationIssueCount,
@@ -1952,6 +1968,27 @@ function buildReviewerChecks(params: {
     reminderSummary,
   } = params;
   const formalTestReport = statisticsReport?.formal_test_report ?? null;
+  const advancedModelCheckItem: ReviewerCheckItem | null = advancedModelFitReport
+    ? {
+        title:
+          advancedModelFitReport.model_id === "logistic_regression"
+            ? "高级模型 OR 报告边界"
+            : "高级模型估计边界",
+        severity: advancedModelFitReport.warnings.length ? "orange" : "green",
+        status:
+          advancedModelFitReport.model_id === "logistic_regression"
+            ? `${advancedModelFitReport.complete_case_count} 个完整病例 / OR 输出`
+            : `${advancedModelFitReport.complete_case_count} 个完整病例 / 回归输出`,
+        detail:
+          advancedModelFitReport.model_id === "logistic_regression"
+            ? `当前 Writer 可读取 ${advancedModelFitReport.model_name}；结局为 ${advancedModelFitReport.outcome_column}，需确认事件编码是否为 Pass vs non-Pass 或真实二分类定义。`
+            : `当前 Writer 可读取 ${advancedModelFitReport.model_name}；结局为 ${advancedModelFitReport.outcome_column}，需确认模型假设和诊断边界。`,
+        recommendation:
+          advancedModelFitReport.model_id === "logistic_regression"
+            ? "Reviewer 需确认稿件没有把 exploratory OR 写成因果结论或已验证预测模型，并核对事件数、收敛、CI、P 值和样本量限制。"
+            : "Reviewer 需确认稿件没有把 exploratory regression estimate 写成最终推断结论，并核对假设、CI、P 值和诊断限制。",
+      }
+    : null;
   const introductionHasText = introductionDraftFields.some(
     (field) => writerIntroductionDraftForm[field].trim().length > 0,
   );
@@ -2055,6 +2092,7 @@ function buildReviewerChecks(params: {
         ? "逐句核对 Results 草稿是否只引用已生成的数据与检验结果。"
         : "先完成 Data Lin 统计草案，再返回 Alex Writer 生成 Methods / Results。",
     },
+    ...(advancedModelCheckItem ? [advancedModelCheckItem] : []),
     ...radiotherapyCheckItems,
     {
       title: "Introduction 引用追溯",
@@ -2649,6 +2687,7 @@ interface WriterMethodsResultsDraft {
   methodsParagraphs: string[];
   resultsParagraphs: string[];
   formalTestLines: string[];
+  advancedModelLines: string[];
   chartLines: string[];
   missingItems: string[];
 }
@@ -3797,6 +3836,7 @@ function App() {
         protocol,
         qualityReport,
         statisticsReport,
+        advancedModelFitReport,
         writerMethodsResultsDraft,
         writerIntroductionDraftForm,
         citationIssueCount: introductionCitationQualityIssues.length,
@@ -3808,6 +3848,7 @@ function App() {
       protocol,
       qualityReport,
       statisticsReport,
+      advancedModelFitReport,
       writerMethodsResultsDraft,
       writerIntroductionDraftForm,
       introductionCitationQualityIssues.length,
@@ -4119,14 +4160,18 @@ function App() {
     if (!selectedOutcomeColumns.length) {
       return "先选择至少一个数值结局列。";
     }
-    if (!isFormalTestReady) {
-      return "先在下方人工确认区填写确认人，并勾选研究设计、终点、脱敏、缺失值、统计假设和多重性边界。";
+    if (!advancedModelPlan) {
+      return "先生成模型计划，再运行推荐模型。";
     }
     if (advancedModelFitReport) {
-      return "线性回归已完成；结果仍需人工统计复核后再写入 SCI 结论。";
+      return "高级模型已完成；结果仍需人工统计复核后再写入 SCI 结论。";
     }
-    return "已满足执行条件，可运行线性回归；输出将作为英文 Methods / Results 草稿素材。";
+    if (!isFormalTestReady) {
+      return "可运行推荐模型；当前未完成正式检验确认，输出仅作探索性英文 Methods / Results 草稿素材。";
+    }
+    return "已满足执行条件，可运行推荐高级模型；输出将作为英文 Methods / Results 草稿素材。";
   }, [
+    advancedModelPlan,
     advancedModelFitReport,
     hasBlockingPrivacyRisk,
     isFormalTestReady,
@@ -5217,6 +5262,9 @@ function App() {
       ...writerMethodsResultsDraft!.resultsParagraphs.flatMap((paragraph) => [paragraph, ""]),
       "## 正式检验摘要",
       ...writerMethodsResultsDraft!.formalTestLines.map((line) => `- ${line}`),
+      "",
+      "## 高级模型来源与人工核验",
+      ...writerMethodsResultsDraft!.advancedModelLines.map((line) => `- ${line}`),
       "",
       "## 图表与展示建议",
       ...(writerMethodsResultsDraft!.chartLines.length
@@ -6645,26 +6693,34 @@ function App() {
     }
   }
 
-  async function handleRunAdvancedLinearModel() {
-    if (!selectedProjectId || !uploadedCsvFile || isAdvancedModelFitLoading || !canEditSelectedProject) {
+  async function handleRunAdvancedModelFit() {
+    if (
+      !selectedProjectId ||
+      !uploadedCsvFile ||
+      !advancedModelPlan ||
+      isAdvancedModelFitLoading ||
+      !canEditSelectedProject
+    ) {
       return;
     }
 
     setIsAdvancedModelFitLoading(true);
     setError(null);
     try {
+      const modelId = advancedModelPlan?.recommended_model_id ?? "linear_regression";
       const report = await uploadAdvancedModelFitReport(
         selectedProjectId,
         uploadedCsvFile,
         selectedGroupColumn,
         selectedOutcomeColumns,
         formalTestConfirmation,
+        modelId,
       );
       setAdvancedModelFitReport(report);
       await refreshDataAuditLogs(selectedProjectId);
-      setWorkflowStatus("线性回归模型已完成，结果需人工统计复核。");
+      setWorkflowStatus(`${report.model_name} 已完成，结果需人工统计复核。`);
     } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : "线性回归模型执行失败。");
+      setError(caughtError instanceof Error ? caughtError.message : "高级模型执行失败。");
     } finally {
       setIsAdvancedModelFitLoading(false);
     }
@@ -6730,9 +6786,10 @@ function App() {
     if (!advancedModelFitReport) {
       return;
     }
+    const isLogisticModel = advancedModelFitReport.model_id === "logistic_regression";
 
     const content = [
-      "# Advanced Linear Model Fit Report",
+      isLogisticModel ? "# Advanced Logistic Model Fit Report" : "# Advanced Linear Model Fit Report",
       "",
       `Generated at: ${new Date().toLocaleString("zh-CN")}`,
       `Source file: ${advancedModelFitReport.file_name}`,
@@ -6741,8 +6798,12 @@ function App() {
       `Predictors: ${advancedModelFitReport.predictor_columns.join(", ") || "none"}`,
       `Complete cases: ${advancedModelFitReport.complete_case_count}`,
       `Excluded rows: ${advancedModelFitReport.excluded_row_count}`,
-      `R-squared: ${advancedModelFitReport.r_squared ?? "NA"}`,
-      `Adjusted R-squared: ${advancedModelFitReport.adjusted_r_squared ?? "NA"}`,
+      ...(isLogisticModel
+        ? []
+        : [
+            `R-squared: ${advancedModelFitReport.r_squared ?? "NA"}`,
+            `Adjusted R-squared: ${advancedModelFitReport.adjusted_r_squared ?? "NA"}`,
+          ]),
       "",
       "## Methods draft",
       "",
@@ -6754,7 +6815,7 @@ function App() {
       "",
       "## Coefficients",
       "",
-      "| Term | Estimate | SE | t | P | 95% CI |",
+      `| Term | ${isLogisticModel ? "OR" : "Estimate"} | SE | ${isLogisticModel ? "z" : "t"} | P | 95% CI |`,
       "|---|---:|---:|---:|---:|---|",
       ...advancedModelFitReport.coefficients.map((coefficient) => [
         coefficient.term,
@@ -6785,7 +6846,7 @@ function App() {
     const link = document.createElement("a");
     try {
       link.href = url;
-      link.download = "advanced-linear-model-fit.md";
+      link.download = isLogisticModel ? "advanced-logistic-model-fit.md" : "advanced-linear-model-fit.md";
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -8988,14 +9049,14 @@ function App() {
                                   </button>
                                   <button
                                     type="button"
-                                    onClick={handleRunAdvancedLinearModel}
+                                    onClick={handleRunAdvancedModelFit}
                                     disabled={
                                       !canEditSelectedProject ||
                                       !uploadedCsvFile ||
                                       isAdvancedModelFitLoading ||
                                       hasBlockingPrivacyRisk ||
                                       !selectedOutcomeColumns.length ||
-                                      !isFormalTestReady
+                                      !advancedModelPlan
                                     }
                                   >
                                     {isAdvancedModelFitLoading ? (
@@ -9003,7 +9064,7 @@ function App() {
                                     ) : (
                                       <Activity aria-hidden="true" size={15} />
                                     )}
-                                    <span>{isAdvancedModelFitLoading ? "运行中" : "运行线性回归"}</span>
+                                    <span>{isAdvancedModelFitLoading ? "运行中" : "运行推荐模型"}</span>
                                   </button>
                                   <button
                                     type="button"
@@ -9058,9 +9119,12 @@ function App() {
                                     <div>
                                       <strong>{advancedModelFitReport.model_name}</strong>
                                       <small>
-                                        {advancedModelFitReport.complete_case_count} 个完整病例 · R²{" "}
-                                        {advancedModelFitReport.r_squared ?? "NA"} · adj. R²{" "}
-                                        {advancedModelFitReport.adjusted_r_squared ?? "NA"}
+                                        {advancedModelFitReport.complete_case_count} 个完整病例
+                                        {advancedModelFitReport.model_id === "logistic_regression"
+                                          ? " · OR 输出"
+                                          : ` · R² ${advancedModelFitReport.r_squared ?? "NA"} · adj. R² ${
+                                              advancedModelFitReport.adjusted_r_squared ?? "NA"
+                                            }`}
                                       </small>
                                     </div>
                                     <span>{advancedModelFitReport.method_version}</span>
@@ -9077,7 +9141,10 @@ function App() {
                                     {advancedModelFitReport.coefficients.map((coefficient) => (
                                       <article key={coefficient.term}>
                                         <strong>{coefficient.term}</strong>
-                                        <span>β {coefficient.estimate}</span>
+                                        <span>
+                                          {advancedModelFitReport.model_id === "logistic_regression" ? "OR" : "β"}{" "}
+                                          {coefficient.estimate}
+                                        </span>
                                         <span>SE {coefficient.standard_error ?? "NA"}</span>
                                         <span>P {coefficient.p_value ?? "NA"}</span>
                                         <small>{coefficient.interpretation}</small>
@@ -10503,6 +10570,14 @@ function App() {
                             <strong>正式检验</strong>
                             <ul>
                               {writerMethodsResultsDraft.formalTestLines.map((line) => (
+                                <li key={line}>{line}</li>
+                              ))}
+                            </ul>
+                          </article>
+                          <article>
+                            <strong>高级模型来源与人工核验</strong>
+                            <ul>
+                              {writerMethodsResultsDraft.advancedModelLines.map((line) => (
                                 <li key={line}>{line}</li>
                               ))}
                             </ul>

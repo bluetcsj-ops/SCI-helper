@@ -11,7 +11,7 @@
 ```text
 Mentor 选题与引用
 → Vera Protocol 研究方案
-→ Data Lin 数据质控、统计草案、高级模型计划、线性回归拟合
+→ Data Lin 数据质控、统计草案、高级模型计划、线性/Logistic 回归拟合
 → Alex Writer 英文论文草稿、投稿材料、后端版本库
 → Helena Reviewer 投稿前审查、真实审稿意见映射、英文回复草稿
 ```
@@ -22,9 +22,9 @@ Mentor 选题与引用
 |---|---:|---|
 | Prof. RadOnc Mentor | 74% | 可生成课题推荐、加载预备真实引用、复核候选引用、导出引用清单，并将推荐写入方案 |
 | Dr. Vera Protocol | 78% | 可编辑/保存研究方案，生成方案草案和执行计划草案，完成方案质量检查、方案-数据一致性检查、方案版本快照与导出 |
-| Dr. Data Lin | 92% | 可上传 CSV、选择预备 DATA、做质控/隐私检查/统计草案/图表/审计、一键联调 Writer，生成自主分析计划和高级模型计划，并可在人工确认后执行第一版 linear regression |
-| Alex Writer | 98% | 可生成英文 Introduction、Methods / Results、Discussion、Abstract、Cover Letter、投稿包检查清单、目标期刊模板和 Author Guidelines 本地规则校验，并支持放疗计划质量字段解读、后端版本归档、恢复 Introduction、版本差异查看、历史章节复制、全文恢复逐字段编辑和 Reviewer 修改提醒 |
-| Rev. Dr. Helena Skov | 94% | 可生成投稿前规则清单、深度审稿意见、Response to Reviewers 草稿，并支持放疗专科风险检查、真实审稿意见导入、逐条映射、英文回复导出、返修写作清单和章节归属持久化修正 |
+| Dr. Data Lin | 95% | 可上传 CSV、选择预备 DATA、做质控/隐私检查/统计草案/图表/审计、一键联调 Writer，生成自主分析计划和高级模型计划，并可执行第一版 exploratory linear/logistic regression |
+| Alex Writer | 98% | 可生成英文 Introduction、Methods / Results、Discussion、Abstract、Cover Letter、投稿包检查清单、目标期刊模板和 Author Guidelines 本地规则校验，并支持放疗计划质量字段解读、高级模型结果来源与人工核验提示、后端版本归档、恢复 Introduction、版本差异查看、历史章节复制、全文恢复逐字段编辑和 Reviewer 修改提醒 |
+| Rev. Dr. Helena Skov | 95% | 可生成投稿前规则清单、深度审稿意见、Response to Reviewers 草稿，并支持放疗专科风险检查、高级模型 OR 报告边界检查、真实审稿意见导入、逐条映射、英文回复导出、返修写作清单和章节归属持久化修正 |
 
 ## 已完成的关键闭环
 
@@ -79,13 +79,16 @@ Mentor 选题与引用
   - mixed-effects model
 - 高级模型计划导出 `advanced-model-plan.md`。
 - 高级模型执行第一版：
-  - 在人工确认研究设计、终点、脱敏、缺失、假设和多重性边界后执行。
+  - 可作为 exploratory draft material 执行；如果正式确认项未完成，会在 warnings 中写入人工核验提示。
   - 当前支持 multivariable linear regression。
   - 输出英文 Methods / Results 草稿、系数表、R-squared、adjusted R-squared、警示项和导出 `advanced-linear-model-fit.md`。
+  - 当前支持 binary logistic regression 第一版。
+  - 放疗样例中 `qa_result` 会按 `Pass` vs `non-Pass` 编码，输出 exploratory odds ratio、95% CI、P 值、收敛/稀疏事件警示和导出 `advanced-logistic-model-fit.md`。
+  - 已完成浏览器 UI 验收：生成模型计划后可运行推荐 Logistic 模型，并显示 `Binary logistic regression` / OR 输出。
 
 当前仍未完成：
 
-- logistic regression、生存分析、混合效应模型拟合。
+- 生存分析、混合效应模型拟合。
 - SciPy / statsmodels / lifelines 等专用统计库完整生产路径。
 - 真实放疗专科数据接入和数据许可核对。
 
@@ -95,6 +98,8 @@ Mentor 选题与引用
 - 候选引用可插入背景段、研究空白段和目的段。
 - 字段级引用映射和引用质控。
 - Methods / Results 草稿和导出 `methods-results-draft.md`。
+  - 可读取高级模型拟合结果，并显示高级模型来源与人工核验提示。
+  - Logistic 输出会标注 OR-based exploratory model，提醒复核事件编码、事件数、收敛、CI、P 值和样本量限制。
 - Discussion 草稿和导出 `discussion-draft.md`。
 - Abstract 草稿和导出 `abstract-draft.md`。
 - Cover Letter 草稿和导出 `cover-letter-draft.md`。
@@ -133,6 +138,7 @@ Mentor 选题与引用
 - 逐条英文 response draft。
 - 条目状态管理：草稿、处理中、已解决、暂缓。
 - 映射回复导出 `response-to-reviewers-mapped.md`。
+- 高级模型 OR 报告边界检查：确认 Logistic OR 未被写成因果结论或已验证预测模型，并核对 `Pass` vs `non-Pass` 编码、事件数、收敛、CI、P 值和样本量限制。
 - 返修写作清单：
   - 按 Introduction、Methods / Results、Discussion、Abstract、Cover Letter / Submission 聚合真实审稿意见。
   - 可人工修正每条审稿意见的影响章节，并通过后端字段持久化保存。
