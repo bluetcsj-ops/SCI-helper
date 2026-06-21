@@ -138,6 +138,9 @@ Mentor → Vera Protocol → Data Lin → Alex Writer → Reviewer
   - 读取目标期刊模板和 Author Guidelines 本地规则校验结果
   - 生成摘要与关键词、伦理与声明、图表/引用/投稿材料三类 Reviewer 检查项
   - Reviewer 面板统计、导出清单和流程总览使用通用 + 期刊专属合并清单
+- 目标期刊专属检查人工对照验收：
+  - Reviewer 面板显示目标期刊模板、Author Guidelines 来源、已识别规则数量和目标期刊检查状态
+  - 提供从 Writer 规则校验到 Reviewer 目标期刊检查的人工核验路径
 - 深度审稿意见。
 - Response to Reviewers 草稿。
 - 真实审稿意见导入。
@@ -175,8 +178,8 @@ Reviewer 98% 收尾清单：
 
 1. 期刊社群/栏目专属审稿口径：
    - 在现有目标期刊专属检查之上，细化 Medical Physics、JACMP、Frontiers 等不同栏目规则。
-2. 目标期刊专属检查人工对照验收：
-   - 将 Reviewer 中的目标期刊检查与 Author Guidelines 抓取/粘贴结果逐项对照。
+2. 期刊社群/栏目专属审稿口径细化：
+   - 将 Medical Physics、JACMP、Frontiers 等不同栏目规则进一步拆成专属审稿口径。
 
 ## 当前验证记录
 
@@ -250,6 +253,7 @@ $env:DATABASE_URL='sqlite:///:memory:'
 7. 在 Reviewer 中检查：
    - 投稿前审稿清单
    - AI 写作痕迹与模板化风险顶部卡片
+   - 目标期刊对照验收卡片
    - 目标期刊专属 Reviewer 检查项
    - Deep review comments
    - Response to Reviewers

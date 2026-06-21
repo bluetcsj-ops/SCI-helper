@@ -2252,6 +2252,59 @@ button {
   font-weight: 800;
 }
 
+.reviewer-journal-audit-card {
+  display: grid;
+  gap: 12px;
+  border: 1px solid rgba(47, 126, 168, 0.18);
+  border-radius: 8px;
+  padding: 14px;
+  background: #f6fbfd;
+}
+
+.reviewer-journal-audit-card > .reviewer-deep-head > span {
+  border-radius: 999px;
+  padding: 5px 10px;
+  color: #24546f;
+  background: #e4f2f8;
+  font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.reviewer-journal-audit-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.reviewer-journal-audit-grid article {
+  display: grid;
+  gap: 5px;
+  border-radius: 8px;
+  padding: 10px;
+  background: #ffffff;
+}
+
+.reviewer-journal-audit-grid span {
+  color: #4f6074;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.reviewer-journal-audit-grid strong {
+  color: #22354a;
+  line-height: 1.35;
+}
+
+.reviewer-journal-audit-card ol {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 20px;
+  color: #4f6074;
+  line-height: 1.5;
+}
+
 .reviewer-deep-comments {
   display: grid;
   gap: 12px;
@@ -5155,6 +5208,7 @@ button {
   .mentor-preview-grid,
   .reviewer-summary-grid,
   .reviewer-import-box,
+  .reviewer-journal-audit-grid,
   .submission-summary-grid,
   .reviewer-deep-grid,
   .reviewer-response-grid,

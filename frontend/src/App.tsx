@@ -12187,6 +12187,42 @@ function App() {
                       </article>
                     </div>
 
+                    <section className="reviewer-journal-audit-card">
+                      <div className="reviewer-deep-head">
+                        <div>
+                          <p className="eyebrow">Journal-specific cross-check</p>
+                          <h4>目标期刊对照验收</h4>
+                        </div>
+                        <span>{journalTemplateReadiness.template.name}</span>
+                      </div>
+                      <div className="reviewer-journal-audit-grid">
+                        <article>
+                          <span>Author Guidelines 来源</span>
+                          <strong>{journalGuidelineCheck.sourceLabel}</strong>
+                        </article>
+                        <article>
+                          <span>已识别规则</span>
+                          <strong>{journalGuidelineCheck.detectedRules.length}</strong>
+                        </article>
+                        <article>
+                          <span>目标期刊检查</span>
+                          <strong>{journalSpecificReviewerChecks.length}</strong>
+                        </article>
+                        <article>
+                          <span>需处理状态</span>
+                          <strong>
+                            {journalSpecificReviewerChecks.filter((item) => item.severity === "red").length} 高风险 /{" "}
+                            {journalSpecificReviewerChecks.filter((item) => item.severity === "orange").length} 复核
+                          </strong>
+                        </article>
+                      </div>
+                      <ol>
+                        <li>先在 Writer 粘贴或抓取目标期刊 Author Guidelines，并确认规则校验结果。</li>
+                        <li>回到 Reviewer 查看 3 条“目标期刊：”检查项。</li>
+                        <li>人工对照 Abstract、Ethics / declarations、Figures / references / cover letter 是否一致。</li>
+                      </ol>
+                    </section>
+
                     {aiWritingRiskCheck ? (
                       <section className={`reviewer-ai-risk-card risk-${aiWritingRiskCheck.severity}`}>
                         <div className="reviewer-check-head">

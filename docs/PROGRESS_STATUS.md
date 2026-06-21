@@ -161,6 +161,9 @@ Mentor 选题与引用
   - 读取目标期刊模板和 Author Guidelines 本地规则校验结果。
   - 新增摘要与关键词、伦理与声明、图表/引用/投稿材料三类 Reviewer 检查项。
   - Reviewer 面板统计、导出清单和流程总览使用合并后的通用 + 期刊专属检查清单。
+- 目标期刊专属检查人工对照验收：
+  - Reviewer 面板显示目标期刊模板、Author Guidelines 来源、已识别规则数量和目标期刊检查状态。
+  - 提供从 Writer 规则校验到 Reviewer 目标期刊检查的人工核验路径。
 - 返修写作清单：
   - 按 Introduction、Methods / Results、Discussion、Abstract、Cover Letter / Submission 聚合真实审稿意见。
   - 可人工修正每条审稿意见的影响章节，并通过后端字段持久化保存。
@@ -172,7 +175,6 @@ Mentor 选题与引用
 
 - Reviewer 98% 收尾清单：
   - 更细颗粒度的期刊社群/栏目专属审稿口径，例如 Medical Physics、JACMP、Frontiers 不同栏目规则。
-  - 目标期刊专属 Reviewer 检查与 Author Guidelines 抓取结果的人工对照验收。
 
 ## 当前优先级建议
 
