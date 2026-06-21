@@ -141,6 +141,9 @@ Mentor → Vera Protocol → Data Lin → Alex Writer → Reviewer
 - 深度审稿意见。
 - Response to Reviewers 草稿。
 - 真实审稿意见导入。
+- 真实审稿意见 UI 验收辅助：
+  - Reviewer 面板可一键填入模拟 decision letter 样例，但不会自动导入
+  - 面板内显示人工验收路径，覆盖拆分、类型/状态保存、章节归属持久化、Writer 修改提醒和导出核验
 - 复杂审稿信规则增强拆分：
   - 先识别 Editor / Reviewer 分块
   - 再按 Major / Minor / Editorial、Comment / Point / Concern、数字或字母编号拆分条目
@@ -172,9 +175,7 @@ Reviewer 98% 收尾清单：
 
 1. 期刊社群/栏目专属审稿口径：
    - 在现有目标期刊专属检查之上，细化 Medical Physics、JACMP、Frontiers 等不同栏目规则。
-2. 真实导入审稿意见完整 UI 验收：
-   - 覆盖拆分、类型修正、状态保存、章节归属持久化、Writer 修改提醒和导出。
-3. 目标期刊专属检查人工对照验收：
+2. 目标期刊专属检查人工对照验收：
    - 将 Reviewer 中的目标期刊检查与 Author Guidelines 抓取/粘贴结果逐项对照。
 
 ## 当前验证记录
@@ -253,6 +254,7 @@ $env:DATABASE_URL='sqlite:///:memory:'
    - Deep review comments
    - Response to Reviewers
    - 真实审稿意见导入
+   - 填入模拟 decision letter 样例，确认不会自动导入
    - 复杂 decision letter 是否拆成多条独立意见
    - 逐条英文回复草稿
    - 返修清单章节归属人工修正

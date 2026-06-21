@@ -2453,7 +2453,7 @@ button {
 
 .reviewer-import-box {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   gap: 12px;
   align-items: end;
 }
@@ -2517,6 +2517,12 @@ button {
   opacity: 0.58;
 }
 
+.reviewer-import-box button.secondary {
+  border: 1px solid rgba(47, 126, 168, 0.24);
+  background: #ffffff;
+  color: #24546f;
+}
+
 .reviewer-comment-notice {
   margin: 0;
   border-radius: 8px;
@@ -2524,6 +2530,28 @@ button {
   background: #e8f7f1;
   color: #1d6b52;
   font-weight: 700;
+}
+
+.reviewer-import-checklist {
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(47, 126, 168, 0.16);
+  border-radius: 8px;
+  padding: 12px;
+  background: #f6fbfd;
+}
+
+.reviewer-import-checklist strong {
+  color: #22354a;
+}
+
+.reviewer-import-checklist ol {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 20px;
+  color: #4f6074;
+  line-height: 1.5;
 }
 
 .reviewer-thread-summary {
@@ -5126,6 +5154,7 @@ button {
   .version-snapshot-grid,
   .mentor-preview-grid,
   .reviewer-summary-grid,
+  .reviewer-import-box,
   .submission-summary-grid,
   .reviewer-deep-grid,
   .reviewer-response-grid,

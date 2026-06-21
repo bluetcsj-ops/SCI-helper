@@ -144,6 +144,23 @@ const reviewerCommentStatusLabels: Record<ReviewerCommentStatus, string> = {
   deferred: "暂缓",
 };
 
+const reviewerSampleDecisionLetter = `Editor:
+Please address the following reviewer comments carefully and provide a point-by-point response.
+
+Reviewer 1:
+Major Comment 1: The manuscript should explain how plan-quality outliers were defined and whether QA failure was treated as a binary endpoint.
+Comment 2: Please clarify the inclusion and exclusion criteria, especially whether repeated plans from the same patient were included.
+3) The Results section should avoid causal wording because the current analysis is exploratory.
+
+Reviewer 2 comments:
+Minor comment 1: Please add a recent reference supporting automated radiotherapy plan-quality workflows in the Introduction.
+Editorial comment 2: Several sentences in the Abstract are too generic and should be tightened.
+A. The cover letter should mention data availability and whether generative AI assistance was used.
+
+Reviewer 3:
+Major concern 1: The Methods should report treatment planning system version, dose calculation algorithm, gamma criteria, and structure naming rules.
+Point 2: Please add page and line references for each revised manuscript location in the response letter.`;
+
 const dataAuditActionLabels: Record<string, string> = {
   quality_report_generated: "生成质控报告",
   statistics_report_generated: "生成统计草案",
@@ -12323,10 +12340,32 @@ function App() {
                           )}
                           <span>{isReviewerCommentImporting ? "导入中" : "导入并生成英文回复"}</span>
                         </button>
+                        <button
+                          type="button"
+                          className="secondary"
+                          disabled={!canEditSelectedProject || isReviewerCommentImporting}
+                          onClick={() => {
+                            setReviewerRawImportText(reviewerSampleDecisionLetter);
+                            setReviewerCommentNotice("已填入模拟审稿信样例，请检查后再点击导入。");
+                          }}
+                        >
+                          <FileText aria-hidden="true" size={15} />
+                          <span>填入样例</span>
+                        </button>
                       </div>
                       {reviewerCommentNotice ? (
                         <p className="reviewer-comment-notice">{reviewerCommentNotice}</p>
                       ) : null}
+                      <div className="reviewer-import-checklist">
+                        <strong>人工验收路径</strong>
+                        <ol>
+                          <li>点击“填入样例”，确认文本不会自动导入。</li>
+                          <li>点击“导入并生成英文回复”，确认拆成多条独立意见。</li>
+                          <li>修改类型、状态和影响章节，确认保存后仍保留。</li>
+                          <li>切到 Writer，确认 Reviewer 修改提醒同步出现。</li>
+                          <li>导出映射回复和返修清单，确认包含章节归属和 Page / Lines / Manuscript location 占位。</li>
+                        </ol>
+                      </div>
                       <div className="reviewer-thread-summary">
                         <article>
                           <span>总条目</span>
