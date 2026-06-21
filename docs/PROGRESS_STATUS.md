@@ -164,6 +164,10 @@ Mentor 选题与引用
 - 目标期刊专属检查人工对照验收：
   - Reviewer 面板显示目标期刊模板、Author Guidelines 来源、已识别规则数量和目标期刊检查状态。
   - 提供从 Writer 规则校验到 Reviewer 目标期刊检查的人工核验路径。
+- 期刊社群/栏目专属审稿口径：
+  - Medical Physics / JACMP 相近口径：放疗物理方法学、QA、TPS/算法、剂量学指标和可复现性。
+  - Frontiers-style：开放科学声明、article type、结构化摘要、关键词和补充材料。
+  - General oncology：临床队列、伦理边界、主要终点和临床解释谨慎性。
 - 返修写作清单：
   - 按 Introduction、Methods / Results、Discussion、Abstract、Cover Letter / Submission 聚合真实审稿意见。
   - 可人工修正每条审稿意见的影响章节，并通过后端字段持久化保存。
@@ -173,8 +177,7 @@ Mentor 选题与引用
 
 当前仍未完成：
 
-- Reviewer 98% 收尾清单：
-  - 更细颗粒度的期刊社群/栏目专属审稿口径，例如 Medical Physics、JACMP、Frontiers 不同栏目规则。
+- Reviewer 进入收尾验收阶段，后续以真实样例 UI 验收和小问题修正为主。
 
 ## 当前优先级建议
 

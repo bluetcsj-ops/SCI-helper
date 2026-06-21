@@ -1885,6 +1885,73 @@ function reviewerSeverityFromChecklistStatus(status: SubmissionChecklistStatus):
   return status === "review" ? "orange" : "green";
 }
 
+function buildJournalCommunityReviewerChecks(template: JournalSubmissionTemplate): ReviewerCheckItem[] {
+  if (template.id === "medical_physics") {
+    return [
+      {
+        title: "栏目口径：放疗物理方法学",
+        severity: "orange",
+        status: "Medical Physics / JACMP 相近口径",
+        detail:
+          "审稿重点应放在剂量学指标定义、QA 流程、TPS/算法、计划复杂度、统计可复现性和物理学解释边界。",
+        recommendation:
+          "核对 Methods 是否足以让医学物理读者复现实验流程；JACMP 类实践稿还需强调临床可实施性和质控流程价值。",
+      },
+      {
+        title: "栏目口径：物理结果可信度",
+        severity: "orange",
+        status: "需人工复核",
+        detail:
+          "计划质量、gamma、OAR/PTV、MU、delivery time 和 complexity 结果应避免被写成未经验证的临床结局或因果结论。",
+        recommendation:
+          "在 Results / Discussion 中明确 exploratory、single-center、sample-size 和 QA workflow 边界。",
+      },
+    ];
+  }
+  if (template.id === "frontiers") {
+    return [
+      {
+        title: "栏目口径：Frontiers 开放科学声明",
+        severity: "orange",
+        status: "Frontiers-style",
+        detail:
+          "Frontiers 类投稿通常高度关注 ethics statement、author contributions、conflict of interest、funding、data availability 和 AI disclosure。",
+        recommendation:
+          "逐项核对声明是否完整、英文是否可直接投稿，并确认 Author Guidelines 当前版本是否要求额外 disclosure。",
+      },
+      {
+        title: "栏目口径：Frontiers 结构与可读性",
+        severity: "orange",
+        status: "需人工复核",
+        detail:
+          "摘要结构、关键词、图表说明和开放科学材料应与目标 specialty / article type 保持一致。",
+        recommendation:
+          "按具体 Frontiers specialty 和 article type 核对 abstract structure、keyword count、figure legends、data availability 和 supplementary material。",
+      },
+    ];
+  }
+  return [
+    {
+      title: "栏目口径：肿瘤临床可解释性",
+      severity: "orange",
+      status: "General oncology",
+      detail:
+        "综合肿瘤期刊更关注患者队列、终点定义、临床意义、伦理材料、统计解释和对患者管理的实际价值。",
+      recommendation:
+        "确认 Results 只报告已验证数据，Discussion 将物理/计划质量结果谨慎连接到临床意义，不夸大预测或因果结论。",
+    },
+    {
+      title: "栏目口径：临床队列与伦理边界",
+      severity: "orange",
+      status: "需人工复核",
+      detail:
+        "病例来源、纳排标准、随访/结局、中心偏倚、IRB/consent/waiver 和数据可用性需要比物理类期刊更清楚。",
+      recommendation:
+        "补齐 cohort flow、primary endpoint、ethics approval、consent/waiver 和 data availability，避免仅以技术指标支撑临床结论。",
+    },
+  ];
+}
+
 function buildJournalSpecificReviewerChecks(params: {
   journalTemplateReadiness: JournalTemplateReadiness;
   journalGuidelineCheck: JournalGuidelineCheck;
@@ -1976,6 +2043,7 @@ function buildJournalSpecificReviewerChecks(params: {
       recommendation:
         "按目标期刊逐项核对 figure/table 数量、分辨率、图题、reference style、cover letter、title page 和补充材料要求。",
     },
+    ...buildJournalCommunityReviewerChecks(journalTemplateReadiness.template),
   ];
 }
 
@@ -12205,7 +12273,7 @@ function App() {
                           <strong>{journalGuidelineCheck.detectedRules.length}</strong>
                         </article>
                         <article>
-                          <span>目标期刊检查</span>
+                          <span>目标/栏目检查</span>
                           <strong>{journalSpecificReviewerChecks.length}</strong>
                         </article>
                         <article>

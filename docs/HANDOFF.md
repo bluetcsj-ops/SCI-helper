@@ -141,6 +141,10 @@ Mentor → Vera Protocol → Data Lin → Alex Writer → Reviewer
 - 目标期刊专属检查人工对照验收：
   - Reviewer 面板显示目标期刊模板、Author Guidelines 来源、已识别规则数量和目标期刊检查状态
   - 提供从 Writer 规则校验到 Reviewer 目标期刊检查的人工核验路径
+- 期刊社群/栏目专属审稿口径：
+  - Medical Physics / JACMP 相近口径：放疗物理方法学、QA、TPS/算法、剂量学指标和可复现性
+  - Frontiers-style：开放科学声明、article type、结构化摘要、关键词和补充材料
+  - General oncology：临床队列、伦理边界、主要终点和临床解释谨慎性
 - 深度审稿意见。
 - Response to Reviewers 草稿。
 - 真实审稿意见导入。
@@ -174,12 +178,11 @@ Mentor → Vera Protocol → Data Lin → Alex Writer → Reviewer
   - `response-to-reviewers-mapped.md`
   - `writer-revision-checklist.md`
 
-Reviewer 98% 收尾清单：
+Reviewer 收尾验收方向：
 
-1. 期刊社群/栏目专属审稿口径：
-   - 在现有目标期刊专属检查之上，细化 Medical Physics、JACMP、Frontiers 等不同栏目规则。
-2. 期刊社群/栏目专属审稿口径细化：
-   - 将 Medical Physics、JACMP、Frontiers 等不同栏目规则进一步拆成专属审稿口径。
+1. 使用模拟 decision letter 和真实审稿意见跑完整 UI 验收。
+2. 将发现的小问题按导入、映射、Writer 提醒和导出分组修正。
+3. 如需进一步增强，可增加更多期刊模板或将页码/行号改为结构化字段。
 
 ## 当前验证记录
 
