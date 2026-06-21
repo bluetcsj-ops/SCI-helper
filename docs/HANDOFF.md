@@ -134,6 +134,10 @@ Mentor → Vera Protocol → Data Lin → Alex Writer → Reviewer
 - AI 写作痕迹与模板化风险检查：
   - 检查未替换占位符、过度宣传或因果化表述、AI 模板语、非英文残留
   - 联动投稿包中的 Generative AI assistance disclosure 复核项
+- 目标期刊专属审稿维度：
+  - 读取目标期刊模板和 Author Guidelines 本地规则校验结果
+  - 生成摘要与关键词、伦理与声明、图表/引用/投稿材料三类 Reviewer 检查项
+  - Reviewer 面板统计、导出清单和流程总览使用通用 + 期刊专属合并清单
 - 深度审稿意见。
 - Response to Reviewers 草稿。
 - 真实审稿意见导入。
@@ -245,6 +249,7 @@ $env:DATABASE_URL='sqlite:///:memory:'
 - Reviewer 真实意见拆分已支持 Editor / Reviewer 分块和多种编号条目，但仍是规则型，复杂 decision letter 仍需人工校正。
 - Reviewer 到 Writer 的章节映射支持人工修正和持久化保存，但仍需人工对照原始 decision letter 最终确认。
 - 当前 Author Guidelines 校验支持普通 HTML URL 抓取和手动粘贴；PDF、登录、强 JS 或反爬页面仍需手动粘贴，正式投稿仍需在投稿系统中最终核对。
+- 目标期刊专属 Reviewer 检查是规则型本地维度，不能替代目标期刊官网、投稿系统和编辑部要求的最终人工核对。
 - Reviewer 是规则型自查，不替代真实同行评审。
 
 ## 本地启动方式

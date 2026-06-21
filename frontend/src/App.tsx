@@ -1861,6 +1861,107 @@ function buildJournalGuidelineCheck(params: {
   };
 }
 
+function reviewerSeverityFromChecklistStatus(status: SubmissionChecklistStatus): ReviewerCheckSeverity {
+  if (status === "blocked") {
+    return "red";
+  }
+  return status === "review" ? "orange" : "green";
+}
+
+function buildJournalSpecificReviewerChecks(params: {
+  journalTemplateReadiness: JournalTemplateReadiness;
+  journalGuidelineCheck: JournalGuidelineCheck;
+  submissionPackageChecklist: SubmissionChecklistItem[];
+}): ReviewerCheckItem[] {
+  const { journalTemplateReadiness, journalGuidelineCheck, submissionPackageChecklist } = params;
+  const findGuidelineCheck = (title: string) =>
+    journalGuidelineCheck.checks.find((item) => item.title === title);
+  const findTemplateCheck = (title: string) =>
+    journalTemplateReadiness.checks.find((item) => item.title === title);
+  const findSubmissionItem = (pattern: RegExp) =>
+    submissionPackageChecklist.find((item) => pattern.test(item.title));
+
+  const abstractGuideline = findGuidelineCheck("Abstract word limit");
+  const keywordGuideline = findGuidelineCheck("Keywords");
+  const abstractTemplate = findTemplateCheck("摘要结构");
+  const ethicsGuideline = findGuidelineCheck("Ethics / IRB statement");
+  const declarationGuideline = findGuidelineCheck("Conflict / funding / data availability");
+  const figureGuideline = findGuidelineCheck("Figures / tables");
+  const referenceGuideline = findGuidelineCheck("Reference style");
+  const coverGuideline = findGuidelineCheck("Cover letter / title page");
+  const aiDisclosureItem = findSubmissionItem(/Generative AI assistance disclosure/i);
+
+  const abstractStatus =
+    abstractGuideline?.status === "blocked" || keywordGuideline?.status === "blocked"
+      ? "blocked"
+      : abstractGuideline?.status === "review" ||
+          keywordGuideline?.status === "review" ||
+          abstractTemplate?.status === "review"
+        ? "review"
+        : "ready";
+  const declarationStatus =
+    ethicsGuideline?.status === "blocked" || declarationGuideline?.status === "blocked"
+      ? "blocked"
+      : ethicsGuideline?.status === "review" ||
+          declarationGuideline?.status === "review" ||
+          aiDisclosureItem?.status === "review"
+        ? "review"
+        : "ready";
+  const formattingStatus =
+    figureGuideline?.status === "blocked" || referenceGuideline?.status === "blocked" || coverGuideline?.status === "blocked"
+      ? "blocked"
+      : figureGuideline?.status === "review" ||
+          referenceGuideline?.status === "review" ||
+          coverGuideline?.status === "review"
+        ? "review"
+        : "ready";
+
+  return [
+    {
+      title: "目标期刊：摘要与关键词",
+      severity: reviewerSeverityFromChecklistStatus(abstractStatus),
+      status: journalTemplateReadiness.template.name,
+      detail: [
+        abstractTemplate?.detail,
+        abstractGuideline?.guideline,
+        keywordGuideline?.guideline,
+      ]
+        .filter(Boolean)
+        .join("；"),
+      recommendation:
+        "按目标期刊模板和 Author Guidelines 人工核对 Abstract 结构、字数、关键词数量和关键词格式。",
+    },
+    {
+      title: "目标期刊：伦理与声明",
+      severity: reviewerSeverityFromChecklistStatus(declarationStatus),
+      status: journalGuidelineCheck.sourceLabel,
+      detail: [
+        ethicsGuideline?.currentEvidence,
+        declarationGuideline?.currentEvidence,
+        aiDisclosureItem?.detail,
+      ]
+        .filter(Boolean)
+        .join("；"),
+      recommendation:
+        "正式投稿前补齐 Ethics / IRB、Consent、Conflict of interest、Funding、Data availability 和 Generative AI assistance disclosure。",
+    },
+    {
+      title: "目标期刊：图表、引用与投稿材料",
+      severity: reviewerSeverityFromChecklistStatus(formattingStatus),
+      status: `${journalGuidelineCheck.readyCount} ready / ${journalGuidelineCheck.reviewCount} review / ${journalGuidelineCheck.blockedCount} blocked`,
+      detail: [
+        figureGuideline?.guideline,
+        referenceGuideline?.guideline,
+        coverGuideline?.currentEvidence,
+      ]
+        .filter(Boolean)
+        .join("；"),
+      recommendation:
+        "按目标期刊逐项核对 figure/table 数量、分辨率、图题、reference style、cover letter、title page 和补充材料要求。",
+    },
+  ];
+}
+
 function buildDraftVersionSnapshot(params: {
   selectedProject: Project | null | undefined;
   writerOutlineDraft: WriterOutlineDraft | null;
@@ -4324,15 +4425,28 @@ function App() {
       writerCoverLetterDraft,
     ],
   );
+  const journalSpecificReviewerChecks = useMemo(
+    () =>
+      buildJournalSpecificReviewerChecks({
+        journalTemplateReadiness,
+        journalGuidelineCheck,
+        submissionPackageChecklist: submissionPackageChecklist.items,
+      }),
+    [journalTemplateReadiness, journalGuidelineCheck, submissionPackageChecklist.items],
+  );
+  const reviewerDisplayChecks = useMemo(
+    () => [...reviewerChecks, ...journalSpecificReviewerChecks],
+    [reviewerChecks, journalSpecificReviewerChecks],
+  );
   const reviewerResponseDraft = useMemo(
     () =>
       buildReviewerResponseDraft({
-        reviewerChecks,
+        reviewerChecks: reviewerDisplayChecks,
         reviewerDeepComments,
         protocolDataConsistencyCheck,
         submissionPackageChecklist,
       }),
-    [reviewerChecks, reviewerDeepComments, protocolDataConsistencyCheck, submissionPackageChecklist],
+    [reviewerDisplayChecks, reviewerDeepComments, protocolDataConsistencyCheck, submissionPackageChecklist],
   );
   const reviewerRevisionSectionsByThreadId = useMemo(
     () =>
@@ -4364,7 +4478,7 @@ function App() {
         writerMethodsResultsDraft,
         introductionHasText,
         writerVersionCount: writerDraftVersions.length,
-        reviewerChecks,
+        reviewerChecks: reviewerDisplayChecks,
         reviewerCommentThreadCount: reviewerCommentThreads.length,
       }),
     [
@@ -4377,7 +4491,7 @@ function App() {
       writerMethodsResultsDraft,
       introductionHasText,
       writerDraftVersions.length,
-      reviewerChecks,
+      reviewerDisplayChecks,
       reviewerCommentThreads.length,
     ],
   );
@@ -5945,9 +6059,9 @@ function App() {
   }
 
   function handleDownloadReviewerReport() {
-    const highRiskCount = reviewerChecks.filter((item) => item.severity === "red").length;
-    const reviewNeededCount = reviewerChecks.filter((item) => item.severity === "orange").length;
-    const passedCount = reviewerChecks.filter((item) => item.severity === "green").length;
+    const highRiskCount = reviewerDisplayChecks.filter((item) => item.severity === "red").length;
+    const reviewNeededCount = reviewerDisplayChecks.filter((item) => item.severity === "orange").length;
+    const passedCount = reviewerDisplayChecks.filter((item) => item.severity === "green").length;
     const content = [
       "# 投稿前审稿清单",
       "",
@@ -5961,7 +6075,7 @@ function App() {
       `- 已通过：${passedCount}`,
       "",
       "## 检查项",
-      ...reviewerChecks.flatMap((item, index) => [
+      ...reviewerDisplayChecks.flatMap((item, index) => [
         `### ${index + 1}. ${item.title}`,
         `- 状态：${item.status}`,
         `- 风险：${riskLabels[item.severity]}`,
@@ -12009,15 +12123,15 @@ function App() {
                     <div className="reviewer-summary-grid">
                       <article className="risk-red">
                         <span>高风险</span>
-                        <strong>{reviewerChecks.filter((item) => item.severity === "red").length}</strong>
+                        <strong>{reviewerDisplayChecks.filter((item) => item.severity === "red").length}</strong>
                       </article>
                       <article className="risk-orange">
                         <span>需复核</span>
-                        <strong>{reviewerChecks.filter((item) => item.severity === "orange").length}</strong>
+                        <strong>{reviewerDisplayChecks.filter((item) => item.severity === "orange").length}</strong>
                       </article>
                       <article className="risk-green">
                         <span>已通过</span>
-                        <strong>{reviewerChecks.filter((item) => item.severity === "green").length}</strong>
+                        <strong>{reviewerDisplayChecks.filter((item) => item.severity === "green").length}</strong>
                       </article>
                     </div>
 
@@ -12418,7 +12532,7 @@ function App() {
                     ) : null}
 
                     <div className="reviewer-check-list">
-                      {reviewerChecks.map((item) => (
+                      {reviewerDisplayChecks.map((item) => (
                         <article className={`reviewer-check-item risk-${item.severity}`} key={item.title}>
                           <div className="reviewer-check-head">
                             <div>

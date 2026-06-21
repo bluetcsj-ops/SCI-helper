@@ -24,7 +24,7 @@ Mentor 选题与引用
 | Dr. Vera Protocol | 78% | 可编辑/保存研究方案，生成方案草案和执行计划草案，完成方案质量检查、方案-数据一致性检查、方案版本快照与导出 |
 | Dr. Data Lin | 95% | 可上传 CSV、选择预备 DATA、做质控/隐私检查/统计草案/图表/审计、一键联调 Writer，生成自主分析计划和高级模型计划，并可执行第一版 exploratory linear/logistic regression |
 | Alex Writer | 99% | 可生成英文 Introduction、Methods / Results、Discussion、Abstract、Cover Letter、投稿包检查清单、目标期刊模板和 Author Guidelines URL 抓取/本地规则校验，并支持放疗计划质量字段解读、高级模型结果来源与人工核验提示、后端版本归档、恢复 Introduction、版本差异查看、历史章节复制、全文恢复逐字段编辑和 Reviewer 修改提醒 |
-| Rev. Dr. Helena Skov | 97% | 可生成投稿前规则清单、深度审稿意见、Response to Reviewers 草稿，并支持放疗专科风险检查、高级模型 OR 报告边界检查、AI 写作痕迹/模板化风险检查、复杂审稿信规则增强拆分、真实审稿意见导入、逐条映射、英文回复导出、返修写作清单和章节归属持久化修正 |
+| Rev. Dr. Helena Skov | 98% | 可生成投稿前规则清单、深度审稿意见、Response to Reviewers 草稿，并支持放疗专科风险检查、高级模型 OR 报告边界检查、AI 写作痕迹/模板化风险检查、复杂审稿信规则增强拆分、目标期刊专属审稿维度、真实审稿意见导入、逐条映射、英文回复导出、返修写作清单和章节归属持久化修正 |
 
 ## 已完成的关键闭环
 
@@ -147,6 +147,10 @@ Mentor 选题与引用
 - 映射回复导出 `response-to-reviewers-mapped.md`。
 - 高级模型 OR 报告边界检查：确认 Logistic OR 未被写成因果结论或已验证预测模型，并核对 `Pass` vs `non-Pass` 编码、事件数、收敛、CI、P 值和样本量限制。
 - AI 写作痕迹与模板化风险检查：检查未替换占位符、过度宣传或因果化表述、AI 模板语、非英文残留和 Generative AI assistance disclosure 是否未确认。
+- 目标期刊专属审稿维度：
+  - 读取目标期刊模板和 Author Guidelines 本地规则校验结果。
+  - 新增摘要与关键词、伦理与声明、图表/引用/投稿材料三类 Reviewer 检查项。
+  - Reviewer 面板统计、导出清单和流程总览使用合并后的通用 + 期刊专属检查清单。
 - 返修写作清单：
   - 按 Introduction、Methods / Results、Discussion、Abstract、Cover Letter / Submission 聚合真实审稿意见。
   - 可人工修正每条审稿意见的影响章节，并通过后端字段持久化保存。
@@ -156,7 +160,7 @@ Mentor 选题与引用
 
 当前仍未完成：
 
-- 目标期刊专属审稿维度。
+- 更细颗粒度的期刊社群/栏目专属审稿口径。
 
 ## 当前优先级建议
 
