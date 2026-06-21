@@ -256,6 +256,9 @@ class ReviewerCommentRepository:
             "In the revised manuscript, we will address the comment by updating the relevant "
             "text, ensuring that the claim is supported by the verified data output, and adding "
             "page and line references after the revision is finalized. "
+            "Page: [to be completed manually]. "
+            "Lines: [to be completed manually]. "
+            "Manuscript location: [to be completed manually]. "
             f"Reviewer comment to address: \"{comment[:260].strip()}\""
         )
 

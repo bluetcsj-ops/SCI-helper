@@ -150,6 +150,10 @@ Mentor → Vera Protocol → Data Lin → Alex Writer → Reviewer
   - 前端导入提示和单条审稿意见卡片显示人工核验提示
 - Major / Minor / Editorial 初分。
 - 逐条英文 response draft。
+- Response to Reviewers 定位占位：
+  - 新导入条目的英文 response draft 包含 Page、Lines、Manuscript location 人工占位
+  - Reviewer 卡片显示返修信定位需人工补齐提示
+  - `response-to-reviewers-mapped.md` 导出会为旧数据补齐定位占位，并列出人工必须补齐项
 - 条目状态管理。
 - 风险分级。
 - 返修写作清单：
@@ -168,11 +172,9 @@ Reviewer 98% 收尾清单：
 
 1. 期刊社群/栏目专属审稿口径：
    - 在现有目标期刊专属检查之上，细化 Medical Physics、JACMP、Frontiers 等不同栏目规则。
-2. Response to Reviewers 定稿核验：
-   - 为页码、行号、修改位置保留人工占位，并确保导出文件中提示必须人工补齐。
-3. 真实导入审稿意见完整 UI 验收：
+2. 真实导入审稿意见完整 UI 验收：
    - 覆盖拆分、类型修正、状态保存、章节归属持久化、Writer 修改提醒和导出。
-4. 目标期刊专属检查人工对照验收：
+3. 目标期刊专属检查人工对照验收：
    - 将 Reviewer 中的目标期刊检查与 Author Guidelines 抓取/粘贴结果逐项对照。
 
 ## 当前验证记录

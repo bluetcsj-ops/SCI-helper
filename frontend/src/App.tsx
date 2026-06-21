@@ -2205,6 +2205,20 @@ function countReviewerSplitWarnings(threads: ReviewerCommentThread[]): number {
   return threads.filter((thread) => getReviewerSplitWarning(thread)).length;
 }
 
+function ensureReviewerResponseLocationPlaceholders(responseDraft: string): string {
+  const trimmedDraft = responseDraft.trim() || "Response pending manual drafting.";
+  if (/Page:\s*\[to be completed manually\]/i.test(trimmedDraft)) {
+    return trimmedDraft;
+  }
+  return [
+    trimmedDraft,
+    "",
+    "Page: [to be completed manually].",
+    "Lines: [to be completed manually].",
+    "Manuscript location: [to be completed manually].",
+  ].join("\n");
+}
+
 function buildAiWritingRiskCheck(currentWriterSections: Record<string, string>): ReviewerCheckItem {
   const manuscriptText = Object.entries(currentWriterSections)
     .filter(([section]) => ["Abstract", "Methods / Results", "Discussion", "Cover Letter"].includes(section))
@@ -6320,6 +6334,7 @@ function App() {
         `## ${index + 1}. ${thread.reviewer_label} - ${reviewerCommentTypeLabels[thread.comment_type]}`,
         "",
         `Status: ${thread.status}`,
+        "Manual location fields: required before final resubmission",
         "",
         "**Reviewer comment**",
         "",
@@ -6327,17 +6342,23 @@ function App() {
         "",
         "**Response**",
         "",
-        thread.response_draft || "Response pending manual drafting.",
+        ensureReviewerResponseLocationPlaceholders(thread.response_draft),
         "",
         "**Manuscript change**",
         "",
         thread.manuscript_change || "Manuscript change pending manual confirmation.",
         "",
+        "**Manual fields to complete**",
+        "",
+        "- Page: [to be completed manually]",
+        "- Lines: [to be completed manually]",
+        "- Manuscript location: [to be completed manually]",
+        "",
       ]),
       "## Final manual checks",
       "",
       "- Paste the exact reviewer wording from the official decision letter.",
-      "- Add final manuscript page and line numbers after revision.",
+      "- Complete Page / Lines / Manuscript location for every response item after revision.",
       "- Confirm that all statistical, ethics, and data-availability statements match the revised manuscript.",
       "- Ensure that unresolved or deferred items are explicitly discussed before resubmission.",
       "",
@@ -12387,6 +12408,10 @@ function App() {
                                   <span>{splitWarning}</span>
                                 </p>
                               ) : null}
+                              <p className="reviewer-location-warning">
+                                <strong>返修信定位需人工补齐</strong>
+                                <span>最终导出前请补充 Page、Lines 和 Manuscript location。</span>
+                              </p>
                               <div className="reviewer-section-map">
                                 <div className="reviewer-section-map-head">
                                   <span>影响章节</span>

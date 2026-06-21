@@ -2583,7 +2583,8 @@ button {
   color: #2f7ea8;
 }
 
-.reviewer-split-warning {
+.reviewer-split-warning,
+.reviewer-location-warning {
   display: grid;
   gap: 4px;
   margin: 0;
@@ -2601,6 +2602,22 @@ button {
 
 .reviewer-split-warning span {
   color: #8c4d10;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.reviewer-location-warning {
+  border-color: rgba(47, 126, 168, 0.24);
+  background: #eef7fb;
+  color: #24546f;
+}
+
+.reviewer-location-warning strong,
+.reviewer-location-warning span {
+  color: #24546f;
+}
+
+.reviewer-location-warning span {
   font-size: 13px;
   font-weight: 700;
 }

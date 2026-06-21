@@ -146,6 +146,10 @@ Mentor 选题与引用
   - 前端导入提示和单条审稿意见卡片显示醒目的人工核验提示。
 - Major / Minor / Editorial 自动初分。
 - 逐条英文 response draft。
+- Response to Reviewers 定位占位：
+  - 新导入条目的英文 response draft 包含 Page、Lines、Manuscript location 人工占位。
+  - Reviewer 卡片显示返修信定位需人工补齐提示。
+  - `response-to-reviewers-mapped.md` 导出会为旧数据补齐定位占位，并列出人工必须补齐项。
 - 条目状态管理：草稿、处理中、已解决、暂缓。
 - 映射回复导出 `response-to-reviewers-mapped.md`。
 - 高级模型 OR 报告边界检查：确认 Logistic OR 未被写成因果结论或已验证预测模型，并核对 `Pass` vs `non-Pass` 编码、事件数、收敛、CI、P 值和样本量限制。
@@ -165,7 +169,6 @@ Mentor 选题与引用
 
 - Reviewer 98% 收尾清单：
   - 更细颗粒度的期刊社群/栏目专属审稿口径，例如 Medical Physics、JACMP、Frontiers 不同栏目规则。
-  - Response to Reviewers 页码、行号、修改位置的人工占位与导出核验。
   - 真实导入审稿意见后的 UI 完整验收，包括拆分、类型修正、状态保存、章节归属持久化、Writer 修改提醒和 3 个导出文件。
   - 目标期刊专属 Reviewer 检查与 Author Guidelines 抓取结果的人工对照验收。
 
