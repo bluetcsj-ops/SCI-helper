@@ -407,16 +407,32 @@ class DataWorkspaceService:
         ).lower()
         has_time_signal = any(token in text_blob for token in ["survival", "time-to-event", "follow-up", "death", "event"])
         repeated_signal = any(token in text_blob for token in ["repeated", "longitudinal", "mixed", "patient-level", "fraction"])
+        survival_time_column, survival_event_column = self._select_survival_fields(headers, numeric_columns, columns)
+        has_survival_fields = bool(survival_time_column and survival_event_column)
         candidate_pool = self._build_advanced_model_candidates(
             selected_outcomes=selected_outcomes,
             binary_outcome=binary_outcome,
             numeric_columns=numeric_columns,
             categorical_columns=categorical_columns,
             group_column=clean_group_column,
-            has_time_signal=has_time_signal,
+            has_time_signal=has_time_signal or has_survival_fields,
             repeated_signal=repeated_signal,
+            survival_time_column=survival_time_column,
+            survival_event_column=survival_event_column,
         )
-        recommended = next((candidate for candidate in candidate_pool if candidate.readiness == "ready"), None)
+        recommended = (
+            next(
+                (
+                    candidate
+                    for candidate in candidate_pool
+                    if candidate.model_id == "cox_ph"
+                    and candidate.readiness == "ready"
+                    and (has_time_signal or has_survival_fields)
+                ),
+                None,
+            )
+            or next((candidate for candidate in candidate_pool if candidate.readiness == "ready"), None)
+        )
         return AdvancedModelPlan(
             project_id=project.id,
             file_name=file_name,
@@ -442,8 +458,8 @@ class DataWorkspaceService:
         group_column: str | None = None,
         outcome_columns: list[str] | None = None,
     ) -> AdvancedModelFitReport:
-        if model_id not in {"linear_regression", "logistic_regression"}:
-            raise ValueError("当前高级模型执行支持 linear_regression 和 logistic_regression。")
+        if model_id not in {"linear_regression", "logistic_regression", "cox_ph"}:
+            raise ValueError("当前高级模型执行支持 linear_regression、logistic_regression 和 cox_ph。")
 
         missing_confirmations = self._missing_formal_test_confirmations(confirmation)
         confirmation_warning = (
@@ -465,6 +481,36 @@ class DataWorkspaceService:
         numeric_columns = [column.name for column in columns if column.inferred_type == "numeric"]
         if not numeric_columns:
             raise ValueError("CSV 文件中没有可用于高级模型的数值列。")
+
+        if model_id == "cox_ph":
+            categorical_columns = [
+                column.name
+                for column in columns
+                if column.inferred_type != "numeric" and 1 < column.unique_count <= 12
+            ]
+            time_column, event_column = self._select_survival_fields(headers, numeric_columns, columns)
+            if not time_column or not event_column:
+                raise ValueError("Cox survival analysis 需要 follow-up time 和 event/status 字段。")
+            valid_group_column = self._resolve_group_column(group_column, headers)
+            numeric_predictors = [
+                column
+                for column in numeric_columns
+                if column not in {time_column, event_column}
+            ][:3]
+            if not numeric_predictors and not valid_group_column:
+                raise ValueError("Cox survival analysis 至少需要一个数值协变量或分组预测变量。")
+            return self._build_cox_ph_fit_report(
+                project=project,
+                protocol=protocol,
+                file_name=file_name,
+                rows=rows,
+                time_column=time_column,
+                event_column=event_column,
+                numeric_predictors=numeric_predictors,
+                group_column=valid_group_column if valid_group_column in categorical_columns else None,
+                confirmation=confirmation,
+                confirmation_warning=confirmation_warning,
+            )
 
         if model_id == "logistic_regression":
             categorical_columns = [
@@ -685,6 +731,99 @@ class DataWorkspaceService:
             raw_csv_saved=False,
             audit_summary=audit_summary,
             next_step="把 odds ratio、置信区间、事件数和收敛边界交给 Alex Writer 前，请先完成人工统计复核。",
+        )
+
+    def _build_cox_ph_fit_report(
+        self,
+        project: Project,
+        protocol: ProjectProtocol,
+        file_name: str,
+        rows: list[dict[str, str]],
+        time_column: str,
+        event_column: str,
+        numeric_predictors: list[str],
+        group_column: str | None,
+        confirmation: FormalTestConfirmation,
+        confirmation_warning: str | None = None,
+    ) -> AdvancedModelFitReport:
+        fit = self._fit_cox_ph(
+            rows=rows,
+            time_column=time_column,
+            event_column=event_column,
+            numeric_predictors=numeric_predictors,
+            group_column=group_column,
+        )
+        warnings = list(fit["warnings"])
+        if confirmation_warning:
+            warnings.append(confirmation_warning)
+        if fit["complete_case_count"] < 30:
+            warnings.append("Complete-case sample size is small for Cox survival analysis; hazard ratios are exploratory.")
+        if fit["event_count"] < 10:
+            warnings.append("Event count is low; hazard-ratio estimates require cautious review.")
+        if protocol.statistical_plan.strip():
+            warnings.append("Confirm that this Cox-style model matches the pre-specified statistical plan.")
+        else:
+            warnings.append("The project protocol does not yet contain a finalized survival model specification.")
+        warnings.append("This prototype uses a Cox partial-likelihood approximation and does not replace validated survival software.")
+
+        predictor_text = ", ".join(fit["predictor_columns"]) if fit["predictor_columns"] else "no predictors"
+        methods_draft = (
+            f"An exploratory Cox proportional hazards model was fitted using {time_column} as follow-up time "
+            f"and {event_column} as the event indicator from complete-case records in {file_name}. "
+            f"Candidate predictors were {predictor_text}. Numeric predictors were standardized, categorical "
+            "predictors were represented with indicator variables, and hazard ratios are provisional pending "
+            "manual review of event coding, censoring definitions, proportional hazards assumptions, and model diagnostics."
+        )
+        result_terms = [
+            f"{coefficient.term}: HR={coefficient.estimate}"
+            + (
+                f", 95% CI {coefficient.confidence_interval_low} to {coefficient.confidence_interval_high}"
+                if coefficient.confidence_interval_low is not None and coefficient.confidence_interval_high is not None
+                else ""
+            )
+            + (
+                f", P={self._format_p_value(coefficient.p_value)}"
+                if coefficient.p_value is not None
+                else ""
+            )
+            for coefficient in fit["coefficients"]
+        ][:4]
+        results_draft = (
+            f"The exploratory Cox model included {fit['complete_case_count']} complete cases and "
+            f"{fit['event_count']} event(s). "
+            + (
+                f"Key hazard-ratio estimates were: {'; '.join(result_terms)}."
+                if result_terms
+                else "No hazard-ratio estimates were available for reporting."
+            )
+            + " These results require manual statistical review before manuscript-level inference."
+        )
+        audit_summary = (
+            f"已执行 exploratory Cox survival analysis：{fit['complete_case_count']} 个完整病例，"
+            f"{fit['event_count']} 个事件，{len(fit['predictor_columns'])} 个预测字段；未保存原始 CSV。"
+        )
+        return AdvancedModelFitReport(
+            project_id=project.id,
+            file_name=file_name,
+            model_id="cox_ph",
+            model_name="Cox proportional hazards model",
+            outcome_column=f"{time_column} + {event_column}",
+            predictor_columns=fit["predictor_columns"],
+            row_count=len(rows),
+            complete_case_count=fit["complete_case_count"],
+            excluded_row_count=len(rows) - fit["complete_case_count"],
+            degrees_of_freedom=fit["degrees_of_freedom"],
+            r_squared=None,
+            adjusted_r_squared=None,
+            coefficients=fit["coefficients"],
+            methods_draft=methods_draft,
+            results_draft=results_draft,
+            warnings=warnings,
+            confirmation=confirmation,
+            method_version="advanced-cox-v1",
+            raw_csv_saved=False,
+            audit_summary=audit_summary,
+            next_step="把 hazard ratio、事件数、删失定义和比例风险假设交给 Alex Writer 前，请先完成人工统计复核。",
         )
 
     def _fit_linear_regression(
@@ -991,6 +1130,200 @@ class DataWorkspaceService:
             "warnings": warnings,
         }
 
+    def _fit_cox_ph(
+        self,
+        rows: list[dict[str, str]],
+        time_column: str,
+        event_column: str,
+        numeric_predictors: list[str],
+        group_column: str | None,
+    ) -> dict[str, object]:
+        valid_rows = []
+        for row in rows:
+            follow_up_time = self._parse_float(row.get(time_column, ""))
+            event_value = self._parse_survival_event(row.get(event_column, ""))
+            if follow_up_time is None or follow_up_time <= 0 or event_value is None:
+                continue
+            valid_rows.append((row, follow_up_time, event_value))
+
+        numeric_values: dict[str, list[float]] = {predictor: [] for predictor in numeric_predictors}
+        for row, _follow_up_time, _event_value in valid_rows:
+            for predictor in numeric_predictors:
+                value = self._parse_float(row.get(predictor, ""))
+                if value is not None:
+                    numeric_values[predictor].append(value)
+        numeric_scales: dict[str, tuple[float, float]] = {}
+        for predictor, values in numeric_values.items():
+            if len(values) < 2:
+                continue
+            center = fmean(values)
+            spread = stdev(values) if len(values) > 1 else 0.0
+            numeric_scales[predictor] = (center, spread if spread > 0 else 1.0)
+
+        group_levels = sorted(
+            {
+                row.get(group_column, "").strip()
+                for row, _follow_up_time, _event_value in valid_rows
+                if group_column and row.get(group_column, "").strip().lower() not in MISSING_TOKENS
+            }
+        )
+        group_reference = group_levels[0] if group_levels else None
+        encoded_group_levels = group_levels[1:] if group_reference else []
+        scaled_numeric_predictors = [predictor for predictor in numeric_predictors if predictor in numeric_scales]
+        term_names = [
+            *[f"{predictor} (per SD)" for predictor in scaled_numeric_predictors],
+            *[f"{group_column}={level}" for level in encoded_group_levels],
+        ]
+        predictor_columns = [
+            *scaled_numeric_predictors,
+            *([group_column] if group_column and group_reference else []),
+        ]
+        if not term_names:
+            raise ValueError("Cox survival analysis 至少需要一个可编码的预测变量。")
+
+        survival_rows: list[tuple[float, float, list[float]]] = []
+        for row, follow_up_time, event_value in valid_rows:
+            predictor_values: list[float] = []
+            skip_row = False
+            for predictor in scaled_numeric_predictors:
+                value = self._parse_float(row.get(predictor, ""))
+                if value is None:
+                    skip_row = True
+                    break
+                center, spread = numeric_scales[predictor]
+                predictor_values.append((value - center) / spread)
+            if skip_row:
+                continue
+            if group_column and group_reference:
+                group_value = row.get(group_column, "").strip()
+                if group_value.lower() in MISSING_TOKENS:
+                    continue
+                predictor_values.extend(1.0 if group_value == level else 0.0 for level in encoded_group_levels)
+            survival_rows.append((follow_up_time, event_value, predictor_values))
+
+        complete_case_count = len(survival_rows)
+        event_count = int(sum(event_value for _time, event_value, _predictors in survival_rows))
+        parameter_count = len(term_names)
+        if complete_case_count <= parameter_count:
+            raise ValueError("完整病例数量不足以拟合 Cox survival analysis。")
+        if event_count == 0:
+            raise ValueError("Cox survival analysis 事件字段没有可识别事件。")
+        if event_count <= parameter_count:
+            raise ValueError("Cox survival analysis 事件数不足以支持当前预测变量数量。")
+
+        coefficients_raw = [0.0 for _term in term_names]
+        inverse_information: list[list[float]] | None = None
+        converged = False
+        ridge = 1e-6
+        event_rows = [row for row in survival_rows if row[1] == 1.0]
+        for _iteration in range(50):
+            score = [0.0 for _term in term_names]
+            information = [
+                [0.0 for _term in term_names]
+                for _term in term_names
+            ]
+            for event_time, _event_value, event_predictors in event_rows:
+                risk_set = [
+                    (time_value, predictors)
+                    for time_value, _row_event, predictors in survival_rows
+                    if time_value >= event_time
+                ]
+                if not risk_set:
+                    continue
+                weights = [
+                    self._safe_exp(sum(predictor * coefficients_raw[index] for index, predictor in enumerate(predictors)))
+                    for _time_value, predictors in risk_set
+                ]
+                denominator = sum(weights)
+                if denominator <= 0:
+                    continue
+                weighted_mean = [
+                    sum(weights[row_index] * predictors[index] for row_index, (_time_value, predictors) in enumerate(risk_set))
+                    / denominator
+                    for index in range(parameter_count)
+                ]
+                weighted_second = [
+                    [
+                        sum(
+                            weights[row_index] * predictors[first] * predictors[second]
+                            for row_index, (_time_value, predictors) in enumerate(risk_set)
+                        )
+                        / denominator
+                        for second in range(parameter_count)
+                    ]
+                    for first in range(parameter_count)
+                ]
+                for index in range(parameter_count):
+                    score[index] += event_predictors[index] - weighted_mean[index]
+                    for second in range(parameter_count):
+                        information[index][second] += (
+                            weighted_second[index][second] - weighted_mean[index] * weighted_mean[second]
+                        )
+            for index in range(parameter_count):
+                information[index][index] += ridge
+            try:
+                inverse_information = self._invert_matrix(information)
+            except ValueError as exc:
+                raise ValueError("Cox survival model 信息矩阵不可逆，请减少预测变量或合并稀疏分组。") from exc
+            step = self._matrix_vector_multiply(inverse_information, score)
+            max_step = max(abs(value) for value in step) if step else 0.0
+            if max_step > 1:
+                step = [value / max_step for value in step]
+                max_step = 1.0
+            coefficients_raw = [
+                coefficients_raw[index] + step[index]
+                for index in range(parameter_count)
+            ]
+            if max_step < 1e-6:
+                converged = True
+                break
+
+        if inverse_information is None:
+            raise ValueError("Cox survival model 未能生成可用的信息矩阵。")
+
+        coefficients: list[AdvancedModelCoefficient] = []
+        for index, term in enumerate(term_names):
+            log_hazard = coefficients_raw[index]
+            standard_error = sqrt(max(inverse_information[index][index], 0.0))
+            statistic = log_hazard / standard_error if standard_error > 0 else None
+            p_value = self._normal_two_sided_p_value(statistic) if statistic is not None else None
+            ci_low = self._safe_exp(log_hazard - 1.96 * standard_error) if standard_error > 0 else None
+            ci_high = self._safe_exp(log_hazard + 1.96 * standard_error) if standard_error > 0 else None
+            hazard_ratio = self._safe_exp(log_hazard)
+            coefficients.append(
+                AdvancedModelCoefficient(
+                    term=term,
+                    estimate=round(hazard_ratio, 4),
+                    standard_error=round(standard_error, 4),
+                    statistic=round(statistic, 4) if statistic is not None else None,
+                    p_value=round(p_value, 6) if p_value is not None else None,
+                    confidence_interval_low=round(ci_low, 4) if ci_low is not None else None,
+                    confidence_interval_high=round(ci_high, 4) if ci_high is not None else None,
+                    interpretation=(
+                        f"Exploratory hazard ratio for {term}, holding other included predictors constant."
+                    ),
+                )
+            )
+
+        warnings: list[str] = []
+        if group_column and group_reference:
+            warnings.append(f"{group_column} reference level: {group_reference}.")
+        if not converged:
+            warnings.append("Cox partial-likelihood iteration did not fully converge within the iteration limit.")
+        if len({time_value for time_value, event_value, _predictors in survival_rows if event_value == 1.0}) < event_count:
+            warnings.append("Tied event times were detected; this prototype uses an approximate handling of ties.")
+        if event_count == complete_case_count:
+            warnings.append("No censored records were detected; confirm that event coding and censoring are correct.")
+        warnings.append("Numeric predictors were standardized; hazard ratios are per one standard deviation increase.")
+        return {
+            "complete_case_count": complete_case_count,
+            "event_count": event_count,
+            "degrees_of_freedom": event_count - parameter_count,
+            "predictor_columns": predictor_columns,
+            "coefficients": coefficients,
+            "warnings": warnings,
+        }
+
     def _logistic_probability(self, value: float) -> float:
         if value >= 0:
             denominator = 1 + exp(-value)
@@ -1001,6 +1334,142 @@ class DataWorkspaceService:
     def _safe_exp(self, value: float) -> float:
         return exp(min(max(value, -30), 30))
 
+    def _select_survival_fields(
+        self,
+        headers: list[str],
+        numeric_columns: list[str],
+        columns: list[DataColumnQuality],
+    ) -> tuple[str | None, str | None]:
+        column_by_name = {column.name: column for column in columns}
+        header_order = {header: index for index, header in enumerate(headers)}
+        time_candidates = [
+            (self._survival_time_score(column), -header_order.get(column, 0), column)
+            for column in numeric_columns
+            if self._survival_time_score(column) > 0
+        ]
+        event_candidates = [
+            (
+                self._survival_event_score(column.name, column),
+                -header_order.get(column.name, 0),
+                column.name,
+            )
+            for column in columns
+            if self._survival_event_score(column.name, column) > 0
+        ]
+        time_column = max(time_candidates)[2] if time_candidates else None
+        event_column = max(event_candidates)[2] if event_candidates else None
+        if event_column == time_column:
+            event_column = None
+        if time_column and event_column and column_by_name.get(event_column):
+            return time_column, event_column
+        return time_column, event_column
+
+    def _survival_time_score(self, column_name: str) -> int:
+        normalized = self._normalize(column_name)
+        score = 0
+        if any(token in normalized for token in ["followup", "followuptime", "futime"]):
+            score += 8
+        if any(token in normalized for token in ["survival", "overallsurvival", "progressionfreesurvival"]):
+            score += 7
+        if any(token in normalized for token in ["timetoevent", "timeevent", "eventtime"]):
+            score += 6
+        if any(token in normalized for token in ["osmonths", "pfsmonths", "osdays", "pfsdays"]):
+            score += 5
+        if "duration" in normalized:
+            score += 4
+        if any(token in normalized for token in ["months", "month", "days", "day"]):
+            score += 2
+        if "time" in normalized:
+            score += 1
+        blocked_generic_time = any(
+            token in normalized
+            for token in ["delivery", "treatment", "planning", "processing", "beam", "simulation"]
+        )
+        if blocked_generic_time and score <= 3:
+            return 0
+        return score
+
+    def _survival_event_score(self, column_name: str, column: DataColumnQuality) -> int:
+        normalized = self._normalize(column_name)
+        score = 0
+        if normalized in {"event", "status", "eventstatus", "survivalstatus", "deathstatus"}:
+            score += 8
+        if "event" in normalized:
+            score += 6
+        if "status" in normalized:
+            score += 5
+        if any(token in normalized for token in ["death", "dead", "deceased", "mortality"]):
+            score += 6
+        if any(token in normalized for token in ["recurrence", "progression", "failure", "relapse"]):
+            score += 4
+        if "qaresult" in normalized or normalized == "result":
+            return 0
+        if score <= 0:
+            return 0
+        if column.inferred_type == "numeric" and column.unique_count > 2:
+            return 0
+        if column.inferred_type != "numeric" and column.unique_count > 5:
+            return 0
+        sample_labels = {value.strip().lower() for value in column.sample_values}
+        if sample_labels.intersection(
+            {
+                "event",
+                "death",
+                "dead",
+                "deceased",
+                "progression",
+                "recurrence",
+                "failure",
+                "censored",
+                "alive",
+                "yes",
+                "no",
+                "1",
+                "0",
+            }
+        ):
+            score += 2
+        return score
+
+    def _parse_survival_event(self, value: str | None) -> float | None:
+        cleaned = str(value or "").strip()
+        if self._is_missing(cleaned):
+            return None
+        normalized = cleaned.lower()
+        if normalized in {"1", "1.0"}:
+            return 1.0
+        if normalized in {"0", "0.0"}:
+            return 0.0
+        if normalized in {
+            "event",
+            "yes",
+            "y",
+            "true",
+            "death",
+            "dead",
+            "deceased",
+            "progression",
+            "progressed",
+            "recurrence",
+            "relapse",
+            "failure",
+        }:
+            return 1.0
+        if normalized in {
+            "censor",
+            "censored",
+            "alive",
+            "no",
+            "n",
+            "false",
+            "none",
+            "non-event",
+            "nonevent",
+            "no event",
+        }:
+            return 0.0
+        return None
+
     def _build_advanced_model_candidates(
         self,
         selected_outcomes: list[str],
@@ -1010,12 +1479,19 @@ class DataWorkspaceService:
         group_column: str | None,
         has_time_signal: bool,
         repeated_signal: bool,
+        survival_time_column: str | None = None,
+        survival_event_column: str | None = None,
     ) -> list[AdvancedModelCandidate]:
         primary_outcome = selected_outcomes[0] if selected_outcomes else None
+        excluded_fields = {
+            field
+            for field in [primary_outcome, binary_outcome, group_column, survival_time_column, survival_event_column]
+            if field
+        }
         covariates = [
             column
             for column in [*numeric_columns[:4], *categorical_columns[:4]]
-            if column != primary_outcome and column != group_column
+            if column not in excluded_fields
         ][:5]
         linear_candidate = self._linear_regression_candidate(primary_outcome, covariates, group_column)
         logistic_candidate = self._logistic_regression_candidate(binary_outcome, covariates, group_column)
@@ -1023,7 +1499,7 @@ class DataWorkspaceService:
             *( [logistic_candidate] if binary_outcome else [] ),
             linear_candidate,
             *( [] if binary_outcome else [logistic_candidate] ),
-            self._cox_model_candidate(primary_outcome, covariates, has_time_signal),
+            self._cox_model_candidate(survival_time_column, survival_event_column, covariates, has_time_signal),
             self._mixed_effects_candidate(primary_outcome, covariates, group_column, repeated_signal),
         ]
         return candidates
@@ -1127,22 +1603,27 @@ class DataWorkspaceService:
 
     def _cox_model_candidate(
         self,
-        outcome: str | None,
+        time_column: str | None,
+        event_column: str | None,
         covariates: list[str],
         has_time_signal: bool,
     ) -> AdvancedModelCandidate:
         missing = []
-        if not has_time_signal:
-            missing.extend(["time-to-event endpoint", "event indicator"])
+        if not time_column:
+            missing.append("follow-up time")
+        if not event_column:
+            missing.append("event indicator")
         if not covariates:
             missing.append("covariates")
+        outcome = f"{time_column} + {event_column}" if time_column and event_column else time_column or event_column
+        readiness = "ready" if not missing else "review" if has_time_signal and (time_column or event_column) else "needs_fields"
         return AdvancedModelCandidate(
             model_id="cox_ph",
             model_name="Cox proportional hazards model",
-            readiness="review" if has_time_signal else "needs_fields",
+            readiness=readiness,
             outcome_column=outcome,
             required_fields=["follow-up time", "event indicator", "covariates"],
-            available_fields=covariates,
+            available_fields=[value for value in [time_column, event_column, *covariates] if value],
             missing_fields=missing,
             assumptions=[
                 "Follow-up time and event indicator must be explicitly available.",
@@ -1150,12 +1631,13 @@ class DataWorkspaceService:
                 "Censoring mechanism should be described in the Methods.",
             ],
             cautions=[
-                "The current model plan does not infer survival endpoints from arbitrary column names.",
-                "Hazard ratios require validated survival-model fitting.",
+                "The current model plan infers candidate survival fields from column names and still requires manual confirmation.",
+                "Hazard ratios from the prototype fit require review in validated survival software before final reporting.",
             ],
             methods_template=(
-                "If follow-up time and event status are available, a Cox proportional hazards model will be "
-                "considered. Proportional hazards assumptions and censoring definitions must be reviewed before reporting."
+                f"A Cox proportional hazards model will be considered for {outcome or '[time + event]'} "
+                f"using covariates: {', '.join(covariates) if covariates else '[covariates]'}. "
+                "Proportional hazards assumptions and censoring definitions must be reviewed before reporting."
             ),
             results_template=(
                 "Hazard ratios with 95% confidence intervals should be reported only after time-to-event fields, "

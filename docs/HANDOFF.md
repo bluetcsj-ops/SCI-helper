@@ -1,6 +1,6 @@
 # 项目交接记录
 
-更新时间：2026-06-20
+更新时间：2026-06-22
 
 ## 项目定位
 
@@ -8,12 +8,12 @@
 
 ## 当前状态
 
-当前 `main` 分支已提交 Data Lin 高级模型执行第一版，以及 Writer / Reviewer 返修写作清单阶段成果。本轮新增未提交改动主要是 Reviewer 返修清单章节归属持久化编辑：
+当前 `main` 分支已提交 Data Lin 高级模型执行第一版，以及 Writer / Reviewer 返修写作清单阶段成果。本轮新增未提交改动主要是 Data Lin Cox survival analysis 第一版可执行路径：
 
-- 每条真实审稿意见可人工修正影响章节，并通过后端字段持久化保存。
-- Reviewer 返修写作清单和 Writer 修改提醒同步读取人工修正后的章节归属。
-- 导出 `writer-revision-checklist.md` 时写入最终章节归属，并提示章节归属需人工确认。
-- 旧 SQLite 表会在仓库层自动补 `manual_revision_sections_json` 列。
+- 高级模型计划可在 CSV 含 follow-up time 和 event/status 字段时识别 Cox proportional hazards model。
+- 后端可执行轻量 Cox partial-likelihood exploratory fit，输出 HR、95% CI、P 值、事件数和人工统计复核 warnings。
+- Writer Methods / Results 和 Reviewer 检查清单可区分 OR、HR、β 三类高级模型输出。
+- 导出新增 `advanced-cox-model-fit.md`。
 
 当前整体完成度约 **97%**。主链路已经闭环：
 
@@ -54,6 +54,7 @@ Mentor → Vera Protocol → Data Lin → Alex Writer → Reviewer
 - 预备 DATA 选择和一键联调到 Writer：
   - 放疗计划质量脱敏模拟样例
   - MIMIC-IV EHR demo 样例
+  - Cox 生存分析脱敏模拟样例
 - 自主分析计划建议。
 - 高级统计模型计划：
   - linear regression
@@ -63,12 +64,14 @@ Mentor → Vera Protocol → Data Lin → Alex Writer → Reviewer
 - 高级模型执行：
   - multivariable linear regression
   - binary logistic regression 第一版，支持 `qa_result` 按 `Pass` vs `non-Pass` 编码
+  - Cox proportional hazards model 第一版，支持 follow-up time + event/status 字段识别和 exploratory HR 输出
   - 正式确认项未完成时不阻塞 exploratory model fit，但会在 warnings 中提示人工核验边界
 - 导出：
   - `analysis-plan-suggestion.md`
   - `advanced-model-plan.md`
   - `advanced-linear-model-fit.md`
   - `advanced-logistic-model-fit.md`
+  - `advanced-cox-model-fit.md`
   - analysis parameters JSON
   - reproducible script
 
@@ -79,6 +82,7 @@ Mentor → Vera Protocol → Data Lin → Alex Writer → Reviewer
   - 可识别放疗计划质量字段，补充 target coverage、OAR dose、patient-specific QA、delivery time、monitor units 和 plan complexity 的英文专科提示。
   - 可读取高级模型拟合结果，显示高级模型来源与人工核验提示。
   - Logistic 输出会标注 OR-based exploratory model，提醒复核事件编码、事件数、收敛、CI、P 值和样本量限制。
+  - Cox 输出会标注 HR-based exploratory survival model，提醒复核随访起点、事件编码、删失、比例风险假设、CI、P 值和样本量限制。
 - Discussion 草稿。
 - Abstract 草稿。
 - Cover Letter 草稿。
@@ -128,9 +132,10 @@ Mentor → Vera Protocol → Data Lin → Alex Writer → Reviewer
   - PTV/OAR dose metric 定义
   - patient-specific QA 与 gamma criteria
   - treatment planning system version、dose calculation algorithm 和计划审批流程
-- 高级模型 OR 报告边界检查：
+- 高级模型 OR/HR 报告边界检查：
   - 确认 Logistic OR 未被写成因果结论或已验证预测模型
-  - 核对 `Pass` vs `non-Pass` 编码、事件数、收敛、CI、P 值和样本量限制
+  - 确认 Cox HR 未被写成因果结论或已验证预后模型
+  - 核对事件编码、事件数、收敛、删失、比例风险假设、CI、P 值和样本量限制
 - AI 写作痕迹与模板化风险检查：
   - 检查未替换占位符、过度宣传或因果化表述、AI 模板语、非英文残留
   - 联动投稿包中的 Generative AI assistance disclosure 复核项
@@ -220,6 +225,10 @@ $env:DATABASE_URL='sqlite:///:memory:'
   - `qa_result` 自动按 `Pass` vs `non-Pass` 编码。
   - 返回 odds ratio、95% CI、P 值和收敛/稀疏事件警示。
   - 浏览器 UI 已验收：生成模型计划后可运行推荐模型，并显示 `Binary logistic regression` / OR 输出。
+- Data Lin Cox survival model fit：
+  - 含 follow-up time 与 event/status 的 CSV 可推荐 `cox_ph`。
+  - 返回 hazard ratio、95% CI、P 值、事件数、删失/ties/比例风险假设复核提示。
+  - 前端会显示 `Cox proportional hazards model` / HR 输出，并可导出 `advanced-cox-model-fit.md`。
 
 本轮验收发现并修复：
 
@@ -247,6 +256,7 @@ $env:DATABASE_URL='sqlite:///:memory:'
    - 高级模型计划
    - 运行线性回归
    - 导出 `advanced-linear-model-fit.md`
+   - 对含生存字段的 CSV 运行 Cox 模型并导出 `advanced-cox-model-fit.md`
    - 正式检验确认区
 6. 在 Alex Writer 中检查：
    - 英文 Methods / Results
@@ -273,9 +283,10 @@ $env:DATABASE_URL='sqlite:///:memory:'
 
 ## 当前限制
 
-- 当前预备 CSV 包含放疗计划质量脱敏模拟样例和 MIMIC-IV EHR demo；前者用于放疗字段流程联调，后者用于公开医学 EHR 流程联调，二者都不代表正式课题结论。
-- 高级模型执行第一版已支持 linear regression 和 logistic regression；Cox 和 mixed-effects 仍只停留在计划/待开发阶段。
-- Linear/logistic regression 输出是探索性拟合结果，仍需要人工统计复核，不应直接作为最终 SCI 结论。
+- 当前预备 CSV 包含放疗计划质量脱敏模拟样例、MIMIC-IV EHR demo 和 Cox 生存分析脱敏模拟样例；它们分别用于放疗字段、公开医学 EHR 和 HR 输出流程联调，都不代表正式课题结论。
+- 高级模型执行第一版已支持 linear regression、logistic regression 和 Cox proportional hazards model；mixed-effects 仍停留在计划/待开发阶段。
+- Linear/logistic/Cox 输出是探索性拟合结果，仍需要人工统计复核，不应直接作为最终 SCI 结论。
+- Cox 当前为轻量 partial-likelihood 近似实现，正式报告前需要用 lifelines、statsmodels、R survival 等验证软件复核。
 - Writer 版本库当前恢复 Introduction；派生章节可作为历史恢复内容优先显示、逐字段编辑、预览、diff、复制、导出，并可纳入新的版本快照，但不会直接写回后端全文字段。
 - Reviewer 真实意见拆分已支持 Editor / Reviewer 分块和多种编号条目，但仍是规则型，复杂 decision letter 仍需人工校正。
 - Reviewer 到 Writer 的章节映射支持人工修正和持久化保存，但仍需人工对照原始 decision letter 最终确认。
@@ -309,7 +320,8 @@ npm.cmd run dev -- --host 127.0.0.1 --port 3000
    - Writer 英文稿件与版本库
    - Reviewer 样例 decision letter、章节归属、Writer 修改提醒和导出
 2. 下一阶段优先级：
-   - Data Lin survival analysis / mixed-effects model 第一版
+   - Data Lin mixed-effects model 第一版
+   - Cox survival analysis 专用统计库验证路径
    - 真实放疗专科数据适配与数据许可核对
    - Writer 写作风格学习和目标期刊英文表达偏好
    - Reviewer / Writer 返修链路增强：让英文审稿回复更自然，并自动识别审稿意见对应的章节、段落和内容类型

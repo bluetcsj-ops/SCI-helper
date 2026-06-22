@@ -1,0 +1,17 @@
+follow_up_months,event_status,age,ptv_d95_percent,plan_complexity_score,gamma_pass_rate_percent,site,technique
+5,1,68,93.1,0.82,94.2,Lung,VMAT
+9,0,60,96.2,0.55,98.1,Lung,VMAT
+12,1,72,91.8,0.91,92.8,Lung,IMRT
+15,0,58,97.4,0.48,99.0,HeadNeck,VMAT
+18,1,70,92.5,0.86,93.1,HeadNeck,IMRT
+21,0,63,95.9,0.58,97.4,HeadNeck,VMAT
+24,1,75,90.4,0.95,91.6,Prostate,IMRT
+27,0,66,98.1,0.51,98.9,Prostate,VMAT
+30,1,69,94.0,0.76,95.0,Prostate,VMAT
+33,1,71,92.2,0.88,93.5,Lung,IMRT
+36,0,59,97.0,0.52,98.2,HeadNeck,VMAT
+40,1,73,91.0,0.93,92.4,Prostate,IMRT
+44,0,62,96.5,0.57,97.7,Lung,VMAT
+48,1,76,89.8,0.97,90.9,HeadNeck,IMRT
+52,0,61,97.8,0.49,98.6,Prostate,VMAT
+56,1,74,90.7,0.94,91.8,Lung,IMRT

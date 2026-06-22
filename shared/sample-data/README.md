@@ -55,6 +55,21 @@ Derived columns:
 
 The sample is intended only for product workflow integration testing: CSV upload, privacy/quality checks, descriptive statistics, formal-test guardrails, and writer handoff.
 
+`frontend/public/sample-data/radiotherapy_survival_cox_sample.csv` is a 16-row synthetic, de-identified survival workflow sample for testing the first Cox proportional hazards model path. It is not real patient data and must not be described as clinical evidence.
+
+Columns:
+
+- `follow_up_months`
+- `event_status`
+- `age`
+- `ptv_d95_percent`
+- `plan_complexity_score`
+- `gamma_pass_rate_percent`
+- `site`
+- `technique`
+
+This sample is intended to exercise advanced model planning, Cox field detection, exploratory hazard-ratio output, Writer handoff, Reviewer HR boundary checks, and `advanced-cox-model-fit.md` export.
+
 ## Reference sample
 
 `frontend/public/sample-data/prepared_references.json` contains source/reference metadata for the prepared data package. These records are not a replacement for manuscript reference review; they are seed references for testing Mentor and Alex Writer citation workflows.

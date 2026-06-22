@@ -267,6 +267,13 @@ const preparedDataSamples = {
     fileName: "mimic_iv_demo_los_sample.csv",
     description: "公开医学 EHR demo，用于通用 CSV 流程联调。",
   },
+  survivalCox: {
+    id: "survivalCox",
+    label: "Cox 生存分析样例",
+    path: "/sample-data/radiotherapy_survival_cox_sample.csv",
+    fileName: "radiotherapy_survival_cox_sample.csv",
+    description: "脱敏模拟随访时间和事件状态字段，用于 Cox HR 输出联调。",
+  },
 } as const;
 
 type PreparedDataSampleId = keyof typeof preparedDataSamples;
@@ -1080,6 +1087,8 @@ function buildWriterMethodsResultsDraft(
         `Advanced model source: ${advancedModelFitReport.model_name} (${advancedModelFitReport.method_version}) fitted on ${advancedModelFitReport.complete_case_count} complete cases from ${advancedModelFitReport.file_name}.`,
         advancedModelFitReport.model_id === "logistic_regression"
           ? `OR-based exploratory model: outcome ${advancedModelFitReport.outcome_column}; odds ratios require manual review of event coding, events per variable, separation, convergence, confidence intervals, and P values.`
+          : advancedModelFitReport.model_id === "cox_ph"
+            ? `HR-based exploratory survival model: outcome ${advancedModelFitReport.outcome_column}; hazard ratios require manual review of time origin, event coding, censoring, proportional hazards assumptions, confidence intervals, and P values.`
           : `Exploratory regression model: outcome ${advancedModelFitReport.outcome_column}; estimates require manual review of assumptions, collinearity, influential observations, confidence intervals, and P values.`,
         advancedModelFitReport.warnings.length
           ? `Manual verification required before manuscript use: ${advancedModelFitReport.warnings.slice(0, 3).join("; ")}`
@@ -1159,7 +1168,13 @@ function buildWriterMethodsResultsDraft(
         ? `Formal testing summary: ${formalTestLines.join("; ")}.`
         : "Formal testing has not yet been performed; therefore, this draft does not report P values or statistical significance.",
       advancedModelFitReport
-        ? `${advancedModelFitReport.results_draft} ${advancedModelFitReport.model_id === "logistic_regression" ? "Odds ratios are exploratory and must not be interpreted as causal or validated predictive effects without manual statistical review." : "Regression estimates are exploratory and must not be interpreted as finalized inferential evidence without manual statistical review."}`
+        ? `${advancedModelFitReport.results_draft} ${
+            advancedModelFitReport.model_id === "logistic_regression"
+              ? "Odds ratios are exploratory and must not be interpreted as causal or validated predictive effects without manual statistical review."
+              : advancedModelFitReport.model_id === "cox_ph"
+                ? "Hazard ratios are exploratory and must not be interpreted as causal or validated prognostic effects without manual survival-analysis review."
+                : "Regression estimates are exploratory and must not be interpreted as finalized inferential evidence without manual statistical review."
+          }`
         : "No fitted advanced regression model is available for this draft.",
     ].filter(Boolean) as string[],
     formalTestLines,
@@ -2468,19 +2483,27 @@ function buildReviewerChecks(params: {
         title:
           advancedModelFitReport.model_id === "logistic_regression"
             ? "高级模型 OR 报告边界"
+            : advancedModelFitReport.model_id === "cox_ph"
+              ? "高级模型 HR 报告边界"
             : "高级模型估计边界",
         severity: advancedModelFitReport.warnings.length ? "orange" : "green",
         status:
           advancedModelFitReport.model_id === "logistic_regression"
             ? `${advancedModelFitReport.complete_case_count} 个完整病例 / OR 输出`
+            : advancedModelFitReport.model_id === "cox_ph"
+              ? `${advancedModelFitReport.complete_case_count} 个完整病例 / HR 输出`
             : `${advancedModelFitReport.complete_case_count} 个完整病例 / 回归输出`,
         detail:
           advancedModelFitReport.model_id === "logistic_regression"
             ? `当前 Writer 可读取 ${advancedModelFitReport.model_name}；结局为 ${advancedModelFitReport.outcome_column}，需确认事件编码是否为 Pass vs non-Pass 或真实二分类定义。`
+            : advancedModelFitReport.model_id === "cox_ph"
+              ? `当前 Writer 可读取 ${advancedModelFitReport.model_name}；结局为 ${advancedModelFitReport.outcome_column}，需确认随访起点、事件编码、删失定义和比例风险假设。`
             : `当前 Writer 可读取 ${advancedModelFitReport.model_name}；结局为 ${advancedModelFitReport.outcome_column}，需确认模型假设和诊断边界。`,
         recommendation:
           advancedModelFitReport.model_id === "logistic_regression"
             ? "Reviewer 需确认稿件没有把 exploratory OR 写成因果结论或已验证预测模型，并核对事件数、收敛、CI、P 值和样本量限制。"
+            : advancedModelFitReport.model_id === "cox_ph"
+              ? "Reviewer 需确认稿件没有把 exploratory HR 写成因果结论或已验证预后模型，并核对事件数、删失、比例风险假设、CI、P 值和样本量限制。"
             : "Reviewer 需确认稿件没有把 exploratory regression estimate 写成最终推断结论，并核对假设、CI、P 值和诊断限制。",
       }
     : null;
@@ -7416,9 +7439,14 @@ function App() {
       return;
     }
     const isLogisticModel = advancedModelFitReport.model_id === "logistic_regression";
+    const isCoxModel = advancedModelFitReport.model_id === "cox_ph";
 
     const content = [
-      isLogisticModel ? "# Advanced Logistic Model Fit Report" : "# Advanced Linear Model Fit Report",
+      isLogisticModel
+        ? "# Advanced Logistic Model Fit Report"
+        : isCoxModel
+          ? "# Advanced Cox Survival Model Fit Report"
+          : "# Advanced Linear Model Fit Report",
       "",
       `Generated at: ${new Date().toLocaleString("zh-CN")}`,
       `Source file: ${advancedModelFitReport.file_name}`,
@@ -7427,7 +7455,7 @@ function App() {
       `Predictors: ${advancedModelFitReport.predictor_columns.join(", ") || "none"}`,
       `Complete cases: ${advancedModelFitReport.complete_case_count}`,
       `Excluded rows: ${advancedModelFitReport.excluded_row_count}`,
-      ...(isLogisticModel
+      ...(isLogisticModel || isCoxModel
         ? []
         : [
             `R-squared: ${advancedModelFitReport.r_squared ?? "NA"}`,
@@ -7444,7 +7472,7 @@ function App() {
       "",
       "## Coefficients",
       "",
-      `| Term | ${isLogisticModel ? "OR" : "Estimate"} | SE | ${isLogisticModel ? "z" : "t"} | P | 95% CI |`,
+      `| Term | ${isLogisticModel ? "OR" : isCoxModel ? "HR" : "Estimate"} | SE | ${isLogisticModel || isCoxModel ? "z" : "t"} | P | 95% CI |`,
       "|---|---:|---:|---:|---:|---|",
       ...advancedModelFitReport.coefficients.map((coefficient) => [
         coefficient.term,
@@ -7475,7 +7503,11 @@ function App() {
     const link = document.createElement("a");
     try {
       link.href = url;
-      link.download = isLogisticModel ? "advanced-logistic-model-fit.md" : "advanced-linear-model-fit.md";
+      link.download = isLogisticModel
+        ? "advanced-logistic-model-fit.md"
+        : isCoxModel
+          ? "advanced-cox-model-fit.md"
+          : "advanced-linear-model-fit.md";
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -9751,6 +9783,8 @@ function App() {
                                         {advancedModelFitReport.complete_case_count} 个完整病例
                                         {advancedModelFitReport.model_id === "logistic_regression"
                                           ? " · OR 输出"
+                                          : advancedModelFitReport.model_id === "cox_ph"
+                                            ? " · HR 输出"
                                           : ` · R² ${advancedModelFitReport.r_squared ?? "NA"} · adj. R² ${
                                               advancedModelFitReport.adjusted_r_squared ?? "NA"
                                             }`}
@@ -9771,7 +9805,11 @@ function App() {
                                       <article key={coefficient.term}>
                                         <strong>{coefficient.term}</strong>
                                         <span>
-                                          {advancedModelFitReport.model_id === "logistic_regression" ? "OR" : "β"}{" "}
+                                          {advancedModelFitReport.model_id === "logistic_regression"
+                                            ? "OR"
+                                            : advancedModelFitReport.model_id === "cox_ph"
+                                              ? "HR"
+                                              : "β"}{" "}
                                           {coefficient.estimate}
                                         </span>
                                         <span>SE {coefficient.standard_error ?? "NA"}</span>
