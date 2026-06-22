@@ -4,14 +4,14 @@
 
 ## 总体判断
 
-当前项目已经推进到“可带公开医学/放疗样例数据跑通论文写作、后端版本归档、真实审稿意见映射、目标期刊规则校验、Reviewer 收尾验收和第一版高级统计模型拟合”的阶段。整体完成度约 **98%**；如果只看 5 个核心智能体能力，平均完成度约 **89%**。
+当前项目已经推进到“可带公开医学/放疗样例数据跑通论文写作、后端版本归档、真实审稿意见映射、目标期刊规则校验、Reviewer 收尾验收、第一版高级统计模型拟合和外部验证计划导出”的阶段。整体完成度约 **98.5%**；如果只看 5 个核心智能体能力，平均完成度约 **90%**。
 
 当前主链路已经闭环：
 
 ```text
 Mentor 选题与引用
 → Vera Protocol 研究方案
-→ Data Lin 数据质控、统计草案、高级模型计划、线性/Logistic/Cox/Mixed-effects 模型拟合
+→ Data Lin 数据质控、统计草案、高级模型计划、线性/Logistic/Cox/Mixed-effects 模型拟合与外部验证计划
 → Alex Writer 英文论文草稿、投稿材料、后端版本库
 → Helena Reviewer 投稿前审查、真实审稿意见映射、英文回复草稿
 ```
@@ -22,9 +22,9 @@ Mentor 选题与引用
 |---|---:|---|
 | Prof. RadOnc Mentor | 76% | 可生成课题推荐、加载预备真实引用、复核候选引用、导出引用清单，并将推荐写入方案；下一阶段重点是扩展真实放疗论文引用源与主题证据链 |
 | Dr. Vera Protocol | 80% | 可编辑/保存研究方案，生成方案草案和执行计划草案，完成方案质量检查、方案-数据一致性检查、方案版本快照与导出；下一阶段重点是真实伦理/数据字典字段适配 |
-| Dr. Data Lin | 97% | 可上传 CSV、选择预备 DATA、做质控/隐私检查/统计草案/图表/审计、一键联调 Writer，生成自主分析计划和高级模型计划，并可执行第一版 exploratory linear/logistic/Cox/mixed-effects model |
-| Alex Writer | 99% | 可生成英文 Introduction、Methods / Results、Discussion、Abstract、Cover Letter、投稿包检查清单、目标期刊模板和 Author Guidelines URL 抓取/本地规则校验，并支持放疗计划质量字段解读、高级模型结果来源与人工核验提示、后端版本归档、恢复 Introduction、版本差异查看、历史章节复制、全文恢复逐字段编辑和 Reviewer 修改提醒 |
-| Rev. Dr. Helena Skov | 99% | 可生成投稿前规则清单、深度审稿意见、Response to Reviewers 草稿，并支持放疗专科风险检查、高级模型 OR/HR/Mixed-effects 报告边界检查、AI 写作痕迹/模板化风险检查、复杂审稿信规则增强拆分、目标期刊专属审稿维度、真实审稿意见导入、逐条映射、英文回复导出、返修写作清单和章节归属持久化修正；下一阶段以真实 UI 验收和小问题修正为主 |
+| Dr. Data Lin | 98% | 可上传 CSV、选择预备 DATA、做质控/隐私检查/统计草案/图表/审计、一键联调 Writer，生成自主分析计划、高级模型计划和高级模型外部验证计划，并可执行第一版 exploratory linear/logistic/Cox/mixed-effects model |
+| Alex Writer | 99% | 可生成英文 Introduction、Methods / Results、Discussion、Abstract、Cover Letter、投稿包检查清单、目标期刊模板和 Author Guidelines URL 抓取/本地规则校验，并支持放疗计划质量字段解读、高级模型结果来源、pending external validation 英文边界提示、后端版本归档、恢复 Introduction、版本差异查看、历史章节复制、全文恢复逐字段编辑和 Reviewer 修改提醒 |
+| Rev. Dr. Helena Skov | 99% | 可生成投稿前规则清单、深度审稿意见、Response to Reviewers 草稿，并支持放疗专科风险检查、高级模型 OR/HR/Mixed-effects 报告边界检查、高级模型外部验证缺口检查、AI 写作痕迹/模板化风险检查、复杂审稿信规则增强拆分、目标期刊专属审稿维度、真实审稿意见导入、逐条映射、英文回复导出、返修写作清单和章节归属持久化修正；下一阶段以真实 UI 验收和小问题修正为主 |
 
 ## 已完成的关键闭环
 
@@ -61,6 +61,7 @@ Mentor 选题与引用
   - 生成统计草案
   - 保存分析记录
   - 切换到 Alex Writer
+  - 若当前已有统计草案和高级模型结果，一键联调会直接切换到 Writer，并保留高级模型输出与外部验证提示。
 
 ### 3. Dr. Data Lin
 
@@ -80,6 +81,14 @@ Mentor 选题与引用
   - Cox proportional hazards model
   - mixed-effects model
 - 高级模型计划导出 `advanced-model-plan.md`。
+- 高级模型外部验证计划：
+  - 根据推荐或已执行模型生成 linear/logistic/Cox/mixed-effects 专属验证清单。
+  - Logistic 覆盖事件编码、events per variable、separation、calibration、ROC 和 cross-validation。
+  - Cox 覆盖事件/删失编码、ties、event count、比例风险假设和 Schoenfeld residuals。
+  - Mixed-effects 覆盖 cluster、random intercept/slope、ML/REML、收敛、残差和 ICC。
+  - Linear 覆盖 residuals、normality、heteroscedasticity、influential points 和 collinearity。
+  - 可导出 `advanced-model-validation-plan.md`。
+  - 导出后页面会显示文件名确认；如果浏览器未自动下载，可复制验证计划内容作为兜底。
 - 高级模型执行第一版：
   - 可作为 exploratory draft material 执行；如果正式确认项未完成，会在 warnings 中写入人工核验提示。
   - 当前支持 multivariable linear regression。
@@ -96,7 +105,7 @@ Mentor 选题与引用
 
 - Cox 生存分析仍是轻量探索性实现，正式 SCI 报告前需要用 lifelines、statsmodels、R survival 等验证软件复核。
 - Mixed-effects 当前为轻量 clustered linear approximation，正式 SCI 报告前需要用 statsmodels、R lme4/nlme 等验证软件复核。
-- SciPy / statsmodels / lifelines 等专用统计库完整生产路径。
+- SciPy / statsmodels / lifelines / R survival / R lme4 等专用统计库完整生产执行路径；当前已具备外部验证交接清单，但尚未在这些软件中自动复核。
 - 真实放疗专科数据接入和数据许可核对。
 
 ### 4. Alex Writer
@@ -109,6 +118,7 @@ Mentor 选题与引用
   - Logistic 输出会标注 OR-based exploratory model，提醒复核事件编码、事件数、收敛、CI、P 值和样本量限制。
   - Cox 输出会标注 HR-based exploratory survival model，提醒复核随访起点、事件编码、删失、比例风险假设、CI、P 值和样本量限制。
   - Mixed-effects 输出会标注 clustered exploratory mixed-effects approximation，提醒复核 cluster 分组、随机效应结构、收敛、残差诊断、CI、P 值和样本量限制。
+  - 所有高级模型输出会加入 pending external validation 英文边界提示，避免把探索性输出写成最终 SCI 推断。
 - Discussion 草稿和导出 `discussion-draft.md`。
 - Abstract 草稿和导出 `abstract-draft.md`。
 - Cover Letter 草稿和导出 `cover-letter-draft.md`。
@@ -165,6 +175,7 @@ Mentor 选题与引用
 - 条目状态管理：草稿、处理中、已解决、暂缓。
 - 映射回复导出 `response-to-reviewers-mapped.md`。
 - 高级模型 OR/HR/Mixed-effects 报告边界检查：确认 Logistic OR、Cox HR 或 mixed-effects approximation 未被写成因果结论、已验证预测/预后模型或正式随机效应推断，并核对事件编码、事件数、收敛、删失、比例风险假设、cluster 数、重复观测、随机效应结构、CI、P 值和样本量限制。
+- 高级模型外部验证缺口检查：Reviewer 会提示当前模型仍需 validated statistical environment 复核，并按模型列出残差/校准/PH/random-effects 等关键核验项。
 - AI 写作痕迹与模板化风险检查：检查未替换占位符、过度宣传或因果化表述、AI 模板语、非英文残留和 Generative AI assistance disclosure 是否未确认。
 - 目标期刊专属审稿维度：
   - 读取目标期刊模板和 Author Guidelines 本地规则校验结果。

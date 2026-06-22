@@ -4087,6 +4087,41 @@ button {
   background: #ffffff;
 }
 
+.advanced-model-validation-plan {
+  display: grid;
+  gap: 10px;
+  border: 1px solid rgba(217, 119, 6, 0.22);
+  border-radius: 8px;
+  padding: 12px;
+  background: #fffaf2;
+}
+
+.advanced-model-validation-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.5fr);
+  gap: 10px;
+}
+
+.advanced-model-validation-plan ul {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding-left: 18px;
+  color: #4f6074;
+  line-height: 1.5;
+}
+
+.advanced-model-export-notice {
+  margin: 0;
+  border-radius: 8px;
+  padding: 9px 11px;
+  color: #7c4a03;
+  background: #fff1d6;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
 .advanced-model-fit-head {
   display: flex;
   align-items: flex-start;
@@ -4161,6 +4196,12 @@ button {
   padding-left: 18px;
   color: #8c4d10;
   line-height: 1.5;
+}
+
+@media (max-width: 760px) {
+  .advanced-model-validation-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .stat-summary-item {

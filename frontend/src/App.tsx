@@ -1041,6 +1041,178 @@ function detectRadiotherapyPlanQualityFields(qualityReport: DataQualityReport | 
   };
 }
 
+function buildAdvancedModelValidationPlan(
+  advancedModelFitReport: AdvancedModelFitReport | null,
+  advancedModelPlan: AdvancedModelPlan | null = null,
+): AdvancedModelValidationPlan | null {
+  const plannedModelId = advancedModelFitReport?.model_id ?? advancedModelPlan?.recommended_model_id ?? null;
+  const candidate =
+    advancedModelPlan?.candidates.find((item) => item.model_id === plannedModelId) ??
+    advancedModelPlan?.candidates.find((item) => item.readiness === "ready") ??
+    advancedModelPlan?.candidates[0] ??
+    null;
+  const modelId = plannedModelId ?? candidate?.model_id ?? null;
+
+  if (!modelId) {
+    return null;
+  }
+
+  const shared = {
+    modelId,
+    modelName: advancedModelFitReport?.model_name ?? candidate?.model_name ?? "Advanced statistical model",
+    sourceFileName: advancedModelFitReport?.file_name ?? advancedModelPlan?.file_name ?? "pending CSV",
+    fitStatus: advancedModelFitReport ? "fit_available" as const : "planned" as const,
+    statusLabel: advancedModelFitReport ? "已生成探索性输出，待外部验证" : "已生成路线，待运行模型",
+  };
+
+  if (modelId === "logistic_regression") {
+    return {
+      ...shared,
+      externalTools: ["R glm / rms", "Python statsmodels Logit", "scikit-learn calibration and ROC utilities"],
+      checklist: [
+        "Confirm binary event coding and clinical meaning of the positive class.",
+        "Check events per variable and sparse-cell stability before interpreting odds ratios.",
+        "Assess complete or quasi-complete separation and model convergence.",
+        "Generate calibration curve, calibration intercept/slope, and ROC/AUC.",
+        "Perform internal cross-validation or bootstrap validation before predictive claims.",
+      ],
+      requiredExports: [
+        "analysis-ready CSV with event coding dictionary",
+        "model formula and predictor list",
+        "odds-ratio table with 95% confidence intervals and P values from validated software",
+        "calibration and ROC outputs",
+        "cross-validation or bootstrap summary",
+      ],
+      manuscriptBoundary:
+        "External validation is pending; do not finalize odds ratios, confidence intervals, P values, calibration, AUC, or predictive-model claims.",
+      reviewerFocus:
+        "Reviewer should verify event coding, events per variable, separation, calibration, ROC/AUC, and validation design before accepting any OR-based inference.",
+      handoffNote:
+        "Send the cleaned CSV, event coding rule, model formula, and current exploratory OR table to a validated statistical environment.",
+    };
+  }
+
+  if (modelId === "cox_ph") {
+    return {
+      ...shared,
+      externalTools: ["R survival::coxph", "Python lifelines CoxPHFitter", "statsmodels PHReg"],
+      checklist: [
+        "Confirm time origin, follow-up time unit, event coding, and censoring definition.",
+        "Check event count, events per variable, and tied-event handling.",
+        "Test proportional hazards assumptions with Schoenfeld residuals.",
+        "Review influential cases and functional form of continuous covariates.",
+        "Report hazard ratios only after survival-analysis validation is complete.",
+      ],
+      requiredExports: [
+        "analysis-ready survival CSV with time and event dictionary",
+        "model formula and covariate coding table",
+        "hazard-ratio table with 95% confidence intervals and P values from validated software",
+        "Schoenfeld residual and PH-assumption outputs",
+        "event count, censoring summary, and tied-event method",
+      ],
+      manuscriptBoundary:
+        "External validation is pending; do not finalize hazard ratios, confidence intervals, P values, proportional-hazards claims, or prognostic-model claims.",
+      reviewerFocus:
+        "Reviewer should verify event coding, censoring, tied events, proportional hazards, Schoenfeld residuals, and event-per-variable adequacy before accepting HR-based inference.",
+      handoffNote:
+        "Send the cleaned survival CSV, time/event definitions, model formula, and current exploratory HR table to a validated survival-analysis environment.",
+    };
+  }
+
+  if (modelId === "mixed_effects") {
+    return {
+      ...shared,
+      externalTools: ["R lme4 / nlme", "Python statsmodels MixedLM", "SAS PROC MIXED"],
+      checklist: [
+        "Confirm cluster ID, repeated-measure structure, time/fraction ordering, and independence assumptions.",
+        "Choose random intercept and, if justified, random slope structure before final fitting.",
+        "Decide ML versus REML based on the model-comparison goal.",
+        "Check convergence, singular fit, residual diagnostics, and influence of small clusters.",
+        "Report ICC or variance components only after validated mixed-model fitting is complete.",
+      ],
+      requiredExports: [
+        "long-format analysis-ready CSV with cluster and time/fraction variables",
+        "fixed-effect and random-effect formula",
+        "validated fixed-effect table with confidence intervals and P values",
+        "variance components, ICC, and convergence diagnostics",
+        "residual and fitted-value diagnostic plots",
+      ],
+      manuscriptBoundary:
+        "External validation is pending; do not finalize mixed-effects estimates, variance components, ICC, confidence intervals, P values, or random-effects claims.",
+      reviewerFocus:
+        "Reviewer should verify cluster structure, random intercept/slope choice, ML/REML decision, convergence, residual diagnostics, ICC, and sample-size limits before accepting mixed-model inference.",
+      handoffNote:
+        "Send the cleaned long-format CSV, cluster/time definitions, fixed-effect formula, and proposed random-effect structure to a validated mixed-model environment.",
+    };
+  }
+
+  return {
+    ...shared,
+    externalTools: ["R lm / car", "Python statsmodels OLS", "JASP / SPSS regression diagnostics"],
+    checklist: [
+      "Inspect residual plots and fitted-value diagnostics.",
+      "Assess normality with Q-Q plots and residual distribution checks.",
+      "Check heteroscedasticity with Breusch-Pagan or White-style diagnostics.",
+      "Review influential observations using leverage and Cook's distance.",
+      "Check collinearity with VIF, tolerance, or condition number before interpreting beta estimates.",
+    ],
+    requiredExports: [
+      "analysis-ready CSV and model formula",
+      "coefficient table with 95% confidence intervals and P values from validated software",
+      "residual and Q-Q diagnostic plots",
+      "heteroscedasticity test output",
+      "VIF / collinearity table and influence diagnostics",
+    ],
+    manuscriptBoundary:
+      "External validation is pending; do not finalize beta estimates, confidence intervals, P values, model adequacy, or linear-assumption claims.",
+    reviewerFocus:
+      "Reviewer should verify residuals, normality, heteroscedasticity, influential points, and collinearity before accepting linear-regression inference.",
+    handoffNote:
+      "Send the cleaned CSV, model formula, exploratory beta table, and diagnostic checklist to a validated linear-model environment.",
+  };
+}
+
+function advancedModelValidationPlanToMarkdown(
+  plan: AdvancedModelValidationPlan,
+  generatedAt = new Date(),
+): string {
+  return [
+    "# Advanced Model External Validation Plan",
+    "",
+    `Generated at: ${generatedAt.toLocaleString("zh-CN")}`,
+    `Source file: ${plan.sourceFileName}`,
+    `Model: ${plan.modelName}`,
+    `Model ID: ${plan.modelId}`,
+    `Fit status: ${plan.fitStatus}`,
+    `Validation status: pending external validation`,
+    "",
+    "## External Statistical Environment",
+    "",
+    ...plan.externalTools.map((tool) => `- ${tool}`),
+    "",
+    "## Model-Specific Checklist",
+    "",
+    ...plan.checklist.map((item) => `- ${item}`),
+    "",
+    "## Required Export Artifacts",
+    "",
+    ...plan.requiredExports.map((item) => `- ${item}`),
+    "",
+    "## Manuscript Boundary",
+    "",
+    plan.manuscriptBoundary,
+    "",
+    "## Reviewer Handoff",
+    "",
+    plan.reviewerFocus,
+    "",
+    "## Data Lin Handoff",
+    "",
+    plan.handoffNote,
+    "",
+  ].join("\n");
+}
+
 function buildWriterMethodsResultsDraft(
   qualityReport: DataQualityReport | null,
   statisticsReport: DataStatisticsReport | null,
@@ -1051,6 +1223,7 @@ function buildWriterMethodsResultsDraft(
   }
 
   const formalTestReport = statisticsReport.formal_test_report ?? null;
+  const advancedModelValidationPlan = buildAdvancedModelValidationPlan(advancedModelFitReport);
   const radiotherapyFields = detectRadiotherapyPlanQualityFields(qualityReport);
   const radiotherapyNumericColumns = statisticsReport.numeric_summaries
     .filter((summary) =>
@@ -1102,6 +1275,11 @@ function buildWriterMethodsResultsDraft(
         advancedModelFitReport.warnings.length
           ? `Manual verification required before manuscript use: ${advancedModelFitReport.warnings.slice(0, 3).join("; ")}`
           : "Manual statistical verification is still required before manuscript-level inference.",
+        advancedModelValidationPlan
+          ? `External validation status: pending; required model checks include ${advancedModelValidationPlan.checklist
+              .slice(0, 3)
+              .join("; ")}`
+          : "External validation status: pending; a model-specific validation plan must be generated before final reporting.",
       ]
     : [
         "Advanced model fitting has not yet been completed; do not report regression estimates, odds ratios, confidence intervals, or P values from an advanced model.",
@@ -1126,6 +1304,9 @@ function buildWriterMethodsResultsDraft(
       : "Formal hypothesis testing has not yet been performed; the manuscript Results should remain descriptive.",
     advancedModelFitReport?.warnings.length
       ? `The advanced model fit has ${advancedModelFitReport.warnings.length} warning(s) requiring statistical review.`
+      : null,
+    advancedModelValidationPlan
+      ? "Advanced model external validation remains pending; do not finalize inferential or predictive claims until validated software diagnostics are reviewed."
       : null,
     radiotherapyFields.isRadiotherapyPlanQuality && !radiotherapyFields.hasGammaPassRate
       ? "Patient-specific QA gamma pass-rate data are not available; QA interpretation should remain limited."
@@ -1156,7 +1337,7 @@ function buildWriterMethodsResultsDraft(
         ? `Formal testing was performed only after manual confirmation of the study design, endpoint definitions, de-identification status, missing-data handling, statistical assumptions, and multiplicity boundaries. The current method version is ${formalTestReport.method_version}.`
         : "Formal hypothesis testing has not yet been performed; P-value-based analyses should be described only as planned or pending analyses.",
       advancedModelFitReport
-        ? advancedModelFitReport.methods_draft
+        ? `${advancedModelFitReport.methods_draft} External statistical validation remains pending and should be completed in validated statistical software before final manuscript reporting.`
         : "Advanced regression model fitting has not yet been completed; regression estimates should be described only as planned exploratory analyses.",
     ].filter(Boolean) as string[],
     resultsParagraphs: [
@@ -1185,7 +1366,7 @@ function buildWriterMethodsResultsDraft(
                 : advancedModelFitReport.model_id === "mixed_effects"
                   ? "Mixed-effects estimates and cluster variance signals are exploratory and must not be interpreted as finalized random-effects inference without validated mixed-model review."
                 : "Regression estimates are exploratory and must not be interpreted as finalized inferential evidence without manual statistical review."
-          }`
+          } ${advancedModelValidationPlan?.manuscriptBoundary ?? ""}`.trim()
         : "No fitted advanced regression model is available for this draft.",
     ].filter(Boolean) as string[],
     formalTestLines,
@@ -2489,6 +2670,7 @@ function buildReviewerChecks(params: {
   } = params;
   const formalTestReport = statisticsReport?.formal_test_report ?? null;
   const aiWritingRiskCheck = buildAiWritingRiskCheck(currentWriterSections);
+  const advancedModelValidationPlan = buildAdvancedModelValidationPlan(advancedModelFitReport);
   const advancedModelCheckItem: ReviewerCheckItem | null = advancedModelFitReport
     ? {
         title:
@@ -2524,6 +2706,17 @@ function buildReviewerChecks(params: {
               : advancedModelFitReport.model_id === "mixed_effects"
                 ? "Reviewer 需确认稿件没有把 mixed-effects approximation 写成正式随机效应推断，并核对 cluster 数、重复观测、随机截距/随机斜率设定、收敛、CI、P 值和样本量限制。"
             : "Reviewer 需确认稿件没有把 exploratory regression estimate 写成最终推断结论，并核对假设、CI、P 值和诊断限制。",
+      }
+    : null;
+  const advancedModelValidationCheckItem: ReviewerCheckItem | null = advancedModelValidationPlan
+    ? {
+        title: "高级模型外部验证缺口",
+        severity: "orange",
+        status: advancedModelValidationPlan.statusLabel,
+        detail: `${advancedModelValidationPlan.modelName} 仍需外部统计软件复核：${advancedModelValidationPlan.checklist
+          .slice(0, 3)
+          .join("；")}。`,
+        recommendation: advancedModelValidationPlan.reviewerFocus,
       }
     : null;
   const introductionHasText = introductionDraftFields.some(
@@ -2630,6 +2823,7 @@ function buildReviewerChecks(params: {
         : "先完成 Data Lin 统计草案，再返回 Alex Writer 生成 Methods / Results。",
     },
     ...(advancedModelCheckItem ? [advancedModelCheckItem] : []),
+    ...(advancedModelValidationCheckItem ? [advancedModelValidationCheckItem] : []),
     aiWritingRiskCheck,
     ...radiotherapyCheckItems,
     {
@@ -3385,6 +3579,20 @@ interface DataAnalysisPlanSuggestion {
   candidateOutcomeColumns: string[];
 }
 
+interface AdvancedModelValidationPlan {
+  modelId: string;
+  modelName: string;
+  sourceFileName: string;
+  fitStatus: "planned" | "fit_available";
+  statusLabel: string;
+  externalTools: string[];
+  checklist: string[];
+  requiredExports: string[];
+  manuscriptBoundary: string;
+  reviewerFocus: string;
+  handoffNote: string;
+}
+
 const journalSubmissionTemplates: JournalSubmissionTemplate[] = [
   {
     id: "medical_physics",
@@ -4047,6 +4255,8 @@ function App() {
   const [journalGuidelineFetchNotice, setJournalGuidelineFetchNotice] = useState<string | null>(null);
   const [workflowStatus, setWorkflowStatus] = useState<string | null>(null);
   const [workflowSummary, setWorkflowSummary] = useState<WorkflowSummary | null>(null);
+  const [advancedModelValidationExportNotice, setAdvancedModelValidationExportNotice] =
+    useState<string | null>(null);
   const [selectedGroupColumn, setSelectedGroupColumn] = useState("");
   const [selectedOutcomeColumns, setSelectedOutcomeColumns] = useState<string[]>([]);
   const [selectedChartStyle, setSelectedChartStyle] = useState<ChartStyleId>("journalBlue");
@@ -4736,6 +4946,10 @@ function App() {
       formalTestConfirmationItems.every((item) => formalTestConfirmation[item.key])
     );
   }, [formalTestConfirmation]);
+  const advancedModelValidationPlan = useMemo(
+    () => buildAdvancedModelValidationPlan(advancedModelFitReport, advancedModelPlan),
+    [advancedModelFitReport, advancedModelPlan],
+  );
   const advancedModelFitReadinessMessage = useMemo(() => {
     if (!uploadedCsvFile) {
       return "先上传 CSV 或加载预备 DATA。";
@@ -7230,6 +7444,31 @@ function App() {
     setError(null);
 
     try {
+      if (qualityReport && statisticsReport) {
+        setWorkflowSummary((current) => ({
+          source:
+            current?.source ??
+            (uploadedCsvFile && preparedDataSampleFileNames.has(uploadedCsvFile.name)
+              ? "prepared"
+              : "manual"),
+          fileName: qualityReport.file_name,
+          rowCount: qualityReport.row_count,
+          columnCount: qualityReport.column_count,
+          chartCount: statisticsReport.chart_specs.length,
+          saved: current?.saved ?? false,
+          message: advancedModelFitReport
+            ? "已将当前 Data Lin 统计草案和高级模型结果交给 Alex Writer。"
+            : "已将当前 Data Lin 统计草案交给 Alex Writer。",
+        }));
+        setWorkflowStatus(
+          advancedModelFitReport
+            ? "已切换到 Alex Writer，并保留高级模型结果。"
+            : "已切换到 Alex Writer。",
+        );
+        setSelectedAgentId("writer");
+        return;
+      }
+
       const file = await loadPreparedDataSampleFile();
       const defaults = await processCsvFile(file);
       if (!defaults) {
@@ -7356,6 +7595,7 @@ function App() {
         selectedOutcomeColumns,
       );
       setAdvancedModelPlan(plan);
+      setAdvancedModelValidationExportNotice(null);
       setWorkflowStatus("高级模型计划已生成。");
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "高级模型计划生成失败。");
@@ -7388,6 +7628,7 @@ function App() {
         modelId,
       );
       setAdvancedModelFitReport(report);
+      setAdvancedModelValidationExportNotice(null);
       await refreshDataAuditLogs(selectedProjectId);
       setWorkflowStatus(`${report.model_name} 已完成，结果需人工统计复核。`);
     } catch (caughtError) {
@@ -7537,6 +7778,55 @@ function App() {
       link.remove();
     } finally {
       URL.revokeObjectURL(url);
+    }
+  }
+
+  function handleDownloadAdvancedModelValidationPlan() {
+    if (!advancedModelValidationPlan) {
+      return;
+    }
+
+    const fileName = "advanced-model-validation-plan.md";
+    const content = advancedModelValidationPlanToMarkdown(advancedModelValidationPlan);
+    const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    try {
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setAdvancedModelValidationExportNotice(`验证计划已生成：${fileName}。如果浏览器未自动下载，可点击“复制验证计划”。`);
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  async function handleCopyAdvancedModelValidationPlan() {
+    if (!advancedModelValidationPlan) {
+      return;
+    }
+
+    const content = advancedModelValidationPlanToMarkdown(advancedModelValidationPlan);
+    try {
+      await navigator.clipboard.writeText(content);
+      setAdvancedModelValidationExportNotice("验证计划内容已复制，可粘贴到 Markdown 文件或统计复核记录中。");
+    } catch {
+      const textarea = document.createElement("textarea");
+      textarea.value = content;
+      textarea.setAttribute("readonly", "true");
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.select();
+      const copied = document.execCommand("copy");
+      textarea.remove();
+      setAdvancedModelValidationExportNotice(
+        copied
+          ? "验证计划内容已复制，可粘贴到 Markdown 文件或统计复核记录中。"
+          : "浏览器剪贴板不可用；请点击“导出验证计划”下载 Markdown 文件。",
+      );
     }
   }
 
@@ -9759,11 +10049,67 @@ function App() {
                                     <Download aria-hidden="true" size={15} />
                                     <span>导出结果</span>
                                   </button>
+                                  <button
+                                    type="button"
+                                    onClick={handleDownloadAdvancedModelValidationPlan}
+                                    disabled={!advancedModelValidationPlan}
+                                  >
+                                    <Download aria-hidden="true" size={15} />
+                                    <span>导出验证计划</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={handleCopyAdvancedModelValidationPlan}
+                                    disabled={!advancedModelValidationPlan}
+                                  >
+                                    <ClipboardCheck aria-hidden="true" size={15} />
+                                    <span>复制验证计划</span>
+                                  </button>
                                 </div>
                               </div>
                               <p className="advanced-model-readiness">
                                 {advancedModelFitReadinessMessage}
                               </p>
+                              {advancedModelValidationPlan ? (
+                                <div className="advanced-model-validation-plan">
+                                  <div className="advanced-model-fit-head">
+                                    <div>
+                                      <strong>统计验证计划</strong>
+                                      <small>
+                                        {advancedModelValidationPlan.modelName} ·{" "}
+                                        {advancedModelValidationPlan.statusLabel}
+                                      </small>
+                                    </div>
+                                    <span>pending external validation</span>
+                                  </div>
+                                  <div className="advanced-model-validation-grid">
+                                    <div className="statistics-copy-block">
+                                      <strong>外部软件</strong>
+                                      <ul>
+                                        {advancedModelValidationPlan.externalTools.map((tool) => (
+                                          <li key={tool}>{tool}</li>
+                                        ))}
+                                      </ul>
+                                    </div>
+                                    <div className="statistics-copy-block">
+                                      <strong>模型核验</strong>
+                                      <ul>
+                                        {advancedModelValidationPlan.checklist.map((item) => (
+                                          <li key={item}>{item}</li>
+                                        ))}
+                                      </ul>
+                                    </div>
+                                  </div>
+                                  <p className="data-empty">
+                                    {advancedModelValidationPlan.manuscriptBoundary}
+                                  </p>
+                                  {advancedModelValidationExportNotice ? (
+                                    <p className="advanced-model-export-notice">
+                                      {advancedModelValidationExportNotice}
+                                    </p>
+                                  ) : null}
+                                </div>
+                              ) : null}
                               {advancedModelPlan ? (
                                 <div className="advanced-model-list">
                                   {advancedModelPlan.candidates.map((candidate) => (
