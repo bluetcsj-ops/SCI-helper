@@ -48,18 +48,19 @@ http://127.0.0.1:3000/
 
 ## 4. 快速联调：预备 DATA
 
-当前项目内置三个预备 DATA 样例，用于避免空跑流程：
+当前项目内置四个预备 DATA 样例，用于避免空跑流程：
 
 - 放疗计划质量样例 CSV：`frontend/public/sample-data/radiotherapy_plan_quality_sample.csv`
 - 公开 EHR demo CSV：`frontend/public/sample-data/mimic_iv_demo_los_sample.csv`
 - Cox 生存分析样例 CSV：`frontend/public/sample-data/radiotherapy_survival_cox_sample.csv`
+- Mixed-effects 重复测量样例 CSV：`frontend/public/sample-data/radiotherapy_mixed_effects_sample.csv`
 - 引用：`frontend/public/sample-data/prepared_references.json`
 - 说明：`shared/sample-data/README.md`
 
 使用方式：
 
 1. 点击 **Dr. Data Lin**。
-2. 在 **预备 DATA 样例** 中选择“放疗计划质量样例”、“MIMIC-IV EHR demo”或 “Cox 生存分析样例”。
+2. 在 **预备 DATA 样例** 中选择“放疗计划质量样例”、“MIMIC-IV EHR demo”、“Cox 生存分析样例”或 “Mixed-effects 重复测量样例”。
 3. 点击 **一键联调到 Writer**。
 4. 系统会自动完成：
    - 加载预备 CSV
@@ -78,6 +79,15 @@ Cox 生存分析样例的验收方式：
 4. 确认推荐模型为 `Cox proportional hazards model`。
 5. 点击 **运行推荐模型**，确认页面显示 `HR 输出`。
 6. 点击 **导出结果** 下载 `advanced-cox-model-fit.md`。
+
+Mixed-effects 重复测量样例的验收方式：
+
+1. 选择 **Mixed-effects 重复测量样例**。
+2. 点击 **加载预备 DATA**。
+3. 生成统计草案后，点击 **生成模型计划**。
+4. 确认推荐模型为 `Linear mixed-effects model`。
+5. 点击 **运行推荐模型**，确认页面显示 `cluster 输出`。
+6. 点击 **导出结果** 下载 `advanced-mixed-effects-fit.md`。
 
 如果只想测试质控，不进入 Writer，可点击 **加载预备 DATA**。
 

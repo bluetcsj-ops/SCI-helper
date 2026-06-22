@@ -1,6 +1,6 @@
 # 项目交接记录
 
-更新时间：2026-06-22
+更新时间：2026-06-23
 
 ## 项目定位
 
@@ -8,14 +8,14 @@
 
 ## 当前状态
 
-当前 `main` 分支已提交 Data Lin 高级模型执行第一版，以及 Writer / Reviewer 返修写作清单阶段成果。本轮新增未提交改动主要是 Data Lin Cox survival analysis 第一版可执行路径：
+当前 `main` 分支已提交 Data Lin 高级模型执行第一版，以及 Writer / Reviewer 返修写作清单阶段成果。本轮新增未提交改动主要是 Data Lin mixed-effects model 第一版可执行路径：
 
-- 高级模型计划可在 CSV 含 follow-up time 和 event/status 字段时识别 Cox proportional hazards model。
-- 后端可执行轻量 Cox partial-likelihood exploratory fit，输出 HR、95% CI、P 值、事件数和人工统计复核 warnings。
-- Writer Methods / Results 和 Reviewer 检查清单可区分 OR、HR、β 三类高级模型输出。
-- 导出新增 `advanced-cox-model-fit.md`。
+- 高级模型计划可在 CSV 含重复测量字段和 cluster 分组时识别 linear mixed-effects model。
+- 后端可执行轻量 clustered linear approximation，输出 fixed-effect estimates、近似 residual ICC、cluster 数和人工统计复核 warnings。
+- Writer Methods / Results 和 Reviewer 检查清单可区分 OR、HR、mixed-effects cluster 输出和普通 β 输出。
+- 新增内置 `radiotherapy_mixed_effects_sample.csv`，导出新增 `advanced-mixed-effects-fit.md`。
 
-当前整体完成度约 **97%**。主链路已经闭环：
+当前整体完成度约 **98%**。主链路已经闭环：
 
 ```text
 Mentor → Vera Protocol → Data Lin → Alex Writer → Reviewer
@@ -55,6 +55,7 @@ Mentor → Vera Protocol → Data Lin → Alex Writer → Reviewer
   - 放疗计划质量脱敏模拟样例
   - MIMIC-IV EHR demo 样例
   - Cox 生存分析脱敏模拟样例
+  - Mixed-effects 重复测量脱敏模拟样例
 - 自主分析计划建议。
 - 高级统计模型计划：
   - linear regression
@@ -65,6 +66,7 @@ Mentor → Vera Protocol → Data Lin → Alex Writer → Reviewer
   - multivariable linear regression
   - binary logistic regression 第一版，支持 `qa_result` 按 `Pass` vs `non-Pass` 编码
   - Cox proportional hazards model 第一版，支持 follow-up time + event/status 字段识别和 exploratory HR 输出
+  - linear mixed-effects exploratory approximation 第一版，支持 repeated-measures field + cluster grouping 识别和 exploratory fixed-effect / ICC 输出
   - 正式确认项未完成时不阻塞 exploratory model fit，但会在 warnings 中提示人工核验边界
 - 导出：
   - `analysis-plan-suggestion.md`
@@ -72,6 +74,7 @@ Mentor → Vera Protocol → Data Lin → Alex Writer → Reviewer
   - `advanced-linear-model-fit.md`
   - `advanced-logistic-model-fit.md`
   - `advanced-cox-model-fit.md`
+  - `advanced-mixed-effects-fit.md`
   - analysis parameters JSON
   - reproducible script
 
@@ -83,6 +86,7 @@ Mentor → Vera Protocol → Data Lin → Alex Writer → Reviewer
   - 可读取高级模型拟合结果，显示高级模型来源与人工核验提示。
   - Logistic 输出会标注 OR-based exploratory model，提醒复核事件编码、事件数、收敛、CI、P 值和样本量限制。
   - Cox 输出会标注 HR-based exploratory survival model，提醒复核随访起点、事件编码、删失、比例风险假设、CI、P 值和样本量限制。
+  - Mixed-effects 输出会标注 clustered exploratory mixed-effects approximation，提醒复核 cluster 分组、随机效应结构、收敛、残差诊断、CI、P 值和样本量限制。
 - Discussion 草稿。
 - Abstract 草稿。
 - Cover Letter 草稿。
@@ -135,7 +139,9 @@ Mentor → Vera Protocol → Data Lin → Alex Writer → Reviewer
 - 高级模型 OR/HR 报告边界检查：
   - 确认 Logistic OR 未被写成因果结论或已验证预测模型
   - 确认 Cox HR 未被写成因果结论或已验证预后模型
-  - 核对事件编码、事件数、收敛、删失、比例风险假设、CI、P 值和样本量限制
+- 高级模型 Mixed-effects 报告边界检查：
+  - 确认 mixed-effects approximation 未被写成正式随机效应推断
+  - 核对 cluster 数、重复观测、随机截距/随机斜率设定、收敛、残差诊断、CI、P 值和样本量限制
 - AI 写作痕迹与模板化风险检查：
   - 检查未替换占位符、过度宣传或因果化表述、AI 模板语、非英文残留
   - 联动投稿包中的 Generative AI assistance disclosure 复核项
@@ -229,6 +235,10 @@ $env:DATABASE_URL='sqlite:///:memory:'
   - 含 follow-up time 与 event/status 的 CSV 可推荐 `cox_ph`。
   - 返回 hazard ratio、95% CI、P 值、事件数、删失/ties/比例风险假设复核提示。
   - 前端会显示 `Cox proportional hazards model` / HR 输出，并可导出 `advanced-cox-model-fit.md`。
+- Data Lin mixed-effects model fit：
+  - 含 repeated-measures 字段与 cluster 分组的 CSV 可推荐 `mixed_effects`。
+  - 返回 exploratory fixed-effect estimates、近似 residual ICC、cluster 数、重复观测/随机效应结构复核提示。
+  - 前端会显示 `Linear mixed-effects exploratory approximation` / cluster 输出，并可导出 `advanced-mixed-effects-fit.md`。
 
 本轮验收发现并修复：
 
@@ -257,6 +267,7 @@ $env:DATABASE_URL='sqlite:///:memory:'
    - 运行线性回归
    - 导出 `advanced-linear-model-fit.md`
    - 对含生存字段的 CSV 运行 Cox 模型并导出 `advanced-cox-model-fit.md`
+   - 对含重复测量字段的 CSV 运行 mixed-effects 模型并导出 `advanced-mixed-effects-fit.md`
    - 正式检验确认区
 6. 在 Alex Writer 中检查：
    - 英文 Methods / Results
@@ -283,10 +294,11 @@ $env:DATABASE_URL='sqlite:///:memory:'
 
 ## 当前限制
 
-- 当前预备 CSV 包含放疗计划质量脱敏模拟样例、MIMIC-IV EHR demo 和 Cox 生存分析脱敏模拟样例；它们分别用于放疗字段、公开医学 EHR 和 HR 输出流程联调，都不代表正式课题结论。
-- 高级模型执行第一版已支持 linear regression、logistic regression 和 Cox proportional hazards model；mixed-effects 仍停留在计划/待开发阶段。
-- Linear/logistic/Cox 输出是探索性拟合结果，仍需要人工统计复核，不应直接作为最终 SCI 结论。
+- 当前预备 CSV 包含放疗计划质量脱敏模拟样例、MIMIC-IV EHR demo、Cox 生存分析脱敏模拟样例和 mixed-effects 重复测量脱敏模拟样例；它们分别用于放疗字段、公开医学 EHR、HR 输出和 cluster 输出流程联调，都不代表正式课题结论。
+- 高级模型执行第一版已支持 linear regression、logistic regression、Cox proportional hazards model 和 mixed-effects exploratory approximation。
+- Linear/logistic/Cox/mixed-effects 输出是探索性拟合结果，仍需要人工统计复核，不应直接作为最终 SCI 结论。
 - Cox 当前为轻量 partial-likelihood 近似实现，正式报告前需要用 lifelines、statsmodels、R survival 等验证软件复核。
+- Mixed-effects 当前为轻量 clustered linear approximation，正式报告前需要用 statsmodels、R lme4/nlme 等验证软件复核。
 - Writer 版本库当前恢复 Introduction；派生章节可作为历史恢复内容优先显示、逐字段编辑、预览、diff、复制、导出，并可纳入新的版本快照，但不会直接写回后端全文字段。
 - Reviewer 真实意见拆分已支持 Editor / Reviewer 分块和多种编号条目，但仍是规则型，复杂 decision letter 仍需人工校正。
 - Reviewer 到 Writer 的章节映射支持人工修正和持久化保存，但仍需人工对照原始 decision letter 最终确认。
@@ -320,8 +332,7 @@ npm.cmd run dev -- --host 127.0.0.1 --port 3000
    - Writer 英文稿件与版本库
    - Reviewer 样例 decision letter、章节归属、Writer 修改提醒和导出
 2. 下一阶段优先级：
-   - Data Lin mixed-effects model 第一版
-   - Cox survival analysis 专用统计库验证路径
+   - Cox survival analysis 和 mixed-effects model 专用统计库验证路径
    - 真实放疗专科数据适配与数据许可核对
    - Writer 写作风格学习和目标期刊英文表达偏好
    - Reviewer / Writer 返修链路增强：让英文审稿回复更自然，并自动识别审稿意见对应的章节、段落和内容类型

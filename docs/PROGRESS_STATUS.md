@@ -1,6 +1,6 @@
 # 当前模块进度表
 
-更新日期：2026-06-22
+更新日期：2026-06-23
 
 ## 总体判断
 
@@ -11,7 +11,7 @@
 ```text
 Mentor 选题与引用
 → Vera Protocol 研究方案
-→ Data Lin 数据质控、统计草案、高级模型计划、线性/Logistic/Cox 回归拟合
+→ Data Lin 数据质控、统计草案、高级模型计划、线性/Logistic/Cox/Mixed-effects 模型拟合
 → Alex Writer 英文论文草稿、投稿材料、后端版本库
 → Helena Reviewer 投稿前审查、真实审稿意见映射、英文回复草稿
 ```
@@ -22,9 +22,9 @@ Mentor 选题与引用
 |---|---:|---|
 | Prof. RadOnc Mentor | 76% | 可生成课题推荐、加载预备真实引用、复核候选引用、导出引用清单，并将推荐写入方案；下一阶段重点是扩展真实放疗论文引用源与主题证据链 |
 | Dr. Vera Protocol | 80% | 可编辑/保存研究方案，生成方案草案和执行计划草案，完成方案质量检查、方案-数据一致性检查、方案版本快照与导出；下一阶段重点是真实伦理/数据字典字段适配 |
-| Dr. Data Lin | 96% | 可上传 CSV、选择预备 DATA、做质控/隐私检查/统计草案/图表/审计、一键联调 Writer，生成自主分析计划和高级模型计划，并可执行第一版 exploratory linear/logistic/Cox regression |
+| Dr. Data Lin | 97% | 可上传 CSV、选择预备 DATA、做质控/隐私检查/统计草案/图表/审计、一键联调 Writer，生成自主分析计划和高级模型计划，并可执行第一版 exploratory linear/logistic/Cox/mixed-effects model |
 | Alex Writer | 99% | 可生成英文 Introduction、Methods / Results、Discussion、Abstract、Cover Letter、投稿包检查清单、目标期刊模板和 Author Guidelines URL 抓取/本地规则校验，并支持放疗计划质量字段解读、高级模型结果来源与人工核验提示、后端版本归档、恢复 Introduction、版本差异查看、历史章节复制、全文恢复逐字段编辑和 Reviewer 修改提醒 |
-| Rev. Dr. Helena Skov | 99% | 可生成投稿前规则清单、深度审稿意见、Response to Reviewers 草稿，并支持放疗专科风险检查、高级模型 OR/HR 报告边界检查、AI 写作痕迹/模板化风险检查、复杂审稿信规则增强拆分、目标期刊专属审稿维度、真实审稿意见导入、逐条映射、英文回复导出、返修写作清单和章节归属持久化修正；下一阶段以真实 UI 验收和小问题修正为主 |
+| Rev. Dr. Helena Skov | 99% | 可生成投稿前规则清单、深度审稿意见、Response to Reviewers 草稿，并支持放疗专科风险检查、高级模型 OR/HR/Mixed-effects 报告边界检查、AI 写作痕迹/模板化风险检查、复杂审稿信规则增强拆分、目标期刊专属审稿维度、真实审稿意见导入、逐条映射、英文回复导出、返修写作清单和章节归属持久化修正；下一阶段以真实 UI 验收和小问题修正为主 |
 
 ## 已完成的关键闭环
 
@@ -50,6 +50,7 @@ Mentor 选题与引用
 
 - 新增放疗计划质量样例 CSV：20 行脱敏模拟计划记录，覆盖剂量学、QA、计划复杂度和治疗技术字段。
 - 新增 Cox 生存分析样例 CSV：16 行脱敏模拟随访记录，覆盖 follow-up time、event/status、剂量学协变量、计划复杂度和治疗部位字段，用于 HR 输出联调。
+- 新增 mixed-effects 重复测量样例 CSV：24 行脱敏模拟重复观测记录，覆盖 case_code cluster、fraction_index、剂量学协变量、计划复杂度和治疗部位字段，用于 cluster 输出联调。
 - Writer Methods / Results 可识别放疗字段并生成 target coverage、OAR dose、QA gamma pass rate、delivery time 和 plan complexity 相关英文专科提示。
 - Reviewer 可提示 PTV/OAR 指标定义、gamma criteria、TPS 版本、剂量计算算法和计划审批流程等放疗专科风险。
 - 保留公开医学示例 CSV：`MIMIC-IV Clinical Database Demo v2.2` 派生 50 行样本。
@@ -88,11 +89,13 @@ Mentor 选题与引用
   - 已完成浏览器 UI 验收：生成模型计划后可运行推荐 Logistic 模型，并显示 `Binary logistic regression` / OR 输出。
   - 当前支持 Cox proportional hazards model 第一版。
   - CSV 中存在 follow-up time 和 event/status 字段时，可生成 exploratory hazard ratio、95% CI、P 值、事件数、删失/ties/比例风险假设复核提示，并导出 `advanced-cox-model-fit.md`。
+  - 当前支持 linear mixed-effects exploratory approximation 第一版。
+  - CSV 中存在重复测量字段和 cluster 分组时，可生成 fixed-effect estimate、近似 residual ICC、cluster 数、重复观测复核提示，并导出 `advanced-mixed-effects-fit.md`。
 
 当前仍未完成：
 
-- 混合效应模型拟合。
 - Cox 生存分析仍是轻量探索性实现，正式 SCI 报告前需要用 lifelines、statsmodels、R survival 等验证软件复核。
+- Mixed-effects 当前为轻量 clustered linear approximation，正式 SCI 报告前需要用 statsmodels、R lme4/nlme 等验证软件复核。
 - SciPy / statsmodels / lifelines 等专用统计库完整生产路径。
 - 真实放疗专科数据接入和数据许可核对。
 
@@ -105,6 +108,7 @@ Mentor 选题与引用
   - 可读取高级模型拟合结果，并显示高级模型来源与人工核验提示。
   - Logistic 输出会标注 OR-based exploratory model，提醒复核事件编码、事件数、收敛、CI、P 值和样本量限制。
   - Cox 输出会标注 HR-based exploratory survival model，提醒复核随访起点、事件编码、删失、比例风险假设、CI、P 值和样本量限制。
+  - Mixed-effects 输出会标注 clustered exploratory mixed-effects approximation，提醒复核 cluster 分组、随机效应结构、收敛、残差诊断、CI、P 值和样本量限制。
 - Discussion 草稿和导出 `discussion-draft.md`。
 - Abstract 草稿和导出 `abstract-draft.md`。
 - Cover Letter 草稿和导出 `cover-letter-draft.md`。
@@ -160,7 +164,7 @@ Mentor 选题与引用
   - `response-to-reviewers-mapped.md` 导出会为旧数据补齐定位占位，并列出人工必须补齐项。
 - 条目状态管理：草稿、处理中、已解决、暂缓。
 - 映射回复导出 `response-to-reviewers-mapped.md`。
-- 高级模型 OR/HR 报告边界检查：确认 Logistic OR 或 Cox HR 未被写成因果结论或已验证预测/预后模型，并核对事件编码、事件数、收敛、删失、比例风险假设、CI、P 值和样本量限制。
+- 高级模型 OR/HR/Mixed-effects 报告边界检查：确认 Logistic OR、Cox HR 或 mixed-effects approximation 未被写成因果结论、已验证预测/预后模型或正式随机效应推断，并核对事件编码、事件数、收敛、删失、比例风险假设、cluster 数、重复观测、随机效应结构、CI、P 值和样本量限制。
 - AI 写作痕迹与模板化风险检查：检查未替换占位符、过度宣传或因果化表述、AI 模板语、非英文残留和 Generative AI assistance disclosure 是否未确认。
 - 目标期刊专属审稿维度：
   - 读取目标期刊模板和 Author Guidelines 本地规则校验结果。
@@ -193,8 +197,7 @@ Mentor 选题与引用
    - 重点确认 Reviewer 导入、章节归属、Writer 修改提醒、导出文件和 Page / Lines / Manuscript location 占位。
    - 重点观察英文审稿回复是否过于生硬，以及系统是否能把意见映射到合适章节和具体内容。
 2. Data Lin 下一阶段：
-   - 补 mixed-effects model 的第一版可执行路径。
-   - 评估是否引入 statsmodels / lifelines / R survival 等专用统计库，把当前 Cox 轻量探索性实现升级为验证路径。
+   - 评估是否引入 statsmodels / lifelines / R survival / lme4 等专用统计库，把当前 Cox 和 mixed-effects 轻量探索性实现升级为验证路径。
 3. 真实放疗专科数据适配：
    - 建立正式数据字典、字段映射和数据许可核对清单。
    - 将 TPS 版本、剂量计算算法、gamma criteria、结构命名规则纳入数据需求。
@@ -222,7 +225,7 @@ Mentor 选题与引用
 
 ### 阶段 C：高级统计扩展
 
-- 增加 mixed-effects model 的可运行第一版，并将 Cox survival analysis 从轻量探索性实现升级为专用统计库验证路径。
+- 将 Cox survival analysis 和 mixed-effects model 从轻量探索性实现升级为专用统计库验证路径。
 - 强化模型诊断、事件数限制、交叉验证/校准和人工统计复核提示。
 
 ### 阶段 D：投稿前生产化

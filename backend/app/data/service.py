@@ -407,6 +407,9 @@ class DataWorkspaceService:
         ).lower()
         has_time_signal = any(token in text_blob for token in ["survival", "time-to-event", "follow-up", "death", "event"])
         repeated_signal = any(token in text_blob for token in ["repeated", "longitudinal", "mixed", "patient-level", "fraction"])
+        repeated_field_signal = self._has_repeated_measure_signal(headers, columns, rows)
+        if not clean_group_column:
+            clean_group_column = self._select_mixed_effects_group_column(headers, columns, rows, None)
         survival_time_column, survival_event_column = self._select_survival_fields(headers, numeric_columns, columns)
         has_survival_fields = bool(survival_time_column and survival_event_column)
         candidate_pool = self._build_advanced_model_candidates(
@@ -416,7 +419,7 @@ class DataWorkspaceService:
             categorical_columns=categorical_columns,
             group_column=clean_group_column,
             has_time_signal=has_time_signal or has_survival_fields,
-            repeated_signal=repeated_signal,
+            repeated_signal=repeated_signal or repeated_field_signal,
             survival_time_column=survival_time_column,
             survival_event_column=survival_event_column,
         )
@@ -432,6 +435,19 @@ class DataWorkspaceService:
                 None,
             )
             or next((candidate for candidate in candidate_pool if candidate.readiness == "ready"), None)
+        )
+        recommended = (
+            next(
+                (
+                    candidate
+                    for candidate in candidate_pool
+                    if candidate.model_id == "mixed_effects"
+                    and candidate.readiness == "ready"
+                    and (repeated_signal or repeated_field_signal)
+                ),
+                None,
+            )
+            or recommended
         )
         return AdvancedModelPlan(
             project_id=project.id,
@@ -458,8 +474,8 @@ class DataWorkspaceService:
         group_column: str | None = None,
         outcome_columns: list[str] | None = None,
     ) -> AdvancedModelFitReport:
-        if model_id not in {"linear_regression", "logistic_regression", "cox_ph"}:
-            raise ValueError("当前高级模型执行支持 linear_regression、logistic_regression 和 cox_ph。")
+        if model_id not in {"linear_regression", "logistic_regression", "cox_ph", "mixed_effects"}:
+            raise ValueError("当前高级模型执行支持 linear_regression、logistic_regression、cox_ph 和 mixed_effects。")
 
         missing_confirmations = self._missing_formal_test_confirmations(confirmation)
         confirmation_warning = (
@@ -481,6 +497,37 @@ class DataWorkspaceService:
         numeric_columns = [column.name for column in columns if column.inferred_type == "numeric"]
         if not numeric_columns:
             raise ValueError("CSV 文件中没有可用于高级模型的数值列。")
+
+        if model_id == "mixed_effects":
+            selected_outcomes = self._select_outcome_columns(
+                numeric_columns=numeric_columns,
+                requested_columns=outcome_columns or [],
+            )
+            outcome_column = selected_outcomes[0]
+            valid_group_column = self._select_mixed_effects_group_column(
+                headers,
+                columns,
+                rows,
+                self._resolve_group_column(group_column, headers),
+            )
+            if not valid_group_column:
+                raise ValueError("mixed-effects model 需要 cluster / subject / patient 分组列。")
+            numeric_predictors = [
+                column
+                for column in numeric_columns
+                if column != outcome_column
+            ][:3]
+            return self._build_mixed_effects_fit_report(
+                project=project,
+                protocol=protocol,
+                file_name=file_name,
+                rows=rows,
+                outcome_column=outcome_column,
+                numeric_predictors=numeric_predictors,
+                group_column=valid_group_column,
+                confirmation=confirmation,
+                confirmation_warning=confirmation_warning,
+            )
 
         if model_id == "cox_ph":
             categorical_columns = [
@@ -826,6 +873,104 @@ class DataWorkspaceService:
             next_step="把 hazard ratio、事件数、删失定义和比例风险假设交给 Alex Writer 前，请先完成人工统计复核。",
         )
 
+    def _build_mixed_effects_fit_report(
+        self,
+        project: Project,
+        protocol: ProjectProtocol,
+        file_name: str,
+        rows: list[dict[str, str]],
+        outcome_column: str,
+        numeric_predictors: list[str],
+        group_column: str,
+        confirmation: FormalTestConfirmation,
+        confirmation_warning: str | None = None,
+    ) -> AdvancedModelFitReport:
+        fit = self._fit_mixed_effects_approximation(
+            rows=rows,
+            outcome_column=outcome_column,
+            numeric_predictors=numeric_predictors,
+            group_column=group_column,
+        )
+        warnings = list(fit["warnings"])
+        if confirmation_warning:
+            warnings.append(confirmation_warning)
+        if fit["cluster_count"] < 5:
+            warnings.append("Cluster count is small; random-effect variance estimates are unstable.")
+        if fit["singleton_cluster_count"]:
+            warnings.append(
+                f"{fit['singleton_cluster_count']} cluster(s) have only one complete record; repeated-measures adequacy requires review."
+            )
+        if protocol.statistical_plan.strip():
+            warnings.append("Confirm that this mixed-effects route matches the pre-specified statistical plan.")
+        else:
+            warnings.append("The project protocol does not yet contain a finalized mixed-effects model specification.")
+        warnings.append(
+            "This is a lightweight clustered linear approximation and does not replace validated mixed-effects software."
+        )
+
+        predictor_text = ", ".join(fit["predictor_columns"]) if fit["predictor_columns"] else "fixed intercept only"
+        result_terms = [
+            f"{coefficient.term}: beta={coefficient.estimate}"
+            + (
+                f", 95% CI {coefficient.confidence_interval_low} to {coefficient.confidence_interval_high}"
+                if coefficient.confidence_interval_low is not None and coefficient.confidence_interval_high is not None
+                else ""
+            )
+            + (
+                f", P={self._format_p_value(coefficient.p_value)}"
+                if coefficient.p_value is not None
+                else ""
+            )
+            for coefficient in fit["coefficients"]
+            if coefficient.term != "Intercept" and not coefficient.term.startswith("Approximate")
+        ][:4]
+        methods_draft = (
+            f"An exploratory clustered linear mixed-effects approximation was fitted for {outcome_column} "
+            f"using {group_column} as the candidate random-intercept grouping variable from complete-case "
+            f"records in {file_name}. Fixed-effect candidate predictors were {predictor_text}. The current "
+            "prototype estimates fixed effects with a linear model and summarizes residual clustering as an "
+            "approximate intraclass-correlation signal; formal mixed-effects inference requires validated "
+            "maximum-likelihood or restricted-maximum-likelihood software."
+        )
+        results_draft = (
+            f"The exploratory clustered model included {fit['complete_case_count']} complete cases across "
+            f"{fit['cluster_count']} cluster(s), with median cluster size {fit['median_cluster_size']} and "
+            f"approximate residual ICC={fit['approximate_icc']}. "
+            + (
+                f"Key fixed-effect estimates were: {'; '.join(result_terms)}."
+                if result_terms
+                else "No non-intercept fixed-effect estimates were available for reporting."
+            )
+            + " These results require manual statistical review before manuscript-level inference."
+        )
+        audit_summary = (
+            f"已执行 exploratory mixed-effects approximation：{fit['complete_case_count']} 个完整病例，"
+            f"{fit['cluster_count']} 个 cluster，{len(fit['predictor_columns'])} 个预测字段；未保存原始 CSV。"
+        )
+        return AdvancedModelFitReport(
+            project_id=project.id,
+            file_name=file_name,
+            model_id="mixed_effects",
+            model_name="Linear mixed-effects exploratory approximation",
+            outcome_column=outcome_column,
+            predictor_columns=fit["predictor_columns"],
+            row_count=len(rows),
+            complete_case_count=fit["complete_case_count"],
+            excluded_row_count=len(rows) - fit["complete_case_count"],
+            degrees_of_freedom=fit["degrees_of_freedom"],
+            r_squared=fit["r_squared"],
+            adjusted_r_squared=fit["adjusted_r_squared"],
+            coefficients=fit["coefficients"],
+            methods_draft=methods_draft,
+            results_draft=results_draft,
+            warnings=warnings,
+            confirmation=confirmation,
+            method_version="advanced-mixed-effects-v1",
+            raw_csv_saved=False,
+            audit_summary=audit_summary,
+            next_step="把 fixed effects、cluster 结构、ICC 信号和随机效应设定交给 Alex Writer 前，请先完成人工统计复核。",
+        )
+
     def _fit_linear_regression(
         self,
         rows: list[dict[str, str]],
@@ -946,6 +1091,170 @@ class DataWorkspaceService:
             "adjusted_r_squared": round(adjusted_r_squared, 4) if adjusted_r_squared is not None else None,
             "coefficients": coefficients,
             "warnings": warnings,
+        }
+
+    def _fit_mixed_effects_approximation(
+        self,
+        rows: list[dict[str, str]],
+        outcome_column: str,
+        numeric_predictors: list[str],
+        group_column: str,
+    ) -> dict[str, object]:
+        term_names = ["Intercept", *numeric_predictors]
+        design_matrix: list[list[float]] = []
+        outcome_values: list[float] = []
+        group_values: list[str] = []
+        for row in rows:
+            outcome_value = self._parse_float(row.get(outcome_column, ""))
+            group_value = row.get(group_column, "").strip()
+            if outcome_value is None or group_value.lower() in MISSING_TOKENS:
+                continue
+            predictor_values: list[float] = [1.0]
+            skip_row = False
+            for predictor in numeric_predictors:
+                predictor_value = self._parse_float(row.get(predictor, ""))
+                if predictor_value is None:
+                    skip_row = True
+                    break
+                predictor_values.append(predictor_value)
+            if skip_row:
+                continue
+            design_matrix.append(predictor_values)
+            outcome_values.append(outcome_value)
+            group_values.append(group_value)
+
+        complete_case_count = len(outcome_values)
+        parameter_count = len(term_names)
+        cluster_counts = Counter(group_values)
+        cluster_count = len(cluster_counts)
+        if cluster_count < 2:
+            raise ValueError("mixed-effects model 至少需要两个 cluster。")
+        if max(cluster_counts.values()) < 2:
+            raise ValueError("mixed-effects model 需要至少一个 cluster 含有重复观测。")
+        if complete_case_count <= parameter_count:
+            raise ValueError("完整病例数量不足以拟合 mixed-effects 近似模型。")
+
+        xtx = self._matrix_xtx(design_matrix)
+        xty = self._matrix_xty(design_matrix, outcome_values)
+        inverse_xtx = self._invert_matrix(xtx)
+        coefficients_raw = self._matrix_vector_multiply(inverse_xtx, xty)
+        fitted_values = [
+            sum(value * coefficients_raw[index] for index, value in enumerate(row))
+            for row in design_matrix
+        ]
+        residuals = [
+            outcome_values[index] - fitted_values[index]
+            for index in range(complete_case_count)
+        ]
+        y_mean = fmean(outcome_values)
+        ss_residual = sum(residual ** 2 for residual in residuals)
+        ss_total = sum((value - y_mean) ** 2 for value in outcome_values)
+        degrees_of_freedom = complete_case_count - parameter_count
+        residual_variance = ss_residual / degrees_of_freedom if degrees_of_freedom > 0 else 0.0
+        r_squared = 1 - ss_residual / ss_total if ss_total > 0 else 0.0
+        adjusted_r_squared = (
+            1 - (1 - r_squared) * (complete_case_count - 1) / degrees_of_freedom
+            if degrees_of_freedom > 0 and complete_case_count > 1
+            else None
+        )
+        t_critical = self._student_t_critical_975(degrees_of_freedom)
+        coefficients: list[AdvancedModelCoefficient] = []
+        for index, term in enumerate(term_names):
+            estimate = coefficients_raw[index]
+            standard_error = sqrt(max(residual_variance * inverse_xtx[index][index], 0.0))
+            statistic = estimate / standard_error if standard_error > 0 else None
+            p_value = (
+                self._student_t_two_sided_p_value(statistic, degrees_of_freedom)
+                if statistic is not None and degrees_of_freedom > 0
+                else None
+            )
+            ci_low = estimate - t_critical * standard_error if t_critical is not None else None
+            ci_high = estimate + t_critical * standard_error if t_critical is not None else None
+            coefficients.append(
+                AdvancedModelCoefficient(
+                    term=term,
+                    estimate=round(estimate, 4),
+                    standard_error=round(standard_error, 4),
+                    statistic=round(statistic, 4) if statistic is not None else None,
+                    p_value=round(p_value, 6) if p_value is not None else None,
+                    confidence_interval_low=round(ci_low, 4) if ci_low is not None else None,
+                    confidence_interval_high=round(ci_high, 4) if ci_high is not None else None,
+                    interpretation=(
+                        "Exploratory fixed intercept estimate."
+                        if term == "Intercept"
+                        else f"Exploratory fixed-effect estimate for {term}, before validated random-effects inference."
+                    ),
+                )
+            )
+
+        residuals_by_group: dict[str, list[float]] = defaultdict(list)
+        for index, group_value in enumerate(group_values):
+            residuals_by_group[group_value].append(residuals[index])
+        cluster_mean_residuals = [
+            fmean(group_residuals)
+            for group_residuals in residuals_by_group.values()
+            if group_residuals
+        ]
+        between_variance = stdev(cluster_mean_residuals) ** 2 if len(cluster_mean_residuals) > 1 else 0.0
+        within_denominator = complete_case_count - cluster_count
+        within_variance = (
+            sum(
+                (residual - fmean(group_residuals)) ** 2
+                for group_residuals in residuals_by_group.values()
+                for residual in group_residuals
+            )
+            / within_denominator
+            if within_denominator > 0
+            else 0.0
+        )
+        approximate_icc = (
+            between_variance / (between_variance + within_variance)
+            if between_variance + within_variance > 0
+            else 0.0
+        )
+        coefficients.extend(
+            [
+                AdvancedModelCoefficient(
+                    term="Approximate residual ICC",
+                    estimate=round(approximate_icc, 4),
+                    standard_error=None,
+                    statistic=None,
+                    p_value=None,
+                    confidence_interval_low=None,
+                    confidence_interval_high=None,
+                    interpretation="Approximate residual intraclass-correlation signal; validate with a true mixed-effects model.",
+                ),
+                AdvancedModelCoefficient(
+                    term="Between-cluster residual variance",
+                    estimate=round(between_variance, 4),
+                    standard_error=None,
+                    statistic=None,
+                    p_value=None,
+                    confidence_interval_low=None,
+                    confidence_interval_high=None,
+                    interpretation="Approximate between-cluster residual variance from the clustered linear approximation.",
+                ),
+            ]
+        )
+
+        cluster_sizes = sorted(cluster_counts.values())
+        warnings: list[str] = []
+        if len(numeric_predictors) > 3:
+            warnings.append("Multiple fixed-effect predictors were included; collinearity should be reviewed.")
+        warnings.append(f"{group_column} was treated as the candidate random-intercept grouping variable.")
+        warnings.append("No random slope structure was fitted in this prototype.")
+        return {
+            "complete_case_count": complete_case_count,
+            "degrees_of_freedom": degrees_of_freedom,
+            "predictor_columns": [*numeric_predictors, group_column],
+            "r_squared": round(r_squared, 4),
+            "adjusted_r_squared": round(adjusted_r_squared, 4) if adjusted_r_squared is not None else None,
+            "coefficients": coefficients,
+            "warnings": warnings,
+            "cluster_count": cluster_count,
+            "singleton_cluster_count": sum(1 for count in cluster_sizes if count == 1),
+            "median_cluster_size": round(median(cluster_sizes), 4),
+            "approximate_icc": round(approximate_icc, 4),
         }
 
     def _fit_logistic_regression(
@@ -1334,6 +1643,76 @@ class DataWorkspaceService:
     def _safe_exp(self, value: float) -> float:
         return exp(min(max(value, -30), 30))
 
+    def _has_repeated_measure_signal(
+        self,
+        headers: list[str],
+        columns: list[DataColumnQuality],
+        rows: list[dict[str, str]],
+    ) -> bool:
+        repeated_tokens = [
+            "fractionindex",
+            "fractionnumber",
+            "fractionno",
+            "timepoint",
+            "visit",
+            "session",
+            "measurementindex",
+            "repeatindex",
+            "longitudinal",
+        ]
+        has_repeated_field = any(
+            any(token in self._normalize(header) for token in repeated_tokens)
+            for header in headers
+        )
+        return has_repeated_field and bool(self._select_mixed_effects_group_column(headers, columns, rows, None))
+
+    def _select_mixed_effects_group_column(
+        self,
+        headers: list[str],
+        columns: list[DataColumnQuality],
+        rows: list[dict[str, str]],
+        requested_group_column: str | None,
+    ) -> str | None:
+        column_by_name = {column.name: column for column in columns}
+        header_order = {header: index for index, header in enumerate(headers)}
+        candidates: list[tuple[int, int, str]] = []
+        for header in headers:
+            column = column_by_name.get(header)
+            if not column or column.inferred_type == "empty":
+                continue
+            values = [
+                row.get(header, "").strip()
+                for row in rows
+                if row.get(header, "").strip().lower() not in MISSING_TOKENS
+            ]
+            if not values:
+                continue
+            counts = Counter(values)
+            unique_count = len(counts)
+            max_cluster_size = max(counts.values())
+            if unique_count < 2 or max_cluster_size < 2:
+                continue
+            if unique_count > max(2, int(len(values) * 0.75)):
+                continue
+            if column.inferred_type == "numeric" and header != requested_group_column:
+                continue
+            normalized = self._normalize(header)
+            score = 0
+            if requested_group_column and header == requested_group_column:
+                score += 100
+            if any(token in normalized for token in ["patient", "subject", "case", "cluster", "participant"]):
+                score += 12
+            if any(token in normalized for token in ["id", "code", "unit"]):
+                score += 5
+            if any(token in normalized for token in ["site", "technique", "gender", "race"]):
+                score += 1
+            score += min(max_cluster_size, 6)
+            score -= header_order.get(header, 0)
+            candidates.append((score, -unique_count, header))
+        if not candidates:
+            return None
+        return max(candidates)[2]
+
     def _select_survival_fields(
         self,
         headers: list[str],
@@ -1659,7 +2038,13 @@ class DataWorkspaceService:
             missing.append("cluster / subject / patient identifier")
         if not repeated_signal:
             missing.append("repeated-measures design confirmation")
-        readiness = "review" if outcome and group_column else "needs_fields"
+        readiness = (
+            "ready"
+            if outcome and group_column and repeated_signal
+            else "review"
+            if outcome and group_column
+            else "needs_fields"
+        )
         return AdvancedModelCandidate(
             model_id="mixed_effects",
             model_name="Linear mixed-effects model",

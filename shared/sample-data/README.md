@@ -70,6 +70,20 @@ Columns:
 
 This sample is intended to exercise advanced model planning, Cox field detection, exploratory hazard-ratio output, Writer handoff, Reviewer HR boundary checks, and `advanced-cox-model-fit.md` export.
 
+`frontend/public/sample-data/radiotherapy_mixed_effects_sample.csv` is a 24-row synthetic, de-identified repeated-measures workflow sample for testing the first mixed-effects model path. It is not real patient data and must not be described as clinical evidence.
+
+Columns:
+
+- `case_code`
+- `ptv_d95_percent`
+- `fraction_index`
+- `plan_complexity_score`
+- `dose_gradient_index`
+- `site`
+- `technique`
+
+This sample is intended to exercise repeated-measures field detection, `case_code` cluster grouping, exploratory fixed-effect output, approximate residual ICC reporting, Writer handoff, Reviewer mixed-effects boundary checks, and `advanced-mixed-effects-fit.md` export.
+
 ## Reference sample
 
 `frontend/public/sample-data/prepared_references.json` contains source/reference metadata for the prepared data package. These records are not a replacement for manuscript reference review; they are seed references for testing Mentor and Alex Writer citation workflows.

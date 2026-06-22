@@ -274,6 +274,13 @@ const preparedDataSamples = {
     fileName: "radiotherapy_survival_cox_sample.csv",
     description: "脱敏模拟随访时间和事件状态字段，用于 Cox HR 输出联调。",
   },
+  mixedEffects: {
+    id: "mixedEffects",
+    label: "Mixed-effects 重复测量样例",
+    path: "/sample-data/radiotherapy_mixed_effects_sample.csv",
+    fileName: "radiotherapy_mixed_effects_sample.csv",
+    description: "脱敏模拟同一病例多次观测字段，用于 mixed-effects cluster 输出联调。",
+  },
 } as const;
 
 type PreparedDataSampleId = keyof typeof preparedDataSamples;
@@ -1089,6 +1096,8 @@ function buildWriterMethodsResultsDraft(
           ? `OR-based exploratory model: outcome ${advancedModelFitReport.outcome_column}; odds ratios require manual review of event coding, events per variable, separation, convergence, confidence intervals, and P values.`
           : advancedModelFitReport.model_id === "cox_ph"
             ? `HR-based exploratory survival model: outcome ${advancedModelFitReport.outcome_column}; hazard ratios require manual review of time origin, event coding, censoring, proportional hazards assumptions, confidence intervals, and P values.`
+            : advancedModelFitReport.model_id === "mixed_effects"
+              ? `Clustered exploratory mixed-effects approximation: outcome ${advancedModelFitReport.outcome_column}; fixed effects and cluster variance signals require manual review of grouping structure, random effects, convergence, residual diagnostics, confidence intervals, and P values.`
           : `Exploratory regression model: outcome ${advancedModelFitReport.outcome_column}; estimates require manual review of assumptions, collinearity, influential observations, confidence intervals, and P values.`,
         advancedModelFitReport.warnings.length
           ? `Manual verification required before manuscript use: ${advancedModelFitReport.warnings.slice(0, 3).join("; ")}`
@@ -1173,6 +1182,8 @@ function buildWriterMethodsResultsDraft(
               ? "Odds ratios are exploratory and must not be interpreted as causal or validated predictive effects without manual statistical review."
               : advancedModelFitReport.model_id === "cox_ph"
                 ? "Hazard ratios are exploratory and must not be interpreted as causal or validated prognostic effects without manual survival-analysis review."
+                : advancedModelFitReport.model_id === "mixed_effects"
+                  ? "Mixed-effects estimates and cluster variance signals are exploratory and must not be interpreted as finalized random-effects inference without validated mixed-model review."
                 : "Regression estimates are exploratory and must not be interpreted as finalized inferential evidence without manual statistical review."
           }`
         : "No fitted advanced regression model is available for this draft.",
@@ -2485,6 +2496,8 @@ function buildReviewerChecks(params: {
             ? "高级模型 OR 报告边界"
             : advancedModelFitReport.model_id === "cox_ph"
               ? "高级模型 HR 报告边界"
+              : advancedModelFitReport.model_id === "mixed_effects"
+                ? "高级模型 Mixed-effects 报告边界"
             : "高级模型估计边界",
         severity: advancedModelFitReport.warnings.length ? "orange" : "green",
         status:
@@ -2492,18 +2505,24 @@ function buildReviewerChecks(params: {
             ? `${advancedModelFitReport.complete_case_count} 个完整病例 / OR 输出`
             : advancedModelFitReport.model_id === "cox_ph"
               ? `${advancedModelFitReport.complete_case_count} 个完整病例 / HR 输出`
+              : advancedModelFitReport.model_id === "mixed_effects"
+                ? `${advancedModelFitReport.complete_case_count} 个完整病例 / cluster 输出`
             : `${advancedModelFitReport.complete_case_count} 个完整病例 / 回归输出`,
         detail:
           advancedModelFitReport.model_id === "logistic_regression"
             ? `当前 Writer 可读取 ${advancedModelFitReport.model_name}；结局为 ${advancedModelFitReport.outcome_column}，需确认事件编码是否为 Pass vs non-Pass 或真实二分类定义。`
             : advancedModelFitReport.model_id === "cox_ph"
               ? `当前 Writer 可读取 ${advancedModelFitReport.model_name}；结局为 ${advancedModelFitReport.outcome_column}，需确认随访起点、事件编码、删失定义和比例风险假设。`
+              : advancedModelFitReport.model_id === "mixed_effects"
+                ? `当前 Writer 可读取 ${advancedModelFitReport.model_name}；结局为 ${advancedModelFitReport.outcome_column}，需确认 cluster 分组、随机效应结构、收敛和残差诊断边界。`
             : `当前 Writer 可读取 ${advancedModelFitReport.model_name}；结局为 ${advancedModelFitReport.outcome_column}，需确认模型假设和诊断边界。`,
         recommendation:
           advancedModelFitReport.model_id === "logistic_regression"
             ? "Reviewer 需确认稿件没有把 exploratory OR 写成因果结论或已验证预测模型，并核对事件数、收敛、CI、P 值和样本量限制。"
             : advancedModelFitReport.model_id === "cox_ph"
               ? "Reviewer 需确认稿件没有把 exploratory HR 写成因果结论或已验证预后模型，并核对事件数、删失、比例风险假设、CI、P 值和样本量限制。"
+              : advancedModelFitReport.model_id === "mixed_effects"
+                ? "Reviewer 需确认稿件没有把 mixed-effects approximation 写成正式随机效应推断，并核对 cluster 数、重复观测、随机截距/随机斜率设定、收敛、CI、P 值和样本量限制。"
             : "Reviewer 需确认稿件没有把 exploratory regression estimate 写成最终推断结论，并核对假设、CI、P 值和诊断限制。",
       }
     : null;
@@ -7440,12 +7459,15 @@ function App() {
     }
     const isLogisticModel = advancedModelFitReport.model_id === "logistic_regression";
     const isCoxModel = advancedModelFitReport.model_id === "cox_ph";
+    const isMixedEffectsModel = advancedModelFitReport.model_id === "mixed_effects";
 
     const content = [
       isLogisticModel
         ? "# Advanced Logistic Model Fit Report"
         : isCoxModel
           ? "# Advanced Cox Survival Model Fit Report"
+          : isMixedEffectsModel
+            ? "# Advanced Mixed-Effects Model Fit Report"
           : "# Advanced Linear Model Fit Report",
       "",
       `Generated at: ${new Date().toLocaleString("zh-CN")}`,
@@ -7472,7 +7494,7 @@ function App() {
       "",
       "## Coefficients",
       "",
-      `| Term | ${isLogisticModel ? "OR" : isCoxModel ? "HR" : "Estimate"} | SE | ${isLogisticModel || isCoxModel ? "z" : "t"} | P | 95% CI |`,
+      `| Term | ${isLogisticModel ? "OR" : isCoxModel ? "HR" : isMixedEffectsModel ? "Beta / cluster" : "Estimate"} | SE | ${isLogisticModel || isCoxModel ? "z" : "t"} | P | 95% CI |`,
       "|---|---:|---:|---:|---:|---|",
       ...advancedModelFitReport.coefficients.map((coefficient) => [
         coefficient.term,
@@ -7507,6 +7529,8 @@ function App() {
         ? "advanced-logistic-model-fit.md"
         : isCoxModel
           ? "advanced-cox-model-fit.md"
+          : isMixedEffectsModel
+            ? "advanced-mixed-effects-fit.md"
           : "advanced-linear-model-fit.md";
       document.body.appendChild(link);
       link.click();
@@ -9785,6 +9809,8 @@ function App() {
                                           ? " · OR 输出"
                                           : advancedModelFitReport.model_id === "cox_ph"
                                             ? " · HR 输出"
+                                            : advancedModelFitReport.model_id === "mixed_effects"
+                                              ? " · cluster 输出"
                                           : ` · R² ${advancedModelFitReport.r_squared ?? "NA"} · adj. R² ${
                                               advancedModelFitReport.adjusted_r_squared ?? "NA"
                                             }`}
@@ -9809,6 +9835,8 @@ function App() {
                                             ? "OR"
                                             : advancedModelFitReport.model_id === "cox_ph"
                                               ? "HR"
+                                              : advancedModelFitReport.model_id === "mixed_effects"
+                                                ? "β / cluster"
                                               : "β"}{" "}
                                           {coefficient.estimate}
                                         </span>
