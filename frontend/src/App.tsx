@@ -15,6 +15,7 @@ import {
   Send,
   ShieldCheck,
   Sparkles,
+  Trash2,
   Upload,
   Wand2,
 } from "lucide-react";
@@ -22,6 +23,7 @@ import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
 
 import {
   applyProjectPlanDraft,
+  clearReviewerCommentThreads,
   createWriterDraftVersion,
   dismissProjectReminder,
   draftProjectProtocol,
@@ -132,6 +134,12 @@ const projectAccessLabels: Record<ProjectAccessLevel, string> = {
 };
 
 const reviewerCommentTypeLabels: Record<ReviewerCommentType, string> = {
+  major: "主要问题",
+  minor: "次要问题",
+  editorial: "编辑格式",
+};
+
+const reviewerCommentTypeExportLabels: Record<ReviewerCommentType, string> = {
   major: "Major",
   minor: "Minor",
   editorial: "Editorial",
@@ -2228,10 +2236,83 @@ const revisionSectionOptions = [
 
 type RevisionSectionId = ReviewerRevisionSection;
 
+function formatRevisionSectionLabel(section: RevisionSectionId): string {
+  const labels: Record<RevisionSectionId, string> = {
+    Introduction: "引言",
+    "Methods / Results": "方法 / 结果",
+    Discussion: "讨论",
+    Abstract: "摘要",
+    "Cover Letter / Submission": "投稿信 / 投稿材料",
+  };
+  return labels[section];
+}
+
+function formatReviewerLabel(label: string): string {
+  const match = label.match(/^Reviewer import\s+(\d+)$/i);
+  return match ? `未识别审稿人 ${match[1]}` : label;
+}
+
+function formatReviewerLabelForExport(label: string): string {
+  const importedMatch = label.match(/^Reviewer import\s+(\d+)$/i);
+  if (importedMatch) {
+    return `Imported reviewer item ${importedMatch[1]}`;
+  }
+  const unidentifiedMatch = label.match(/^未识别审稿人\s+(\d+)$/);
+  if (unidentifiedMatch) {
+    return `Imported reviewer item ${unidentifiedMatch[1]}`;
+  }
+  return label;
+}
+
+function cleanReviewerResponseDraft(responseDraft: string): string {
+  return responseDraft
+    .replace(/\s+Reviewer comment to address:\s*["“][\s\S]*$/i, "")
+    .trim();
+}
+
+function formatSplitWarningText(value: string): string {
+  return value
+    .replace(
+      /Only one imported item was detected from a long decision letter\./gi,
+      "长审稿信只识别出 1 条意见，可能需要手动拆分。",
+    )
+    .replace(
+      /This imported item is unusually short and may be a heading fragment\./gi,
+      "该条意见过短，可能只是标题片段。",
+    )
+    .replace(
+      /Reviewer label could not be inferred from the imported text\./gi,
+      "未能从导入文本中识别审稿人标签。",
+    )
+    .replace(/;\s*/g, "；")
+    .trim();
+}
+
+function formatManuscriptChange(value: string): string {
+  let formatted = value
+    .replace(
+      /Revise wording, terminology, or formatting in the relevant manuscript section\./gi,
+      "修改相关章节的措辞、术语或格式。",
+    )
+    .replace(
+      /Clarify the relevant sentence or paragraph and verify consistency with the final manuscript\./gi,
+      "澄清相关句子或段落，并核对其与最终稿件一致。",
+    )
+    .replace(
+      /Revise the relevant Methods, Results, or Discussion section and add traceable evidence for the response\./gi,
+      "修改相关的 Methods、Results 或 Discussion 内容，并为回复补充可追溯证据。",
+    )
+    .replace(/Split warning:/gi, "拆分提醒：")
+    .replace(/Manual correction required before final response\./gi, "终稿回复前需要人工校正。");
+
+  formatted = formatSplitWarningText(formatted);
+  return formatted.trim();
+}
+
 function inferReviewerRevisionSections(thread: ReviewerCommentThread): RevisionSectionId[] {
   const text = [
     thread.comment_text,
-    thread.response_draft,
+    cleanReviewerResponseDraft(thread.response_draft),
     thread.manuscript_change,
   ].join(" ").toLowerCase();
   const sections: RevisionSectionId[] = [];
@@ -2282,8 +2363,10 @@ function buildWriterRevisionChecklistGroups(
 }
 
 function getReviewerSplitWarning(thread: ReviewerCommentThread): string {
-  const match = thread.manuscript_change.match(/Split warning:\s*(.+?)\s*Manual correction required/i);
-  return match?.[1]?.trim() ?? "";
+  const match =
+    thread.manuscript_change.match(/Split warning:\s*(.+?)\s*Manual correction required/i) ??
+    thread.manuscript_change.match(/拆分提醒：\s*(.+?)\s*终稿回复前需要人工校正/i);
+  return match?.[1] ? formatSplitWarningText(match[1]) : "";
 }
 
 function countReviewerSplitWarnings(threads: ReviewerCommentThread[]): number {
@@ -2291,7 +2374,7 @@ function countReviewerSplitWarnings(threads: ReviewerCommentThread[]): number {
 }
 
 function ensureReviewerResponseLocationPlaceholders(responseDraft: string): string {
-  const trimmedDraft = responseDraft.trim() || "Response pending manual drafting.";
+  const trimmedDraft = cleanReviewerResponseDraft(responseDraft) || "Response pending manual drafting.";
   if (/Page:\s*\[to be completed manually\]/i.test(trimmedDraft)) {
     return trimmedDraft;
   }
@@ -3978,6 +4061,7 @@ function App() {
   const [reviewerRawImportText, setReviewerRawImportText] = useState("");
   const [isReviewerCommentLoading, setIsReviewerCommentLoading] = useState(false);
   const [isReviewerCommentImporting, setIsReviewerCommentImporting] = useState(false);
+  const [isReviewerCommentClearing, setIsReviewerCommentClearing] = useState(false);
   const [updatingReviewerThreadId, setUpdatingReviewerThreadId] = useState<number | null>(null);
   const [reviewerCommentNotice, setReviewerCommentNotice] = useState<string | null>(null);
   const [citationQualityNotice, setCitationQualityNotice] = useState<string | null>(null);
@@ -6313,7 +6397,12 @@ function App() {
   }
 
   async function handleImportReviewerComments() {
-    if (!selectedProjectId || !canEditSelectedProject || isReviewerCommentImporting) {
+    if (
+      !selectedProjectId ||
+      !canEditSelectedProject ||
+      isReviewerCommentImporting ||
+      isReviewerCommentClearing
+    ) {
       return;
     }
     const rawText = reviewerRawImportText.trim();
@@ -6339,6 +6428,38 @@ function App() {
       setError(caughtError instanceof Error ? caughtError.message : "真实审稿意见导入失败。");
     } finally {
       setIsReviewerCommentImporting(false);
+    }
+  }
+
+  async function handleClearReviewerComments() {
+    if (
+      !selectedProjectId ||
+      !canEditSelectedProject ||
+      isReviewerCommentClearing ||
+      isReviewerCommentImporting ||
+      !reviewerCommentThreads.length
+    ) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "确定清空当前项目已导入的审稿意见吗？这会删除已生成的英文回复草稿、影响章节和稿件修改说明。",
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setIsReviewerCommentClearing(true);
+    setReviewerCommentNotice(null);
+    setError(null);
+    try {
+      const result = await clearReviewerCommentThreads(selectedProjectId);
+      setReviewerCommentThreads([]);
+      setReviewerCommentNotice(`已清空 ${result.deleted_count} 条已导入审稿意见。`);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "审稿意见清空失败。");
+    } finally {
+      setIsReviewerCommentClearing(false);
     }
   }
 
@@ -6416,7 +6537,7 @@ function App() {
       "We thank the editor and reviewers for their careful evaluation of our manuscript. We provide a point-by-point response below. Reviewer comments are reproduced as imported, followed by our planned response and manuscript-change note.",
       "",
       ...reviewerCommentThreads.flatMap((thread, index) => [
-        `## ${index + 1}. ${thread.reviewer_label} - ${reviewerCommentTypeLabels[thread.comment_type]}`,
+        `## ${index + 1}. ${formatReviewerLabelForExport(thread.reviewer_label)} - ${reviewerCommentTypeExportLabels[thread.comment_type]}`,
         "",
         `Status: ${thread.status}`,
         "Manual location fields: required before final resubmission",
@@ -6431,7 +6552,7 @@ function App() {
         "",
         "**Manuscript change**",
         "",
-        thread.manuscript_change || "Manuscript change pending manual confirmation.",
+        formatManuscriptChange(thread.manuscript_change) || "稿件修改说明待人工确认。",
         "",
         "**Manual fields to complete**",
         "",
@@ -6479,7 +6600,7 @@ function App() {
         "",
         ...(group.items.length
           ? group.items.flatMap(({ thread }, index) => [
-              `### ${index + 1}. ${thread.reviewer_label} - ${reviewerCommentTypeLabels[thread.comment_type]}`,
+              `### ${index + 1}. ${formatReviewerLabelForExport(thread.reviewer_label)} - ${reviewerCommentTypeExportLabels[thread.comment_type]}`,
               "",
               `Status: ${reviewerCommentStatusLabels[thread.status]}`,
               `Section assignment: ${thread.manual_revision_sections.length ? `manual (${thread.manual_revision_sections.join(", ")})` : `automatic (${inferReviewerRevisionSections(thread).join(", ")})`}`,
@@ -6491,11 +6612,11 @@ function App() {
               "",
               "**Response draft**",
               "",
-              thread.response_draft || "Response pending.",
+              cleanReviewerResponseDraft(thread.response_draft) || "Response pending.",
               "",
               "**Manuscript change**",
               "",
-              thread.manuscript_change || "Manuscript change pending manual confirmation.",
+              formatManuscriptChange(thread.manuscript_change) || "稿件修改说明待人工确认。",
               "",
             ])
           : ["No reviewer comments mapped to this section.", ""]),
@@ -11825,15 +11946,22 @@ function App() {
                           {writerRevisionChecklistGroups.map((group) => (
                             <article key={group.section}>
                               <div>
-                                <strong>{group.section}</strong>
+                                <strong>{formatRevisionSectionLabel(group.section)}</strong>
                                 <span>{group.unresolvedCount} 条未解决</span>
                               </div>
                               {group.items.length ? (
                                 <ul>
                                   {group.items.slice(0, 3).map(({ thread }) => (
                                     <li key={thread.id}>
-                                      {reviewerCommentStatusLabels[thread.status]} ·{" "}
-                                      {thread.manuscript_change || thread.comment_text.slice(0, 90)}
+                                      <strong>
+                                        {reviewerCommentStatusLabels[thread.status]} ·{" "}
+                                        {formatReviewerLabel(thread.reviewer_label)} ·{" "}
+                                        {reviewerCommentTypeLabels[thread.comment_type]}
+                                      </strong>
+                                      <p>审稿意见：{thread.comment_text}</p>
+                                      <small>
+                                        处理建议：{formatManuscriptChange(thread.manuscript_change) || "待人工确认。"}
+                                      </small>
                                     </li>
                                   ))}
                                 </ul>
@@ -12258,7 +12386,7 @@ function App() {
                     <section className="reviewer-journal-audit-card">
                       <div className="reviewer-deep-head">
                         <div>
-                          <p className="eyebrow">Journal-specific cross-check</p>
+                          <p className="eyebrow">目标期刊对照</p>
                           <h4>目标期刊对照验收</h4>
                         </div>
                         <span>{journalTemplateReadiness.template.name}</span>
@@ -12310,7 +12438,7 @@ function App() {
                     <section className="reviewer-deep-comments">
                       <div className="reviewer-deep-head">
                         <div>
-                          <p className="eyebrow">Deep review comments</p>
+                          <p className="eyebrow">深度审稿意见</p>
                           <h4>{reviewerDeepComments.decision}</h4>
                         </div>
                         <button type="button" onClick={handleDownloadReviewerDeepComments}>
@@ -12321,7 +12449,7 @@ function App() {
                       <p>{reviewerDeepComments.summary}</p>
                       <div className="reviewer-deep-grid">
                         <article>
-                          <strong>Major concerns</strong>
+                          <strong>主要问题</strong>
                           <ul>
                             {reviewerDeepComments.majorConcerns.map((item) => (
                               <li key={item}>{item}</li>
@@ -12329,7 +12457,7 @@ function App() {
                           </ul>
                         </article>
                         <article>
-                          <strong>Minor concerns</strong>
+                          <strong>次要问题</strong>
                           <ul>
                             {reviewerDeepComments.minorConcerns.map((item) => (
                               <li key={item}>{item}</li>
@@ -12337,7 +12465,7 @@ function App() {
                           </ul>
                         </article>
                         <article>
-                          <strong>Methods / Results</strong>
+                          <strong>方法 / 结果</strong>
                           <ul>
                             {reviewerDeepComments.methodsResultsSuggestions.map((item) => (
                               <li key={item}>{item}</li>
@@ -12358,7 +12486,7 @@ function App() {
                     <section className="reviewer-response-panel">
                       <div className="reviewer-deep-head">
                         <div>
-                          <p className="eyebrow">Response to Reviewers</p>
+                          <p className="eyebrow">审稿回复</p>
                           <h4>逐条回复草稿</h4>
                         </div>
                         <button type="button" onClick={handleDownloadReviewerResponseDraft}>
@@ -12369,7 +12497,7 @@ function App() {
                       <p>{reviewerResponseDraft.openingParagraph}</p>
                       <div className="reviewer-response-grid">
                         <article>
-                          <strong>Major responses</strong>
+                          <strong>主要问题回复</strong>
                           <ol>
                             {reviewerResponseDraft.majorResponses.map((item) => (
                               <li key={item}>{item}</li>
@@ -12377,7 +12505,7 @@ function App() {
                           </ol>
                         </article>
                         <article>
-                          <strong>Minor responses</strong>
+                          <strong>次要问题回复</strong>
                           <ol>
                             {reviewerResponseDraft.minorResponses.map((item) => (
                               <li key={item}>{item}</li>
@@ -12385,7 +12513,7 @@ function App() {
                           </ol>
                         </article>
                         <article>
-                          <strong>Methods / Data responses</strong>
+                          <strong>方法 / 数据回复</strong>
                           <ol>
                             {reviewerResponseDraft.methodsDataResponses.map((item) => (
                               <li key={item}>{item}</li>
@@ -12393,7 +12521,7 @@ function App() {
                           </ol>
                         </article>
                         <article>
-                          <strong>Manuscript changes</strong>
+                          <strong>稿件修改</strong>
                           <ul>
                             {reviewerResponseDraft.manuscriptChanges.map((item) => (
                               <li key={item}>{item}</li>
@@ -12406,25 +12534,49 @@ function App() {
                     <section className="reviewer-response-panel reviewer-real-comments-panel">
                       <div className="reviewer-deep-head">
                         <div>
-                          <p className="eyebrow">Real reviewer comments</p>
+                          <p className="eyebrow">真实审稿意见</p>
                           <h4>真实审稿意见映射</h4>
                         </div>
-                        <button
-                          type="button"
-                          onClick={handleDownloadMappedReviewerResponse}
-                          disabled={!reviewerCommentThreads.length}
-                        >
-                          <Download aria-hidden="true" size={15} />
-                          <span>导出映射回复</span>
-                        </button>
+                        <div className="reviewer-deep-actions">
+                          <button
+                            type="button"
+                            onClick={handleDownloadMappedReviewerResponse}
+                            disabled={!reviewerCommentThreads.length || isReviewerCommentClearing}
+                          >
+                            <Download aria-hidden="true" size={15} />
+                            <span>导出映射回复</span>
+                          </button>
+                          <button
+                            type="button"
+                            className="danger"
+                            onClick={handleClearReviewerComments}
+                            disabled={
+                              !canEditSelectedProject ||
+                              isReviewerCommentClearing ||
+                              isReviewerCommentImporting ||
+                              !reviewerCommentThreads.length
+                            }
+                          >
+                            {isReviewerCommentClearing ? (
+                              <Loader2 aria-hidden="true" className="spin" size={15} />
+                            ) : (
+                              <Trash2 aria-hidden="true" size={15} />
+                            )}
+                            <span>{isReviewerCommentClearing ? "清空中" : "清空已导入"}</span>
+                          </button>
+                        </div>
                       </div>
                       <div className="reviewer-import-box">
                         <label>
                           <span>粘贴审稿意见原文</span>
                           <textarea
                             value={reviewerRawImportText}
-                            placeholder="Paste the official reviewer comments here. The interface stays Chinese, and generated responses will be in English."
-                            disabled={!canEditSelectedProject || isReviewerCommentImporting}
+                            placeholder="在这里粘贴官方审稿意见原文；界面保持中文，生成的回复草稿使用英文。"
+                            disabled={
+                              !canEditSelectedProject ||
+                              isReviewerCommentImporting ||
+                              isReviewerCommentClearing
+                            }
                             onChange={(event) => setReviewerRawImportText(event.currentTarget.value)}
                           />
                         </label>
@@ -12434,6 +12586,7 @@ function App() {
                           disabled={
                             !canEditSelectedProject ||
                             isReviewerCommentImporting ||
+                            isReviewerCommentClearing ||
                             !reviewerRawImportText.trim()
                           }
                         >
@@ -12447,7 +12600,11 @@ function App() {
                         <button
                           type="button"
                           className="secondary"
-                          disabled={!canEditSelectedProject || isReviewerCommentImporting}
+                          disabled={
+                            !canEditSelectedProject ||
+                            isReviewerCommentImporting ||
+                            isReviewerCommentClearing
+                          }
                           onClick={() => {
                             setReviewerRawImportText(reviewerSampleDecisionLetter);
                             setReviewerCommentNotice("已填入模拟审稿信样例，请检查后再点击导入。");
@@ -12503,7 +12660,7 @@ function App() {
                             <article key={thread.id}>
                               <div className="reviewer-thread-head">
                                 <strong>
-                                  {index + 1}. {thread.reviewer_label}
+                                  {index + 1}. {formatReviewerLabel(thread.reviewer_label)}
                                 </strong>
                                 <span>{reviewerCommentTypeLabels[thread.comment_type]}</span>
                               </div>
@@ -12578,7 +12735,7 @@ function App() {
                                           )
                                         }
                                       />
-                                      <span>{section}</span>
+                                      <span>{formatRevisionSectionLabel(section)}</span>
                                     </label>
                                   ))}
                                 </div>
@@ -12596,7 +12753,7 @@ function App() {
                                 ) : null}
                               </div>
                               <label>
-                                <span>Reviewer comment</span>
+                                <span>审稿意见原文</span>
                                 <textarea
                                   value={thread.comment_text}
                                   disabled={!canEditSelectedProject || updatingReviewerThreadId === thread.id}
@@ -12617,9 +12774,9 @@ function App() {
                                 />
                               </label>
                               <label>
-                                <span>English response draft</span>
+                                <span>英文回复草稿</span>
                                 <textarea
-                                  value={thread.response_draft}
+                                  value={cleanReviewerResponseDraft(thread.response_draft)}
                                   disabled={!canEditSelectedProject || updatingReviewerThreadId === thread.id}
                                   onBlur={(event) =>
                                     handleUpdateReviewerCommentThread(thread.id, {
@@ -12638,9 +12795,9 @@ function App() {
                                 />
                               </label>
                               <label>
-                                <span>Manuscript change</span>
+                                <span>稿件修改说明</span>
                                 <input
-                                  value={thread.manuscript_change}
+                                  value={formatManuscriptChange(thread.manuscript_change)}
                                   disabled={!canEditSelectedProject || updatingReviewerThreadId === thread.id}
                                   onBlur={(event) =>
                                     handleUpdateReviewerCommentThread(thread.id, {
@@ -12680,7 +12837,7 @@ function App() {
                       <section className="reviewer-response-panel reviewer-writer-checklist-panel">
                         <div className="reviewer-deep-head">
                           <div>
-                            <p className="eyebrow">Writer revision checklist</p>
+                            <p className="eyebrow">返修写作清单</p>
                             <h4>返修写作清单</h4>
                           </div>
                           <button type="button" onClick={handleDownloadWriterRevisionChecklist}>
@@ -12695,7 +12852,7 @@ function App() {
                           {writerRevisionChecklistGroups.map((group) => (
                             <article key={group.section}>
                               <div>
-                                <strong>{group.section}</strong>
+                                <strong>{formatRevisionSectionLabel(group.section)}</strong>
                                 <span>{group.unresolvedCount} 条未解决</span>
                               </div>
                               {group.items.length ? (
@@ -12703,11 +12860,16 @@ function App() {
                                   {group.items.map(({ thread }) => (
                                     <li key={thread.id}>
                                       <strong>
-                                        {thread.reviewer_label} · {reviewerCommentTypeLabels[thread.comment_type]} ·{" "}
+                                        {formatReviewerLabel(thread.reviewer_label)} · {reviewerCommentTypeLabels[thread.comment_type]} ·{" "}
                                         {reviewerCommentStatusLabels[thread.status]}
                                       </strong>
-                                      <p>{thread.manuscript_change || thread.comment_text}</p>
-                                      {thread.response_draft ? <small>{thread.response_draft}</small> : null}
+                                      <p>审稿意见：{thread.comment_text}</p>
+                                      <p>
+                                        处理建议：{formatManuscriptChange(thread.manuscript_change) || "待人工确认。"}
+                                      </p>
+                                      {cleanReviewerResponseDraft(thread.response_draft) ? (
+                                        <small>英文回复草稿：{cleanReviewerResponseDraft(thread.response_draft)}</small>
+                                      ) : null}
                                     </li>
                                   ))}
                                 </ol>

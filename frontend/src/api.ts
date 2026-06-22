@@ -167,6 +167,15 @@ export function importReviewerCommentThreads(
   );
 }
 
+export function clearReviewerCommentThreads(projectId: string): Promise<{ deleted_count: number }> {
+  return request<{ deleted_count: number }>(
+    `/api/projects/${projectId}/reviewer/comment-threads`,
+    {
+      method: "DELETE",
+    },
+  );
+}
+
 export function updateReviewerCommentThread(
   projectId: string,
   threadId: number,

@@ -178,12 +178,15 @@ Mentor 选题与引用
 当前仍未完成：
 
 - Reviewer 进入收尾验收阶段，后续以真实样例 UI 验收和小问题修正为主。
+- Response to Reviewers 的默认英文回复仍偏模板化、生硬；后续需要改为更自然的 point-by-point 回复语气，并根据审稿意见内容生成更具体的回应。
+- 真实审稿意见目前主要按规则拆分和章节映射；后续需要增强自动识别段落、具体内容类型和对应稿件位置的能力，减少人工分配章节和定位的负担。
 
 ## 当前优先级建议
 
 1. 真实样例 UI 验收：
    - 使用预备 DATA、预备引用、模拟 decision letter 和目标期刊 Author Guidelines 跑完整链路。
    - 重点确认 Reviewer 导入、章节归属、Writer 修改提醒、导出文件和 Page / Lines / Manuscript location 占位。
+   - 重点观察英文审稿回复是否过于生硬，以及系统是否能把意见映射到合适章节和具体内容。
 2. Data Lin 下一阶段：
    - 补 survival analysis 和 mixed-effects model 的第一版可执行路径。
    - 评估是否引入 statsmodels / lifelines 等专用统计库，或先保持轻量依赖。
@@ -192,6 +195,7 @@ Mentor 选题与引用
    - 将 TPS 版本、剂量计算算法、gamma criteria、结构命名规则纳入数据需求。
 4. Writer 下一阶段：
    - 写作风格学习与目标期刊英文表达偏好。
+   - Response to Reviewers 语气润色：降低模板感，让回复更像真实作者逐条回应。
    - 更稳定的 PDF / 强 JS Author Guidelines 处理方案。
 5. Mentor / Protocol 下一阶段：
    - 扩展真实放疗论文引用源。
@@ -204,6 +208,7 @@ Mentor 选题与引用
 - 跑完整 UI 验收清单。
 - 修复真实样例中暴露的小问题。
 - 确认页面中文、论文正文/投稿材料英文的规则在所有导出中稳定执行。
+- 收集真实审稿意见样例，评估 Response to Reviewers 默认回复的自然度和具体性。
 
 ### 阶段 B：真实数据适配
 
@@ -219,3 +224,4 @@ Mentor 选题与引用
 
 - 扩展 Author Guidelines PDF / 强 JS 页面处理。
 - 完成目标期刊风格化英文写作和 Response to Reviewers 定稿辅助。
+- 增强真实审稿意见的段落识别、内容类型识别和稿件位置推荐，支持更精确的返修定位。

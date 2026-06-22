@@ -4,7 +4,7 @@ import re
 import json
 from datetime import datetime
 
-from sqlalchemy import inspect, select, text
+from sqlalchemy import delete, inspect, select, text
 
 from app.db.models import ReviewerCommentThreadRecord
 from app.db.session import Base, SessionLocal, engine
@@ -43,7 +43,7 @@ class ReviewerCommentRepository:
             records: list[ReviewerCommentThreadRecord] = []
             for index, comment in enumerate(comments, start=1):
                 comment_type = self._infer_comment_type(comment)
-                reviewer_label = self._infer_reviewer_label(comment) or f"Reviewer import {index}"
+                reviewer_label = self._infer_reviewer_label(comment) or f"未识别审稿人 {index}"
                 split_warnings = self._detect_split_warnings(
                     cleaned_text,
                     comments,
@@ -66,6 +66,17 @@ class ReviewerCommentRepository:
             for record in records:
                 session.refresh(record)
             return [self._to_thread(record) for record in records]
+
+    def clear_threads(self, project_id: str) -> int:
+        self._ensure_schema()
+        with SessionLocal() as session:
+            result = session.execute(
+                delete(ReviewerCommentThreadRecord).where(
+                    ReviewerCommentThreadRecord.project_id == project_id,
+                )
+            )
+            session.commit()
+            return int(result.rowcount or 0)
 
     def update_thread(
         self,
@@ -242,11 +253,11 @@ class ReviewerCommentRepository:
     ) -> list[str]:
         warnings: list[str] = []
         if len(comments) == 1 and len(cleaned_text) > 900:
-            warnings.append("Only one imported item was detected from a long decision letter.")
+            warnings.append("长审稿信只识别出 1 条意见，可能需要手动拆分。")
         if len(comment.strip()) < 45:
-            warnings.append("This imported item is unusually short and may be a heading fragment.")
-        if reviewer_label.lower().startswith("reviewer import"):
-            warnings.append("Reviewer label could not be inferred from the imported text.")
+            warnings.append("该条意见过短，可能只是标题片段。")
+        if reviewer_label.startswith("未识别审稿人"):
+            warnings.append("未能从导入文本中识别审稿人标签。")
         return warnings
 
     def _build_response_draft(self, comment: str, comment_type: str) -> str:
@@ -258,21 +269,20 @@ class ReviewerCommentRepository:
             "page and line references after the revision is finalized. "
             "Page: [to be completed manually]. "
             "Lines: [to be completed manually]. "
-            "Manuscript location: [to be completed manually]. "
-            f"Reviewer comment to address: \"{comment[:260].strip()}\""
+            "Manuscript location: [to be completed manually]."
         )
 
     def _build_manuscript_change(self, comment_type: str, split_warnings: list[str] | None = None) -> str:
         if comment_type == "editorial":
-            change = "Revise wording, terminology, or formatting in the relevant manuscript section."
+            change = "修改相关章节的措辞、术语或格式。"
         elif comment_type == "minor":
-            change = "Clarify the relevant sentence or paragraph and verify consistency with the final manuscript."
+            change = "澄清相关句子或段落，并核对其与最终稿件一致。"
         else:
-            change = "Revise the relevant Methods, Results, or Discussion section and add traceable evidence for the response."
+            change = "修改相关的 Methods、Results 或 Discussion 内容，并为回复补充可追溯证据。"
         if split_warnings:
             return (
-                f"{change} Split warning: {'; '.join(split_warnings)} "
-                "Manual correction required before final response."
+                f"{change} 拆分提醒：{'；'.join(split_warnings)} "
+                "终稿回复前需要人工校正。"
             )
         return change
 

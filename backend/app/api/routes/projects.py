@@ -282,6 +282,19 @@ def import_reviewer_comment_threads(
     return reviewer_comment_repository.import_threads(project_id, request.raw_text)
 
 
+@router.delete("/{project_id}/reviewer/comment-threads", response_model=dict[str, int])
+def clear_reviewer_comment_threads(
+    project_id: str,
+    current_user: UserProfile = Depends(get_current_user),
+) -> dict[str, int]:
+    project = project_repository.get_project(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    ensure_project_access(project_id, current_user, ProjectAccessLevel.editor)
+    deleted_count = reviewer_comment_repository.clear_threads(project_id)
+    return {"deleted_count": deleted_count}
+
+
 @router.put("/{project_id}/reviewer/comment-threads/{thread_id}", response_model=ReviewerCommentThread)
 def update_reviewer_comment_thread(
     project_id: str,
