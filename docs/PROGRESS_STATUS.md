@@ -206,6 +206,7 @@ Mentor 选题与引用
    - 使用预备 DATA、预备引用、模拟 decision letter 和目标期刊 Author Guidelines 跑完整链路。
    - 重点确认 Reviewer 导入、章节归属、Writer 修改提醒、导出文件和 Page / Lines / Manuscript location 占位。
    - 重点观察英文审稿回复是否过于生硬，以及系统是否能把意见映射到合适章节和具体内容。
+   - 2026-06-24 已完成导出/复制兜底修复验收：高级模型验证计划在剪贴板不可用时会显示只读文本框，关键 Markdown 导出会显示文件名提示。
 2. Data Lin 下一阶段：
    - 在现有 statsmodels PHReg / MixedLM 优先路径基础上，补充更系统的诊断输出与外部复核交接：PH assumption、Schoenfeld residuals、convergence、singular fit、random-effects 结构、ICC 和样本量限制。
 3. 真实放疗专科数据适配：
@@ -225,6 +226,7 @@ Mentor 选题与引用
 
 - 跑完整 UI 验收清单。
 - 修复真实样例中暴露的小问题。
+- 已完成导出/复制兜底小修复：验证计划复制失败时提供页面内手动复制文本框，Data Lin / Writer / Reviewer 关键导出路径统一下载 helper。
 - 确认页面中文、论文正文/投稿材料英文的规则在所有导出中稳定执行。
 - 收集真实审稿意见样例，评估 Response to Reviewers 默认回复的自然度和具体性。
 

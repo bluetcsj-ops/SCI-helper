@@ -260,6 +260,15 @@ $env:DATABASE_URL='sqlite:///:memory:'
 - 实际 SQLite `data_audit_logs.raw_data_saved` 列是 `VARCHAR(8)`，旧 ORM Boolean 映射会把字符串 `"0"` 读成 `true`。
 - 已改为按字符串 `"0"/"1"` 写入，并在仓库层显式转换为布尔值，保证页面显示“未保存原始 CSV”与接口字段一致。
 
+2026-06-24 导出/复制兜底修复：
+
+- 最新提交：`39a1a48 Improve export and validation-plan copy fallback`，已推送到 `origin/main`。
+- 前端已为关键 Markdown 导出复用统一下载 helper，覆盖高级模型结果、验证计划、Writer 正文/Methods-Results/版本快照、Reviewer 映射回复和返修写作清单。
+- Data Lin `复制验证计划` 已增加只读文本框兜底；当浏览器剪贴板不可用时，页面会显示完整 `advanced-model-validation-plan.md` 内容，便于手动复制。
+- 已通过 `npm run build`。
+- 浏览器验收通过：加载预备 DATA、生成统计草案、生成高级模型计划后，`复制验证计划` 会显示兜底文本框；文本包含 `Advanced Model External Validation Plan`、`Binary logistic regression`、events per variable、calibration、ROC 和 separation 等核验项。
+- 浏览器验收通过：`导出验证计划` 显示 `advanced-model-validation-plan.md` 下载提示，运行推荐模型后 `导出结果` 显示 `advanced-logistic-model-fit.md` 下载提示；前端控制台无应用错误。
+
 ## 手动验收清单
 
 建议在浏览器中按以下顺序手动验收：
