@@ -4255,6 +4255,8 @@ function App() {
   const [journalGuidelineFetchNotice, setJournalGuidelineFetchNotice] = useState<string | null>(null);
   const [workflowStatus, setWorkflowStatus] = useState<string | null>(null);
   const [workflowSummary, setWorkflowSummary] = useState<WorkflowSummary | null>(null);
+  const [advancedModelFitExportNotice, setAdvancedModelFitExportNotice] =
+    useState<string | null>(null);
   const [advancedModelValidationExportNotice, setAdvancedModelValidationExportNotice] =
     useState<string | null>(null);
   const [selectedGroupColumn, setSelectedGroupColumn] = useState("");
@@ -7595,6 +7597,7 @@ function App() {
         selectedOutcomeColumns,
       );
       setAdvancedModelPlan(plan);
+      setAdvancedModelFitExportNotice(null);
       setAdvancedModelValidationExportNotice(null);
       setWorkflowStatus("高级模型计划已生成。");
     } catch (caughtError) {
@@ -7628,6 +7631,7 @@ function App() {
         modelId,
       );
       setAdvancedModelFitReport(report);
+      setAdvancedModelFitExportNotice(null);
       setAdvancedModelValidationExportNotice(null);
       await refreshDataAuditLogs(selectedProjectId);
       setWorkflowStatus(`${report.model_name} 已完成，结果需人工统计复核。`);
@@ -7761,21 +7765,23 @@ function App() {
       "",
     ].join("\n");
 
+    const fileName = isLogisticModel
+      ? "advanced-logistic-model-fit.md"
+      : isCoxModel
+        ? "advanced-cox-model-fit.md"
+        : isMixedEffectsModel
+          ? "advanced-mixed-effects-fit.md"
+        : "advanced-linear-model-fit.md";
     const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     try {
       link.href = url;
-      link.download = isLogisticModel
-        ? "advanced-logistic-model-fit.md"
-        : isCoxModel
-          ? "advanced-cox-model-fit.md"
-          : isMixedEffectsModel
-            ? "advanced-mixed-effects-fit.md"
-          : "advanced-linear-model-fit.md";
+      link.download = fileName;
       document.body.appendChild(link);
       link.click();
       link.remove();
+      setAdvancedModelFitExportNotice(`模型结果已生成：${fileName}。如果浏览器未自动下载，请再次点击“导出结果”。`);
     } finally {
       URL.revokeObjectURL(url);
     }
@@ -10200,6 +10206,11 @@ function App() {
                                     </ul>
                                   ) : null}
                                   <p className="data-empty">{advancedModelFitReport.next_step}</p>
+                                  {advancedModelFitExportNotice ? (
+                                    <p className="advanced-model-export-notice">
+                                      {advancedModelFitExportNotice}
+                                    </p>
+                                  ) : null}
                                 </div>
                               ) : null}
                             </section>
