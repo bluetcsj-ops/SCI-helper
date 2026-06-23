@@ -8,16 +8,18 @@
 
 ## 当前状态
 
-当前 `main` 分支已提交 Data Lin 高级模型执行第一版、Writer / Reviewer 返修写作清单阶段成果和 mixed-effects model 第一版可执行路径。本轮新增未提交改动主要是 Data Lin 高级模型生产化验证路径：
+当前 `main` 分支已提交 Data Lin 高级模型生产化优先路径、Writer / Reviewer 返修写作清单阶段成果和 mixed-effects model 第一版可执行路径。最新高级模型状态：
 
 - Data Lin 高级模型面板可显示“统计验证计划”。
 - 可按 linear/logistic/Cox/mixed-effects 生成模型专属外部验证清单。
+- Cox 默认优先使用 statsmodels `PHReg`，失败时回退内部 Cox partial-likelihood 近似。
+- Mixed-effects 默认优先使用 statsmodels `MixedLM` random-intercept 路径，失败时回退 clustered linear approximation。
 - 可导出 `advanced-model-validation-plan.md`，用于把 exploratory 输出交给 validated statistical environment 复核。
 - 导出后页面显示文件名确认，并提供“复制验证计划”兜底，便于人工验收下载是否成功。
 - Writer Methods / Results 会写入 pending external validation 英文边界提示。
 - Reviewer 检查清单新增“高级模型外部验证缺口”，提示残差、校准、PH assumption、Schoenfeld residuals、random effects、ICC 等模型特异核验项。
 
-当前整体完成度约 **98.5%**。主链路已经闭环：
+当前整体完成度约 **98.8%**。主链路已经闭环：
 
 ```text
 Mentor → Vera Protocol → Data Lin → Alex Writer → Reviewer
@@ -73,8 +75,8 @@ Mentor → Vera Protocol → Data Lin → Alex Writer → Reviewer
 - 高级模型执行：
   - multivariable linear regression
   - binary logistic regression 第一版，支持 `qa_result` 按 `Pass` vs `non-Pass` 编码
-  - Cox proportional hazards model 第一版，支持 follow-up time + event/status 字段识别和 exploratory HR 输出
-  - linear mixed-effects exploratory approximation 第一版，支持 repeated-measures field + cluster grouping 识别和 exploratory fixed-effect / ICC 输出
+  - Cox proportional hazards model 第一版，优先使用 statsmodels `PHReg`，支持 follow-up time + event/status 字段识别和 exploratory HR 输出，失败时回退内部近似
+  - linear mixed-effects model 第一版，优先使用 statsmodels `MixedLM` random-intercept 路径，支持 repeated-measures field + cluster grouping 识别和 exploratory fixed-effect / ICC 输出，失败时回退 clustered linear approximation
   - 正式确认项未完成时不阻塞 exploratory model fit，但会在 warnings 中提示人工核验边界
 - 导出：
   - `analysis-plan-suggestion.md`
@@ -246,12 +248,12 @@ $env:DATABASE_URL='sqlite:///:memory:'
   - 浏览器 UI 已验收：生成模型计划后可运行推荐模型，并显示 `Binary logistic regression` / OR 输出。
 - Data Lin Cox survival model fit：
   - 含 follow-up time 与 event/status 的 CSV 可推荐 `cox_ph`。
-  - 返回 hazard ratio、95% CI、P 值、事件数、删失/ties/比例风险假设复核提示。
-  - 前端会显示 `Cox proportional hazards model` / HR 输出，并可导出 `advanced-cox-model-fit.md`。
+  - 优先走 statsmodels `PHReg`，返回 hazard ratio、95% CI、P 值、事件数、删失/ties/比例风险假设复核提示。
+  - 前端会显示 `Cox proportional hazards model` / HR 输出、`advanced-cox-statsmodels-v1`，并可导出 `advanced-cox-model-fit.md`。
 - Data Lin mixed-effects model fit：
   - 含 repeated-measures 字段与 cluster 分组的 CSV 可推荐 `mixed_effects`。
-  - 返回 exploratory fixed-effect estimates、近似 residual ICC、cluster 数、重复观测/随机效应结构复核提示。
-  - 前端会显示 `Linear mixed-effects exploratory approximation` / cluster 输出，并可导出 `advanced-mixed-effects-fit.md`。
+  - 优先走 statsmodels `MixedLM` random-intercept 路径，返回 exploratory fixed-effect estimates、random intercept variance、residual variance、ICC、cluster 数和重复观测/随机效应结构复核提示。
+  - 前端会显示 `Linear mixed-effects model` / cluster 输出、`advanced-mixed-effects-statsmodels-v1`，并可导出 `advanced-mixed-effects-fit.md`。
 
 本轮验收发现并修复：
 
@@ -309,11 +311,11 @@ $env:DATABASE_URL='sqlite:///:memory:'
 ## 当前限制
 
 - 当前预备 CSV 包含放疗计划质量脱敏模拟样例、MIMIC-IV EHR demo、Cox 生存分析脱敏模拟样例和 mixed-effects 重复测量脱敏模拟样例；它们分别用于放疗字段、公开医学 EHR、HR 输出和 cluster 输出流程联调，都不代表正式课题结论。
-- 高级模型执行第一版已支持 linear regression、logistic regression、Cox proportional hazards model 和 mixed-effects exploratory approximation，并可导出外部验证计划。
+- 高级模型执行第一版已支持 linear regression、logistic regression、Cox proportional hazards model 和 mixed-effects model，并可导出外部验证计划。
 - Linear/logistic/Cox/mixed-effects 输出是探索性拟合结果，仍需要人工统计复核，不应直接作为最终 SCI 结论。
-- Cox 当前为轻量 partial-likelihood 近似实现，正式报告前需要用 lifelines、statsmodels、R survival 等验证软件复核。
-- Mixed-effects 当前为轻量 clustered linear approximation，正式报告前需要用 statsmodels、R lme4/nlme 等验证软件复核。
-- 当前系统只生成外部验证清单和交接文件，尚未自动调用 statsmodels、lifelines、R survival 或 R lme4 完成生产级统计复核。
+- Cox 当前优先使用 statsmodels `PHReg`，失败时回退内部 partial-likelihood 近似；正式报告前仍需要用 lifelines、R survival 或独立 statsmodels/R 流程复核 PH assumption、Schoenfeld residuals 和事件/删失定义。
+- Mixed-effects 当前优先使用 statsmodels `MixedLM` random-intercept 路径，失败时回退 clustered linear approximation；正式报告前仍需要用 R lme4/nlme、SAS PROC MIXED 或独立 statsmodels 流程复核随机效应结构、收敛、残差诊断和 ICC。
+- 当前系统已自动调用 statsmodels 作为 Cox/Mixed 的第一生产化拟合路径，但 lifelines、R survival、R lme4/nlme 和 SAS PROC MIXED 仍通过外部验证清单交接，尚未被系统自动调用。
 - Writer 版本库当前恢复 Introduction；派生章节可作为历史恢复内容优先显示、逐字段编辑、预览、diff、复制、导出，并可纳入新的版本快照，但不会直接写回后端全文字段。
 - Reviewer 真实意见拆分已支持 Editor / Reviewer 分块和多种编号条目，但仍是规则型，复杂 decision letter 仍需人工校正。
 - Reviewer 到 Writer 的章节映射支持人工修正和持久化保存，但仍需人工对照原始 decision letter 最终确认。
@@ -347,7 +349,7 @@ npm.cmd run dev -- --host 127.0.0.1 --port 3000
    - Writer 英文稿件与版本库
    - Reviewer 样例 decision letter、章节归属、Writer 修改提醒和导出
 2. 下一阶段优先级：
-   - Cox survival analysis 和 mixed-effects model 专用统计库验证路径
+   - Cox survival analysis 和 mixed-effects model 诊断增强与外部统计软件复核交接
    - 真实放疗专科数据适配与数据许可核对
    - Writer 写作风格学习和目标期刊英文表达偏好
    - Reviewer / Writer 返修链路增强：让英文审稿回复更自然，并自动识别审稿意见对应的章节、段落和内容类型
