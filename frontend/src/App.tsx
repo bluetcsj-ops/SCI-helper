@@ -4259,6 +4259,8 @@ function App() {
     useState<string | null>(null);
   const [advancedModelValidationExportNotice, setAdvancedModelValidationExportNotice] =
     useState<string | null>(null);
+  const [advancedModelValidationCopyFallback, setAdvancedModelValidationCopyFallback] =
+    useState<string | null>(null);
   const [selectedGroupColumn, setSelectedGroupColumn] = useState("");
   const [selectedOutcomeColumns, setSelectedOutcomeColumns] = useState<string[]>([]);
   const [selectedChartStyle, setSelectedChartStyle] = useState<ChartStyleId>("journalBlue");
@@ -5604,6 +5606,21 @@ function App() {
     }
   }
 
+  function downloadMarkdownFile(fileName: string, content: string) {
+    const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    try {
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } finally {
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+  }
+
   function handleDownloadMentorBrief() {
     if (!mentorRecommendationReport) {
       return;
@@ -6020,18 +6037,7 @@ function App() {
       "",
     ].join("\n");
 
-    const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    try {
-      link.href = url;
-      link.download = "introduction-draft.md";
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-    } finally {
-      URL.revokeObjectURL(url);
-    }
+    downloadMarkdownFile("introduction-draft.md", content);
   }
 
   function handleDownloadMethodsResultsDraft() {
@@ -6086,18 +6092,7 @@ function App() {
           ]),
     ].join("\n");
 
-    const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    try {
-      link.href = url;
-      link.download = "methods-results-draft.md";
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-    } finally {
-      URL.revokeObjectURL(url);
-    }
+    downloadMarkdownFile("methods-results-draft.md", content);
   }
 
   function handleDownloadDiscussionDraft() {
@@ -6494,18 +6489,7 @@ function App() {
       "",
     ].join("\n");
 
-    const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    try {
-      link.href = url;
-      link.download = "draft-version-snapshot.md";
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-    } finally {
-      URL.revokeObjectURL(url);
-    }
+    downloadMarkdownFile("draft-version-snapshot.md", content);
   }
 
   function handleDownloadReviewerReport() {
@@ -6828,18 +6812,7 @@ function App() {
       "",
     ].join("\n");
 
-    const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    try {
-      link.href = url;
-      link.download = "response-to-reviewers-mapped.md";
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-    } finally {
-      URL.revokeObjectURL(url);
-    }
+    downloadMarkdownFile("response-to-reviewers-mapped.md", content);
   }
 
   function handleDownloadWriterRevisionChecklist() {
@@ -6887,18 +6860,7 @@ function App() {
       "",
     ].join("\n");
 
-    const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    try {
-      link.href = url;
-      link.download = "writer-revision-checklist.md";
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-    } finally {
-      URL.revokeObjectURL(url);
-    }
+    downloadMarkdownFile("writer-revision-checklist.md", content);
   }
 
   function handleDownloadProtocolQualityCheck() {
@@ -7599,6 +7561,7 @@ function App() {
       setAdvancedModelPlan(plan);
       setAdvancedModelFitExportNotice(null);
       setAdvancedModelValidationExportNotice(null);
+      setAdvancedModelValidationCopyFallback(null);
       setWorkflowStatus("高级模型计划已生成。");
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "高级模型计划生成失败。");
@@ -7633,6 +7596,7 @@ function App() {
       setAdvancedModelFitReport(report);
       setAdvancedModelFitExportNotice(null);
       setAdvancedModelValidationExportNotice(null);
+      setAdvancedModelValidationCopyFallback(null);
       await refreshDataAuditLogs(selectedProjectId);
       setWorkflowStatus(`${report.model_name} 已完成，结果需人工统计复核。`);
     } catch (caughtError) {
@@ -7772,19 +7736,10 @@ function App() {
         : isMixedEffectsModel
           ? "advanced-mixed-effects-fit.md"
         : "advanced-linear-model-fit.md";
-    const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    try {
-      link.href = url;
-      link.download = fileName;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      setAdvancedModelFitExportNotice(`模型结果已生成：${fileName}。如果浏览器未自动下载，请再次点击“导出结果”。`);
-    } finally {
-      URL.revokeObjectURL(url);
-    }
+    downloadMarkdownFile(fileName, content);
+    setAdvancedModelFitExportNotice(
+      `模型结果已触发下载：${fileName}。如果浏览器未自动下载，请再次点击“导出结果”。`,
+    );
   }
 
   function handleDownloadAdvancedModelValidationPlan() {
@@ -7794,19 +7749,10 @@ function App() {
 
     const fileName = "advanced-model-validation-plan.md";
     const content = advancedModelValidationPlanToMarkdown(advancedModelValidationPlan);
-    const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    try {
-      link.href = url;
-      link.download = fileName;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      setAdvancedModelValidationExportNotice(`验证计划已生成：${fileName}。如果浏览器未自动下载，可点击“复制验证计划”。`);
-    } finally {
-      URL.revokeObjectURL(url);
-    }
+    downloadMarkdownFile(fileName, content);
+    setAdvancedModelValidationExportNotice(
+      `验证计划已触发下载：${fileName}。如果浏览器未自动下载，可点击“复制验证计划”。`,
+    );
   }
 
   async function handleCopyAdvancedModelValidationPlan() {
@@ -7815,9 +7761,12 @@ function App() {
     }
 
     const content = advancedModelValidationPlanToMarkdown(advancedModelValidationPlan);
+    setAdvancedModelValidationCopyFallback(content);
     try {
       await navigator.clipboard.writeText(content);
-      setAdvancedModelValidationExportNotice("验证计划内容已复制，可粘贴到 Markdown 文件或统计复核记录中。");
+      setAdvancedModelValidationExportNotice(
+        "验证计划内容已复制；下方同时保留手动复制兜底文本。",
+      );
     } catch {
       const textarea = document.createElement("textarea");
       textarea.value = content;
@@ -7830,8 +7779,8 @@ function App() {
       textarea.remove();
       setAdvancedModelValidationExportNotice(
         copied
-          ? "验证计划内容已复制，可粘贴到 Markdown 文件或统计复核记录中。"
-          : "浏览器剪贴板不可用；请点击“导出验证计划”下载 Markdown 文件。",
+          ? "验证计划内容已复制；下方同时保留手动复制兜底文本。"
+          : "浏览器剪贴板不可用；请从下方文本框手动复制，或点击“导出验证计划”下载 Markdown 文件。",
       );
     }
   }
@@ -10113,6 +10062,14 @@ function App() {
                                     <p className="advanced-model-export-notice">
                                       {advancedModelValidationExportNotice}
                                     </p>
+                                  ) : null}
+                                  {advancedModelValidationCopyFallback ? (
+                                    <textarea
+                                      className="advanced-model-copy-fallback"
+                                      readOnly
+                                      value={advancedModelValidationCopyFallback}
+                                      aria-label="高级模型验证计划手动复制内容"
+                                    />
                                   ) : null}
                                 </div>
                               ) : null}

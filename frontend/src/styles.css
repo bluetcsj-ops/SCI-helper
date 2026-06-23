@@ -4122,6 +4122,20 @@ button {
   line-height: 1.45;
 }
 
+.advanced-model-copy-fallback {
+  width: 100%;
+  min-height: 180px;
+  resize: vertical;
+  border: 1px solid #d6e1ee;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #f8fbff;
+  color: #24364b;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .advanced-model-fit-head {
   display: flex;
   align-items: flex-start;
