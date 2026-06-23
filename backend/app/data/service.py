@@ -3,16 +3,26 @@ from __future__ import annotations
 import csv
 import json
 import re
+import warnings as py_warnings
 from collections import Counter, defaultdict
 from itertools import combinations
 from io import StringIO
-from math import erf, exp, lgamma, log, pi, sqrt
+from math import erf, exp, isfinite, lgamma, log, pi, sqrt
 from statistics import fmean, median, stdev
 
 try:
     from scipy import stats as scipy_stats
 except ImportError:  # pragma: no cover - optional precision dependency
     scipy_stats = None
+
+try:
+    import numpy as statsmodels_np
+    from statsmodels.duration.hazard_regression import PHReg as StatsmodelsPHReg
+    from statsmodels.regression.mixed_linear_model import MixedLM as StatsmodelsMixedLM
+except ImportError:  # pragma: no cover - optional production statistics dependency
+    statsmodels_np = None
+    StatsmodelsPHReg = None
+    StatsmodelsMixedLM = None
 
 from app.data.models import (
     AdvancedModelCoefficient,
@@ -811,7 +821,13 @@ class DataWorkspaceService:
             warnings.append("Confirm that this Cox-style model matches the pre-specified statistical plan.")
         else:
             warnings.append("The project protocol does not yet contain a finalized survival model specification.")
-        warnings.append("This prototype uses a Cox partial-likelihood approximation and does not replace validated survival software.")
+        method_version = str(fit.get("method_version") or "advanced-cox-v1")
+        if method_version == "advanced-cox-statsmodels-v1":
+            warnings.append(
+                "This Cox model fit uses statsmodels PHReg; proportional hazards diagnostics and external statistical review are still required."
+            )
+        else:
+            warnings.append("This prototype uses a Cox partial-likelihood approximation and does not replace validated survival software.")
 
         predictor_text = ", ".join(fit["predictor_columns"]) if fit["predictor_columns"] else "no predictors"
         methods_draft = (
@@ -867,7 +883,7 @@ class DataWorkspaceService:
             results_draft=results_draft,
             warnings=warnings,
             confirmation=confirmation,
-            method_version="advanced-cox-v1",
+            method_version=method_version,
             raw_csv_saved=False,
             audit_summary=audit_summary,
             next_step="把 hazard ratio、事件数、删失定义和比例风险假设交给 Alex Writer 前，请先完成人工统计复核。",
@@ -885,7 +901,7 @@ class DataWorkspaceService:
         confirmation: FormalTestConfirmation,
         confirmation_warning: str | None = None,
     ) -> AdvancedModelFitReport:
-        fit = self._fit_mixed_effects_approximation(
+        fit = self._fit_mixed_effects(
             rows=rows,
             outcome_column=outcome_column,
             numeric_predictors=numeric_predictors,
@@ -904,9 +920,15 @@ class DataWorkspaceService:
             warnings.append("Confirm that this mixed-effects route matches the pre-specified statistical plan.")
         else:
             warnings.append("The project protocol does not yet contain a finalized mixed-effects model specification.")
-        warnings.append(
-            "This is a lightweight clustered linear approximation and does not replace validated mixed-effects software."
-        )
+        method_version = str(fit.get("method_version") or "advanced-mixed-effects-v1")
+        if method_version == "advanced-mixed-effects-statsmodels-v1":
+            warnings.append(
+                "This mixed-effects model fit uses statsmodels MixedLM; convergence, residual diagnostics, and random-effects specification still require review."
+            )
+        else:
+            warnings.append(
+                "This is a lightweight clustered linear approximation and does not replace validated mixed-effects software."
+            )
 
         predictor_text = ", ".join(fit["predictor_columns"]) if fit["predictor_columns"] else "fixed intercept only"
         result_terms = [
@@ -924,14 +946,22 @@ class DataWorkspaceService:
             for coefficient in fit["coefficients"]
             if coefficient.term != "Intercept" and not coefficient.term.startswith("Approximate")
         ][:4]
-        methods_draft = (
-            f"An exploratory clustered linear mixed-effects approximation was fitted for {outcome_column} "
-            f"using {group_column} as the candidate random-intercept grouping variable from complete-case "
-            f"records in {file_name}. Fixed-effect candidate predictors were {predictor_text}. The current "
-            "prototype estimates fixed effects with a linear model and summarizes residual clustering as an "
-            "approximate intraclass-correlation signal; formal mixed-effects inference requires validated "
-            "maximum-likelihood or restricted-maximum-likelihood software."
-        )
+        if method_version == "advanced-mixed-effects-statsmodels-v1":
+            methods_draft = (
+                f"An exploratory linear mixed-effects model was fitted for {outcome_column} using {group_column} "
+                f"as a random-intercept grouping variable from complete-case records in {file_name}. Fixed-effect "
+                f"candidate predictors were {predictor_text}. The fit used statsmodels MixedLM with maximum "
+                "likelihood; convergence, residual diagnostics, and random-effects specification require manual review."
+            )
+        else:
+            methods_draft = (
+                f"An exploratory clustered linear mixed-effects approximation was fitted for {outcome_column} "
+                f"using {group_column} as the candidate random-intercept grouping variable from complete-case "
+                f"records in {file_name}. Fixed-effect candidate predictors were {predictor_text}. The current "
+                "prototype estimates fixed effects with a linear model and summarizes residual clustering as an "
+                "approximate intraclass-correlation signal; formal mixed-effects inference requires validated "
+                "maximum-likelihood or restricted-maximum-likelihood software."
+            )
         results_draft = (
             f"The exploratory clustered model included {fit['complete_case_count']} complete cases across "
             f"{fit['cluster_count']} cluster(s), with median cluster size {fit['median_cluster_size']} and "
@@ -944,14 +974,18 @@ class DataWorkspaceService:
             + " These results require manual statistical review before manuscript-level inference."
         )
         audit_summary = (
-            f"已执行 exploratory mixed-effects approximation：{fit['complete_case_count']} 个完整病例，"
+            f"已执行 exploratory mixed-effects model：{fit['complete_case_count']} 个完整病例，"
             f"{fit['cluster_count']} 个 cluster，{len(fit['predictor_columns'])} 个预测字段；未保存原始 CSV。"
         )
         return AdvancedModelFitReport(
             project_id=project.id,
             file_name=file_name,
             model_id="mixed_effects",
-            model_name="Linear mixed-effects exploratory approximation",
+            model_name=(
+                "Linear mixed-effects model"
+                if method_version == "advanced-mixed-effects-statsmodels-v1"
+                else "Linear mixed-effects exploratory approximation"
+            ),
             outcome_column=outcome_column,
             predictor_columns=fit["predictor_columns"],
             row_count=len(rows),
@@ -965,7 +999,7 @@ class DataWorkspaceService:
             results_draft=results_draft,
             warnings=warnings,
             confirmation=confirmation,
-            method_version="advanced-mixed-effects-v1",
+            method_version=method_version,
             raw_csv_saved=False,
             audit_summary=audit_summary,
             next_step="把 fixed effects、cluster 结构、ICC 信号和随机效应设定交给 Alex Writer 前，请先完成人工统计复核。",
@@ -1091,6 +1125,219 @@ class DataWorkspaceService:
             "adjusted_r_squared": round(adjusted_r_squared, 4) if adjusted_r_squared is not None else None,
             "coefficients": coefficients,
             "warnings": warnings,
+        }
+
+    def _fit_mixed_effects(
+        self,
+        rows: list[dict[str, str]],
+        outcome_column: str,
+        numeric_predictors: list[str],
+        group_column: str,
+    ) -> dict[str, object]:
+        if StatsmodelsMixedLM is not None and statsmodels_np is not None:
+            try:
+                return self._fit_statsmodels_mixed_effects(
+                    rows=rows,
+                    outcome_column=outcome_column,
+                    numeric_predictors=numeric_predictors,
+                    group_column=group_column,
+                )
+            except Exception as exc:
+                fallback_fit = self._fit_mixed_effects_approximation(
+                    rows=rows,
+                    outcome_column=outcome_column,
+                    numeric_predictors=numeric_predictors,
+                    group_column=group_column,
+                )
+                detail = str(exc).strip() or exc.__class__.__name__
+                if len(detail) > 180:
+                    detail = f"{detail[:177]}..."
+                fallback_fit["warnings"].append(
+                    f"statsmodels MixedLM failed ({exc.__class__.__name__}: {detail}); used clustered linear approximation fallback."
+                )
+                return fallback_fit
+        return self._fit_mixed_effects_approximation(
+            rows=rows,
+            outcome_column=outcome_column,
+            numeric_predictors=numeric_predictors,
+            group_column=group_column,
+        )
+
+    def _fit_statsmodels_mixed_effects(
+        self,
+        rows: list[dict[str, str]],
+        outcome_column: str,
+        numeric_predictors: list[str],
+        group_column: str,
+    ) -> dict[str, object]:
+        if StatsmodelsMixedLM is None or statsmodels_np is None:
+            raise RuntimeError("statsmodels MixedLM is not available.")
+
+        def finite_float(value: object) -> float | None:
+            try:
+                numeric = float(value)
+            except (TypeError, ValueError):
+                return None
+            return numeric if isfinite(numeric) else None
+
+        term_names = ["Intercept", *numeric_predictors]
+        design_matrix: list[list[float]] = []
+        outcome_values: list[float] = []
+        group_values: list[str] = []
+        for row in rows:
+            outcome_value = self._parse_float(row.get(outcome_column, ""))
+            group_value = row.get(group_column, "").strip()
+            if outcome_value is None or group_value.lower() in MISSING_TOKENS:
+                continue
+            predictor_values: list[float] = [1.0]
+            skip_row = False
+            for predictor in numeric_predictors:
+                predictor_value = self._parse_float(row.get(predictor, ""))
+                if predictor_value is None:
+                    skip_row = True
+                    break
+                predictor_values.append(predictor_value)
+            if skip_row:
+                continue
+            design_matrix.append(predictor_values)
+            outcome_values.append(outcome_value)
+            group_values.append(group_value)
+
+        complete_case_count = len(outcome_values)
+        parameter_count = len(term_names)
+        cluster_counts = Counter(group_values)
+        cluster_count = len(cluster_counts)
+        if cluster_count < 2:
+            raise ValueError("mixed-effects model needs at least two clusters.")
+        if max(cluster_counts.values()) < 2:
+            raise ValueError("mixed-effects model needs at least one cluster with repeated observations.")
+        if complete_case_count <= parameter_count:
+            raise ValueError("Complete-case count is too small for mixed-effects fitting.")
+
+        endog = statsmodels_np.asarray(outcome_values, dtype=float)
+        exog = statsmodels_np.asarray(design_matrix, dtype=float)
+        groups = statsmodels_np.asarray(group_values)
+        captured_warning_texts: list[str] = []
+        with py_warnings.catch_warnings(record=True) as captured_warnings:
+            py_warnings.simplefilter("always")
+            result = StatsmodelsMixedLM(endog, exog, groups=groups).fit(
+                reml=False,
+                method="powell",
+                disp=False,
+            )
+            captured_warning_texts = [str(warning.message) for warning in captured_warnings]
+        if getattr(result, "converged", True) is False:
+            raise RuntimeError("statsmodels MixedLM did not converge.")
+
+        fixed_effects = [finite_float(value) for value in result.fe_params]
+        standard_errors = [finite_float(value) for value in getattr(result, "bse_fe", [])]
+        p_values = [finite_float(value) for value in getattr(result, "pvalues", [])]
+        coefficients: list[AdvancedModelCoefficient] = []
+        for index, term in enumerate(term_names):
+            estimate = fixed_effects[index] if index < len(fixed_effects) else None
+            if estimate is None:
+                continue
+            standard_error = standard_errors[index] if index < len(standard_errors) else None
+            statistic = estimate / standard_error if standard_error and standard_error > 0 else None
+            p_value = p_values[index] if index < len(p_values) else None
+            if p_value is None and statistic is not None:
+                p_value = self._normal_two_sided_p_value(statistic)
+            ci_low = estimate - 1.96 * standard_error if standard_error is not None else None
+            ci_high = estimate + 1.96 * standard_error if standard_error is not None else None
+            coefficients.append(
+                AdvancedModelCoefficient(
+                    term=term,
+                    estimate=round(estimate, 4),
+                    standard_error=round(standard_error, 4) if standard_error is not None else None,
+                    statistic=round(statistic, 4) if statistic is not None else None,
+                    p_value=round(p_value, 6) if p_value is not None else None,
+                    confidence_interval_low=round(ci_low, 4) if ci_low is not None else None,
+                    confidence_interval_high=round(ci_high, 4) if ci_high is not None else None,
+                    interpretation=(
+                        "Statsmodels MixedLM fixed intercept estimate."
+                        if term == "Intercept"
+                        else f"Statsmodels MixedLM fixed-effect estimate for {term}, holding other included predictors constant."
+                    ),
+                )
+            )
+        if not coefficients:
+            raise RuntimeError("statsmodels MixedLM returned no finite fixed-effect coefficients.")
+
+        random_intercept_variance = None
+        try:
+            random_intercept_variance = finite_float(result.cov_re[0, 0])
+        except Exception:
+            try:
+                random_intercept_variance = finite_float(result.cov_re.iloc[0, 0])
+            except Exception:
+                random_intercept_variance = None
+        residual_variance = finite_float(getattr(result, "scale", None))
+        if random_intercept_variance is None or random_intercept_variance < 0:
+            random_intercept_variance = 0.0
+        if residual_variance is None or residual_variance < 0:
+            residual_variance = 0.0
+        approximate_icc = (
+            random_intercept_variance / (random_intercept_variance + residual_variance)
+            if random_intercept_variance + residual_variance > 0
+            else 0.0
+        )
+        coefficients.extend(
+            [
+                AdvancedModelCoefficient(
+                    term="Random intercept variance",
+                    estimate=round(random_intercept_variance, 4),
+                    standard_error=None,
+                    statistic=None,
+                    p_value=None,
+                    confidence_interval_low=None,
+                    confidence_interval_high=None,
+                    interpretation="Statsmodels MixedLM random-intercept variance component.",
+                ),
+                AdvancedModelCoefficient(
+                    term="Residual variance",
+                    estimate=round(residual_variance, 4),
+                    standard_error=None,
+                    statistic=None,
+                    p_value=None,
+                    confidence_interval_low=None,
+                    confidence_interval_high=None,
+                    interpretation="Statsmodels MixedLM residual variance estimate.",
+                ),
+                AdvancedModelCoefficient(
+                    term="Approximate residual ICC",
+                    estimate=round(approximate_icc, 4),
+                    standard_error=None,
+                    statistic=None,
+                    p_value=None,
+                    confidence_interval_low=None,
+                    confidence_interval_high=None,
+                    interpretation="Approximate intraclass-correlation from random-intercept and residual variance.",
+                ),
+            ]
+        )
+
+        cluster_sizes = sorted(cluster_counts.values())
+        warnings = ["Mixed-effects model fitted with statsmodels MixedLM random intercept."]
+        warnings.extend(
+            f"statsmodels warning: {warning_text}"
+            for warning_text in captured_warning_texts
+            if warning_text
+        )
+        warnings.append(f"{group_column} was treated as the random-intercept grouping variable.")
+        warnings.append("No random slope structure was fitted in this automated route.")
+        return {
+            "complete_case_count": complete_case_count,
+            "degrees_of_freedom": complete_case_count - parameter_count,
+            "predictor_columns": [*numeric_predictors, group_column],
+            "r_squared": None,
+            "adjusted_r_squared": None,
+            "coefficients": coefficients,
+            "warnings": warnings,
+            "cluster_count": cluster_count,
+            "singleton_cluster_count": sum(1 for count in cluster_sizes if count == 1),
+            "median_cluster_size": round(median(cluster_sizes), 4),
+            "approximate_icc": round(approximate_icc, 4),
+            "method_version": "advanced-mixed-effects-statsmodels-v1",
         }
 
     def _fit_mixed_effects_approximation(
@@ -1447,6 +1694,46 @@ class DataWorkspaceService:
         numeric_predictors: list[str],
         group_column: str | None,
     ) -> dict[str, object]:
+        if StatsmodelsPHReg is not None:
+            try:
+                return self._fit_statsmodels_cox_ph(
+                    rows=rows,
+                    time_column=time_column,
+                    event_column=event_column,
+                    numeric_predictors=numeric_predictors,
+                    group_column=group_column,
+                )
+            except Exception as exc:
+                fallback_fit = self._fit_cox_ph_approximation(
+                    rows=rows,
+                    time_column=time_column,
+                    event_column=event_column,
+                    numeric_predictors=numeric_predictors,
+                    group_column=group_column,
+                )
+                detail = str(exc).strip() or exc.__class__.__name__
+                if len(detail) > 180:
+                    detail = f"{detail[:177]}..."
+                fallback_fit["warnings"].append(
+                    f"statsmodels PHReg failed ({exc.__class__.__name__}: {detail}); used internal Cox approximation fallback."
+                )
+                return fallback_fit
+        return self._fit_cox_ph_approximation(
+            rows=rows,
+            time_column=time_column,
+            event_column=event_column,
+            numeric_predictors=numeric_predictors,
+            group_column=group_column,
+        )
+
+    def _fit_cox_ph_approximation(
+        self,
+        rows: list[dict[str, str]],
+        time_column: str,
+        event_column: str,
+        numeric_predictors: list[str],
+        group_column: str | None,
+    ) -> dict[str, object]:
         valid_rows = []
         for row in rows:
             follow_up_time = self._parse_float(row.get(time_column, ""))
@@ -1631,6 +1918,180 @@ class DataWorkspaceService:
             "predictor_columns": predictor_columns,
             "coefficients": coefficients,
             "warnings": warnings,
+            "method_version": "advanced-cox-v1",
+        }
+
+    def _fit_statsmodels_cox_ph(
+        self,
+        rows: list[dict[str, str]],
+        time_column: str,
+        event_column: str,
+        numeric_predictors: list[str],
+        group_column: str | None,
+    ) -> dict[str, object]:
+        if StatsmodelsPHReg is None or statsmodels_np is None:
+            raise RuntimeError("statsmodels PHReg is not available.")
+
+        def finite_float(value: object) -> float | None:
+            try:
+                numeric = float(value)
+            except (TypeError, ValueError):
+                return None
+            return numeric if isfinite(numeric) else None
+
+        valid_rows = []
+        for row in rows:
+            follow_up_time = self._parse_float(row.get(time_column, ""))
+            event_value = self._parse_survival_event(row.get(event_column, ""))
+            if follow_up_time is None or follow_up_time <= 0 or event_value is None:
+                continue
+            valid_rows.append((row, follow_up_time, event_value))
+
+        numeric_values: dict[str, list[float]] = {predictor: [] for predictor in numeric_predictors}
+        for row, _follow_up_time, _event_value in valid_rows:
+            for predictor in numeric_predictors:
+                value = self._parse_float(row.get(predictor, ""))
+                if value is not None:
+                    numeric_values[predictor].append(value)
+        numeric_scales: dict[str, tuple[float, float]] = {}
+        for predictor, values in numeric_values.items():
+            if len(values) < 2:
+                continue
+            center = fmean(values)
+            spread = stdev(values) if len(values) > 1 else 0.0
+            numeric_scales[predictor] = (center, spread if spread > 0 else 1.0)
+
+        group_levels = sorted(
+            {
+                row.get(group_column, "").strip()
+                for row, _follow_up_time, _event_value in valid_rows
+                if group_column and row.get(group_column, "").strip().lower() not in MISSING_TOKENS
+            }
+        )
+        group_reference = group_levels[0] if group_levels else None
+        encoded_group_levels = group_levels[1:] if group_reference else []
+        scaled_numeric_predictors = [predictor for predictor in numeric_predictors if predictor in numeric_scales]
+        term_names = [
+            *[f"{predictor} (per SD)" for predictor in scaled_numeric_predictors],
+            *[f"{group_column}={level}" for level in encoded_group_levels],
+        ]
+        predictor_columns = [
+            *scaled_numeric_predictors,
+            *([group_column] if group_column and group_reference else []),
+        ]
+        if not term_names:
+            raise ValueError("Cox survival analysis needs at least one encodable predictor.")
+
+        survival_rows: list[tuple[float, float, list[float]]] = []
+        for row, follow_up_time, event_value in valid_rows:
+            predictor_values: list[float] = []
+            skip_row = False
+            for predictor in scaled_numeric_predictors:
+                value = self._parse_float(row.get(predictor, ""))
+                if value is None:
+                    skip_row = True
+                    break
+                center, spread = numeric_scales[predictor]
+                predictor_values.append((value - center) / spread)
+            if skip_row:
+                continue
+            if group_column and group_reference:
+                group_value = row.get(group_column, "").strip()
+                if group_value.lower() in MISSING_TOKENS:
+                    continue
+                predictor_values.extend(1.0 if group_value == level else 0.0 for level in encoded_group_levels)
+            survival_rows.append((follow_up_time, event_value, predictor_values))
+
+        complete_case_count = len(survival_rows)
+        event_count = int(sum(event_value for _time, event_value, _predictors in survival_rows))
+        parameter_count = len(term_names)
+        if complete_case_count <= parameter_count:
+            raise ValueError("Complete-case count is too small for Cox survival analysis.")
+        if event_count == 0:
+            raise ValueError("Cox survival analysis did not detect any events.")
+        if event_count <= parameter_count:
+            raise ValueError("Event count is too small for the selected Cox predictors.")
+
+        follow_up_times = statsmodels_np.asarray(
+            [time_value for time_value, _event_value, _predictors in survival_rows],
+            dtype=float,
+        )
+        event_status = statsmodels_np.asarray(
+            [event_value for _time_value, event_value, _predictors in survival_rows],
+            dtype=float,
+        )
+        design_matrix = statsmodels_np.asarray(
+            [predictors for _time_value, _event_value, predictors in survival_rows],
+            dtype=float,
+        )
+        result = StatsmodelsPHReg(
+            follow_up_times,
+            design_matrix,
+            status=event_status,
+            ties="breslow",
+        ).fit(disp=False)
+
+        params = [finite_float(value) for value in result.params]
+        standard_errors = [finite_float(value) for value in result.bse]
+        p_values = [finite_float(value) for value in result.pvalues]
+        try:
+            confidence_intervals = result.conf_int()
+        except Exception:
+            confidence_intervals = None
+
+        coefficients: list[AdvancedModelCoefficient] = []
+        for index, term in enumerate(term_names):
+            log_hazard = params[index] if index < len(params) else None
+            if log_hazard is None:
+                continue
+            standard_error = standard_errors[index] if index < len(standard_errors) else None
+            statistic = log_hazard / standard_error if standard_error and standard_error > 0 else None
+            p_value = p_values[index] if index < len(p_values) else None
+            if p_value is None and statistic is not None:
+                p_value = self._normal_two_sided_p_value(statistic)
+            ci_low = None
+            ci_high = None
+            if confidence_intervals is not None:
+                try:
+                    interval = confidence_intervals[index]
+                except Exception:
+                    interval = None
+                if interval is not None and len(interval) >= 2:
+                    ci_low_log = finite_float(interval[0])
+                    ci_high_log = finite_float(interval[1])
+                    ci_low = self._safe_exp(ci_low_log) if ci_low_log is not None else None
+                    ci_high = self._safe_exp(ci_high_log) if ci_high_log is not None else None
+            coefficients.append(
+                AdvancedModelCoefficient(
+                    term=term,
+                    estimate=round(self._safe_exp(log_hazard), 4),
+                    standard_error=round(standard_error, 4) if standard_error is not None else None,
+                    statistic=round(statistic, 4) if statistic is not None else None,
+                    p_value=round(p_value, 6) if p_value is not None else None,
+                    confidence_interval_low=round(ci_low, 4) if ci_low is not None else None,
+                    confidence_interval_high=round(ci_high, 4) if ci_high is not None else None,
+                    interpretation=f"Statsmodels PHReg hazard ratio for {term}, holding other included predictors constant.",
+                )
+            )
+        if not coefficients:
+            raise RuntimeError("statsmodels PHReg returned no finite coefficients.")
+
+        warnings: list[str] = ["Cox model fitted with statsmodels PHReg using Breslow tie handling."]
+        if group_column and group_reference:
+            warnings.append(f"{group_column} reference level: {group_reference}.")
+        if len({time_value for time_value, event_value, _predictors in survival_rows if event_value == 1.0}) < event_count:
+            warnings.append("Tied event times were detected; Breslow tie handling was used.")
+        if event_count == complete_case_count:
+            warnings.append("No censored records were detected; confirm that event coding and censoring are correct.")
+        warnings.append("Numeric predictors were standardized; hazard ratios are per one standard deviation increase.")
+        return {
+            "complete_case_count": complete_case_count,
+            "event_count": event_count,
+            "degrees_of_freedom": event_count - parameter_count,
+            "predictor_columns": predictor_columns,
+            "coefficients": coefficients,
+            "warnings": warnings,
+            "method_version": "advanced-cox-statsmodels-v1",
         }
 
     def _logistic_probability(self, value: float) -> float:
