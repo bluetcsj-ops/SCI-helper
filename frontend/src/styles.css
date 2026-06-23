@@ -4133,6 +4133,47 @@ button {
   line-height: 1.5;
 }
 
+.advanced-model-diagnostic-handoff {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  border: 1px solid rgba(36, 84, 111, 0.14);
+  border-radius: 8px;
+  padding: 10px;
+  background: #f8fbff;
+}
+
+.advanced-model-diagnostic-handoff > strong,
+.advanced-model-diagnostic-handoff > small {
+  grid-column: 1 / -1;
+}
+
+.advanced-model-diagnostic-handoff > strong,
+.advanced-model-diagnostic-handoff p {
+  margin: 0;
+  color: #22354a;
+  font-weight: 800;
+}
+
+.advanced-model-diagnostic-handoff div {
+  display: grid;
+  gap: 6px;
+}
+
+.advanced-model-diagnostic-handoff ul {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding-left: 18px;
+  color: #4f6074;
+  line-height: 1.45;
+}
+
+.advanced-model-diagnostic-handoff small {
+  color: #4f6074;
+  line-height: 1.45;
+}
+
 .advanced-model-export-notice {
   margin: 0;
   border-radius: 8px;
@@ -4236,6 +4277,10 @@ button {
 
 @media (max-width: 760px) {
   .advanced-model-validation-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .advanced-model-diagnostic-handoff {
     grid-template-columns: 1fr;
   }
 }

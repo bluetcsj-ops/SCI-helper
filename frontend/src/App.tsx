@@ -66,6 +66,7 @@ import {
 import type {
   AgentId,
   AgentProfile,
+  AdvancedModelDiagnosticHandoff,
   AdvancedModelFitReport,
   AdvancedModelPlan,
   ChartSpec,
@@ -1062,6 +1063,7 @@ function buildAdvancedModelValidationPlan(
     modelName: advancedModelFitReport?.model_name ?? candidate?.model_name ?? "Advanced statistical model",
     sourceFileName: advancedModelFitReport?.file_name ?? advancedModelPlan?.file_name ?? "pending CSV",
     fitStatus: advancedModelFitReport ? "fit_available" as const : "planned" as const,
+    diagnosticHandoff: advancedModelFitReport?.diagnostic_handoff ?? null,
     statusLabel: advancedModelFitReport ? "已生成探索性输出，待外部验证" : "已生成路线，待运行模型",
   };
 
@@ -1198,9 +1200,33 @@ function advancedModelValidationPlanToMarkdown(
     "",
     ...plan.requiredExports.map((item) => `- ${item}`),
     "",
+    ...(plan.diagnosticHandoff
+      ? [
+          "## Fit Diagnostic Handoff",
+          "",
+          `Review status: ${plan.diagnosticHandoff.review_status}`,
+          "",
+          "### Sample Context",
+          "",
+          ...plan.diagnosticHandoff.sample_context.map((item) => `- ${item}`),
+          "",
+          "### Required Diagnostics",
+          "",
+          ...plan.diagnosticHandoff.required_diagnostics.map((item) => `- ${item}`),
+          "",
+          "### Handoff Artifacts",
+          "",
+          ...plan.diagnosticHandoff.handoff_artifacts.map((item) => `- ${item}`),
+          "",
+          "### Reviewer Focus",
+          "",
+          plan.diagnosticHandoff.reviewer_focus,
+          "",
+        ]
+      : []),
     "## Manuscript Boundary",
     "",
-    plan.manuscriptBoundary,
+    plan.diagnosticHandoff?.manuscript_boundary ?? plan.manuscriptBoundary,
     "",
     "## Reviewer Handoff",
     "",
@@ -1280,6 +1306,13 @@ function buildWriterMethodsResultsDraft(
               .slice(0, 3)
               .join("; ")}`
           : "External validation status: pending; a model-specific validation plan must be generated before final reporting.",
+        ...(advancedModelFitReport.diagnostic_handoff
+          ? [
+              `Diagnostic handoff: ${advancedModelFitReport.diagnostic_handoff.sample_context.join("; ")} Required diagnostics include ${advancedModelFitReport.diagnostic_handoff.required_diagnostics
+                .slice(0, 2)
+                .join("; ")}.`,
+            ]
+          : []),
       ]
     : [
         "Advanced model fitting has not yet been completed; do not report regression estimates, odds ratios, confidence intervals, or P values from an advanced model.",
@@ -3757,6 +3790,7 @@ interface AdvancedModelValidationPlan {
   manuscriptBoundary: string;
   reviewerFocus: string;
   handoffNote: string;
+  diagnosticHandoff?: AdvancedModelDiagnosticHandoff | null;
 }
 
 const journalSubmissionTemplates: JournalSubmissionTemplate[] = [
@@ -7889,6 +7923,34 @@ function App() {
       "",
       ...advancedModelFitReport.warnings.map((warning) => `- ${warning}`),
       "",
+      ...(advancedModelFitReport.diagnostic_handoff
+        ? [
+            "## Diagnostic Handoff",
+            "",
+            `Review status: ${advancedModelFitReport.diagnostic_handoff.review_status}`,
+            "",
+            "### Sample Context",
+            "",
+            ...advancedModelFitReport.diagnostic_handoff.sample_context.map((item) => `- ${item}`),
+            "",
+            "### Required Diagnostics",
+            "",
+            ...advancedModelFitReport.diagnostic_handoff.required_diagnostics.map((item) => `- ${item}`),
+            "",
+            "### Handoff Artifacts",
+            "",
+            ...advancedModelFitReport.diagnostic_handoff.handoff_artifacts.map((item) => `- ${item}`),
+            "",
+            "### Manuscript Boundary",
+            "",
+            advancedModelFitReport.diagnostic_handoff.manuscript_boundary,
+            "",
+            "### Reviewer Focus",
+            "",
+            advancedModelFitReport.diagnostic_handoff.reviewer_focus,
+            "",
+          ]
+        : []),
       "## Next step",
       "",
       advancedModelFitReport.next_step,
@@ -10221,8 +10283,38 @@ function App() {
                                       </ul>
                                     </div>
                                   </div>
+                                  {advancedModelValidationPlan.diagnosticHandoff ? (
+                                    <div className="advanced-model-diagnostic-handoff">
+                                      <strong>诊断交接</strong>
+                                      <div>
+                                        <p>样本背景</p>
+                                        <ul>
+                                          {advancedModelValidationPlan.diagnosticHandoff.sample_context.map((item) => (
+                                            <li key={item}>{item}</li>
+                                          ))}
+                                        </ul>
+                                      </div>
+                                      <div>
+                                        <p>必做诊断</p>
+                                        <ul>
+                                          {advancedModelValidationPlan.diagnosticHandoff.required_diagnostics.map((item) => (
+                                            <li key={item}>{item}</li>
+                                          ))}
+                                        </ul>
+                                      </div>
+                                      <div>
+                                        <p>交接材料</p>
+                                        <ul>
+                                          {advancedModelValidationPlan.diagnosticHandoff.handoff_artifacts.map((item) => (
+                                            <li key={item}>{item}</li>
+                                          ))}
+                                        </ul>
+                                      </div>
+                                    </div>
+                                  ) : null}
                                   <p className="data-empty">
-                                    {advancedModelValidationPlan.manuscriptBoundary}
+                                    {advancedModelValidationPlan.diagnosticHandoff?.manuscript_boundary
+                                      ?? advancedModelValidationPlan.manuscriptBoundary}
                                   </p>
                                   {advancedModelValidationExportNotice ? (
                                     <p className="advanced-model-export-notice">
@@ -10321,6 +10413,36 @@ function App() {
                                       </article>
                                     ))}
                                   </div>
+                                  {advancedModelFitReport.diagnostic_handoff ? (
+                                    <div className="advanced-model-diagnostic-handoff">
+                                      <strong>外部复核交接</strong>
+                                      <div>
+                                        <p>样本背景</p>
+                                        <ul>
+                                          {advancedModelFitReport.diagnostic_handoff.sample_context.map((item) => (
+                                            <li key={item}>{item}</li>
+                                          ))}
+                                        </ul>
+                                      </div>
+                                      <div>
+                                        <p>必做诊断</p>
+                                        <ul>
+                                          {advancedModelFitReport.diagnostic_handoff.required_diagnostics.map((item) => (
+                                            <li key={item}>{item}</li>
+                                          ))}
+                                        </ul>
+                                      </div>
+                                      <div>
+                                        <p>交接材料</p>
+                                        <ul>
+                                          {advancedModelFitReport.diagnostic_handoff.handoff_artifacts.map((item) => (
+                                            <li key={item}>{item}</li>
+                                          ))}
+                                        </ul>
+                                      </div>
+                                      <small>{advancedModelFitReport.diagnostic_handoff.reviewer_focus}</small>
+                                    </div>
+                                  ) : null}
                                   {advancedModelFitReport.warnings.length ? (
                                     <ul className="advanced-model-warnings">
                                       {advancedModelFitReport.warnings.map((warning) => (

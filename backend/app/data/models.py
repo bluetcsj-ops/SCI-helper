@@ -284,6 +284,16 @@ class AdvancedModelCoefficient(BaseModel):
     interpretation: str
 
 
+class AdvancedModelDiagnosticHandoff(BaseModel):
+    model_family: str
+    review_status: str = "pending_external_review"
+    sample_context: list[str] = Field(default_factory=list)
+    required_diagnostics: list[str] = Field(default_factory=list)
+    handoff_artifacts: list[str] = Field(default_factory=list)
+    manuscript_boundary: str
+    reviewer_focus: str
+
+
 class AdvancedModelFitReport(BaseModel):
     project_id: str
     file_name: str
@@ -301,6 +311,7 @@ class AdvancedModelFitReport(BaseModel):
     methods_draft: str
     results_draft: str
     warnings: list[str] = Field(default_factory=list)
+    diagnostic_handoff: AdvancedModelDiagnosticHandoff | None = None
     confirmation: FormalTestConfirmation
     method_version: str = "advanced-linear-v1"
     raw_csv_saved: bool = False

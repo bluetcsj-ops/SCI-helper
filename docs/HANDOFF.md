@@ -14,6 +14,7 @@
 - 可按 linear/logistic/Cox/mixed-effects 生成模型专属外部验证清单。
 - Cox 默认优先使用 statsmodels `PHReg`，失败时回退内部 Cox partial-likelihood 近似。
 - Mixed-effects 默认优先使用 statsmodels `MixedLM` random-intercept 路径，失败时回退 clustered linear approximation。
+- Cox / mixed-effects fit report 已新增结构化 `diagnostic_handoff`，前端会在统计验证计划和模型结果卡片中显示样本背景、必做诊断、交接材料和 Reviewer 复核焦点。
 - 可导出 `advanced-model-validation-plan.md`，用于把 exploratory 输出交给 validated statistical environment 复核。
 - 导出后页面显示文件名确认，并提供“复制验证计划”兜底，便于人工验收下载是否成功。
 - Writer Methods / Results 会写入 pending external validation 英文边界提示。
@@ -268,10 +269,12 @@ $env:DATABASE_URL='sqlite:///:memory:'
   - 含 follow-up time 与 event/status 的 CSV 可推荐 `cox_ph`。
   - 优先走 statsmodels `PHReg`，返回 hazard ratio、95% CI、P 值、事件数、删失/ties/比例风险假设复核提示。
   - 前端会显示 `Cox proportional hazards model` / HR 输出、`advanced-cox-statsmodels-v1`，并可导出 `advanced-cox-model-fit.md`。
+  - 本地 API 与浏览器验收通过：Cox fit report 返回 `diagnostic_handoff`，页面显示 Complete cases、Events、Censored records、Schoenfeld / PH assumption 诊断和 HR 交接材料。
 - Data Lin mixed-effects model fit：
   - 含 repeated-measures 字段与 cluster 分组的 CSV 可推荐 `mixed_effects`。
   - 优先走 statsmodels `MixedLM` random-intercept 路径，返回 exploratory fixed-effect estimates、random intercept variance、residual variance、ICC、cluster 数和重复观测/随机效应结构复核提示。
   - 前端会显示 `Linear mixed-effects model` / cluster 输出、`advanced-mixed-effects-statsmodels-v1`，并可导出 `advanced-mixed-effects-fit.md`。
+  - 本地 API 与浏览器验收通过：mixed-effects fit report 返回 `diagnostic_handoff`，页面显示 cluster 数、singleton clusters、median cluster size、ICC、singular fit / residual diagnostics 和 variance components 交接材料。
 
 本轮验收发现并修复：
 
@@ -378,7 +381,6 @@ npm.cmd run dev -- --host 127.0.0.1 --port 3000
    - Writer 英文稿件与版本库
    - Reviewer 样例 decision letter、章节归属、Writer 修改提醒和导出
 2. 下一阶段优先级：
-   - Cox survival analysis 和 mixed-effects model 诊断增强与外部统计软件复核交接
    - 真实放疗专科数据适配与数据许可核对
    - Writer 写作风格学习和目标期刊英文表达偏好
    - Reviewer / Writer 返修链路增强：让英文审稿回复更自然，并自动识别审稿意见对应的章节、段落和内容类型

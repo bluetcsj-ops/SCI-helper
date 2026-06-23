@@ -26,6 +26,7 @@ except ImportError:  # pragma: no cover - optional production statistics depende
 
 from app.data.models import (
     AdvancedModelCoefficient,
+    AdvancedModelDiagnosticHandoff,
     AdvancedModelFitReport,
     AdvancedModelCandidate,
     AdvancedModelPlan,
@@ -790,6 +791,93 @@ class DataWorkspaceService:
             next_step="把 odds ratio、置信区间、事件数和收敛边界交给 Alex Writer 前，请先完成人工统计复核。",
         )
 
+    def _build_cox_diagnostic_handoff(
+        self,
+        fit: dict[str, object],
+        time_column: str,
+        event_column: str,
+        method_version: str,
+    ) -> AdvancedModelDiagnosticHandoff:
+        complete_case_count = int(fit["complete_case_count"])
+        event_count = int(fit["event_count"])
+        predictor_count = len(fit["predictor_columns"])
+        censored_count = max(complete_case_count - event_count, 0)
+        return AdvancedModelDiagnosticHandoff(
+            model_family="cox_ph",
+            sample_context=[
+                f"Complete cases: {complete_case_count}",
+                f"Events: {event_count}",
+                f"Censored records: {censored_count}",
+                f"Predictor terms: {predictor_count}",
+                f"Time column: {time_column}",
+                f"Event column: {event_column}",
+                f"Fit route: {method_version}",
+            ],
+            required_diagnostics=[
+                "Confirm time origin, follow-up unit, event coding, and censoring definition from the source data dictionary.",
+                "Recheck events per variable and tied-event handling before interpreting any hazard ratio.",
+                "Run proportional-hazards diagnostics with Schoenfeld residuals in validated survival-analysis software.",
+                "Inspect influential observations and functional form of continuous covariates.",
+                "Compare the exploratory HR table against an independently reproduced R survival, lifelines, or statsmodels PHReg fit.",
+            ],
+            handoff_artifacts=[
+                "Analysis-ready survival CSV with the time and event columns preserved.",
+                "Data dictionary for event coding, censoring, time origin, follow-up unit, and excluded rows.",
+                "Model formula and covariate coding table, including reference levels and standardized predictors.",
+                "Validated HR table with 95% CI, P values, tied-event method, and PH-assumption output.",
+            ],
+            manuscript_boundary=(
+                "Treat HR estimates as exploratory until proportional-hazards diagnostics, event/censoring coding, "
+                "and independent survival-model reproduction have been reviewed."
+            ),
+            reviewer_focus=(
+                "Reviewer should verify events per variable, censoring definition, tied events, Schoenfeld residuals, "
+                "PH assumption, and whether prognostic claims remain clearly exploratory."
+            ),
+        )
+
+    def _build_mixed_effects_diagnostic_handoff(
+        self,
+        fit: dict[str, object],
+        outcome_column: str,
+        group_column: str,
+        method_version: str,
+    ) -> AdvancedModelDiagnosticHandoff:
+        return AdvancedModelDiagnosticHandoff(
+            model_family="mixed_effects",
+            sample_context=[
+                f"Complete cases: {int(fit['complete_case_count'])}",
+                f"Clusters: {int(fit['cluster_count'])}",
+                f"Singleton clusters: {int(fit['singleton_cluster_count'])}",
+                f"Median cluster size: {fit['median_cluster_size']}",
+                f"Approximate ICC: {fit['approximate_icc']}",
+                f"Outcome column: {outcome_column}",
+                f"Group column: {group_column}",
+                f"Fit route: {method_version}",
+            ],
+            required_diagnostics=[
+                "Confirm cluster ID, repeated-measure ordering, independence assumptions, and long-format data structure.",
+                "Reproduce the fit in validated mixed-model software and decide ML versus REML according to the analysis goal.",
+                "Check convergence, singular fit, optimizer sensitivity, residual diagnostics, and fitted-value patterns.",
+                "Review random-intercept versus random-slope structure before interpreting variance components or ICC.",
+                "Assess influence of small clusters and singleton clusters on fixed-effect and variance estimates.",
+            ],
+            handoff_artifacts=[
+                "Long-format analysis-ready CSV with cluster, time/fraction, outcome, and fixed-effect variables.",
+                "Fixed-effect formula plus proposed random-effect structure and ML/REML decision.",
+                "Validated fixed-effect table with 95% CI and P values.",
+                "Variance components, ICC, convergence diagnostics, residual plots, and singular-fit notes.",
+            ],
+            manuscript_boundary=(
+                "Treat mixed-effects estimates, variance components, and ICC as exploratory until the cluster structure, "
+                "random-effect specification, convergence, and residual diagnostics have been independently reviewed."
+            ),
+            reviewer_focus=(
+                "Reviewer should verify cluster count, repeated observations, random-effect structure, convergence, "
+                "residual diagnostics, ICC, and sample-size limits before accepting mixed-model inference."
+            ),
+        )
+
     def _build_cox_ph_fit_report(
         self,
         project: Project,
@@ -861,6 +949,12 @@ class DataWorkspaceService:
             )
             + " These results require manual statistical review before manuscript-level inference."
         )
+        diagnostic_handoff = self._build_cox_diagnostic_handoff(
+            fit=fit,
+            time_column=time_column,
+            event_column=event_column,
+            method_version=method_version,
+        )
         audit_summary = (
             f"已执行 exploratory Cox survival analysis：{fit['complete_case_count']} 个完整病例，"
             f"{fit['event_count']} 个事件，{len(fit['predictor_columns'])} 个预测字段；未保存原始 CSV。"
@@ -882,6 +976,7 @@ class DataWorkspaceService:
             methods_draft=methods_draft,
             results_draft=results_draft,
             warnings=warnings,
+            diagnostic_handoff=diagnostic_handoff,
             confirmation=confirmation,
             method_version=method_version,
             raw_csv_saved=False,
@@ -973,6 +1068,12 @@ class DataWorkspaceService:
             )
             + " These results require manual statistical review before manuscript-level inference."
         )
+        diagnostic_handoff = self._build_mixed_effects_diagnostic_handoff(
+            fit=fit,
+            outcome_column=outcome_column,
+            group_column=group_column,
+            method_version=method_version,
+        )
         audit_summary = (
             f"已执行 exploratory mixed-effects model：{fit['complete_case_count']} 个完整病例，"
             f"{fit['cluster_count']} 个 cluster，{len(fit['predictor_columns'])} 个预测字段；未保存原始 CSV。"
@@ -998,6 +1099,7 @@ class DataWorkspaceService:
             methods_draft=methods_draft,
             results_draft=results_draft,
             warnings=warnings,
+            diagnostic_handoff=diagnostic_handoff,
             confirmation=confirmation,
             method_version=method_version,
             raw_csv_saved=False,

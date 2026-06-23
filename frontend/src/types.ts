@@ -594,6 +594,16 @@ export interface AdvancedModelCoefficient {
   interpretation: string;
 }
 
+export interface AdvancedModelDiagnosticHandoff {
+  model_family: string;
+  review_status: string;
+  sample_context: string[];
+  required_diagnostics: string[];
+  handoff_artifacts: string[];
+  manuscript_boundary: string;
+  reviewer_focus: string;
+}
+
 export interface AdvancedModelFitReport {
   project_id: string;
   file_name: string;
@@ -611,6 +621,7 @@ export interface AdvancedModelFitReport {
   methods_draft: string;
   results_draft: string;
   warnings: string[];
+  diagnostic_handoff?: AdvancedModelDiagnosticHandoff | null;
   confirmation: FormalTestConfirmation;
   method_version: string;
   raw_csv_saved: boolean;

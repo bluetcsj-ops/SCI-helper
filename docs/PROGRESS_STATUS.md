@@ -22,7 +22,7 @@ Mentor 选题与引用
 |---|---:|---|
 | Prof. RadOnc Mentor | 76% | 可生成课题推荐、加载预备真实引用、复核候选引用、导出引用清单，并将推荐写入方案；下一阶段重点是扩展真实放疗论文引用源与主题证据链 |
 | Dr. Vera Protocol | 80% | 可编辑/保存研究方案，生成方案草案和执行计划草案，完成方案质量检查、方案-数据一致性检查、方案版本快照与导出；下一阶段重点是真实伦理/数据字典字段适配 |
-| Dr. Data Lin | 99% | 可上传 CSV、选择预备 DATA、做质控/隐私检查/统计草案/图表/审计、一键联调 Writer，生成自主分析计划、高级模型计划和高级模型外部验证计划；当前可执行 exploratory linear/logistic，并优先使用 statsmodels PHReg / MixedLM 执行 Cox 与 mixed-effects，失败时回退内部近似路径 |
+| Dr. Data Lin | 99.2% | 可上传 CSV、选择预备 DATA、做质控/隐私检查/统计草案/图表/审计、一键联调 Writer，生成自主分析计划、高级模型计划和高级模型外部验证计划；当前可执行 exploratory linear/logistic，并优先使用 statsmodels PHReg / MixedLM 执行 Cox 与 mixed-effects，失败时回退内部近似路径；Cox / mixed-effects 已补充结构化诊断交接字段和前端外部复核交接展示 |
 | Alex Writer | 99% | 可生成英文 Introduction、Methods / Results、Discussion、Abstract、Cover Letter、投稿包检查清单、目标期刊模板和 Author Guidelines URL 抓取/本地规则校验，并支持放疗计划质量字段解读、高级模型结果来源、pending external validation 英文边界提示、后端版本归档、恢复 Introduction、版本差异查看、历史章节复制、全文恢复逐字段编辑和 Reviewer 修改提醒 |
 | Rev. Dr. Helena Skov | 99% | 可生成投稿前规则清单、深度审稿意见、Response to Reviewers 草稿，并支持放疗专科风险检查、高级模型 OR/HR/Mixed-effects 报告边界检查、高级模型外部验证缺口检查、AI 写作痕迹/模板化风险检查、复杂审稿信规则增强拆分、目标期刊专属审稿维度、真实审稿意见导入、逐条映射、英文回复导出、返修写作清单和章节归属持久化修正；下一阶段以真实 UI 验收和小问题修正为主 |
 
@@ -98,8 +98,10 @@ Mentor 选题与引用
   - 已完成浏览器 UI 验收：生成模型计划后可运行推荐 Logistic 模型，并显示 `Binary logistic regression` / OR 输出。
   - 当前支持 Cox proportional hazards model 第一版生产化优先路径。
   - CSV 中存在 follow-up time 和 event/status 字段时，优先使用 statsmodels `PHReg` 生成 exploratory hazard ratio、95% CI、P 值、事件数、删失/ties/比例风险假设复核提示，并导出 `advanced-cox-model-fit.md`；若 statsmodels 不可用或拟合失败，会回退内部 Cox partial-likelihood 近似。
+  - Cox fit report 已新增结构化 `diagnostic_handoff`，覆盖 complete cases、events、censored records、time/event columns、Schoenfeld residuals、PH assumption、事件数限制和 HR 交接材料；API 与浏览器 UI 验收通过。
   - 当前支持 linear mixed-effects model 第一版生产化优先路径。
   - CSV 中存在重复测量字段和 cluster 分组时，优先使用 statsmodels `MixedLM` random-intercept 路径生成 fixed-effect estimate、random intercept variance、residual variance、ICC、cluster 数和收敛/随机效应复核提示，并导出 `advanced-mixed-effects-fit.md`；若 MixedLM 不可用或拟合失败，会回退 clustered linear approximation。
+  - Mixed-effects fit report 已新增结构化 `diagnostic_handoff`，覆盖 clusters、singleton clusters、median cluster size、ICC、random-effect structure、singular fit、residual diagnostics 和 variance components 交接材料；API 与浏览器 UI 验收通过。
 
 当前仍未完成：
 
@@ -238,8 +240,8 @@ Mentor 选题与引用
 
 ### 阶段 C：高级统计扩展
 
-- 将 Cox survival analysis 和 mixed-effects model 从轻量探索性实现升级为专用统计库验证路径。
-- 强化模型诊断、事件数限制、交叉验证/校准和人工统计复核提示。
+- Cox survival analysis 和 mixed-effects model 已完成第一轮诊断交接增强：fit report、验证计划导出和前端结果卡片均显示外部复核材料。
+- 后续继续强化专用统计库验证路径、交叉验证/校准和更细粒度的人工统计复核提示。
 
 ### 阶段 D：投稿前生产化
 
