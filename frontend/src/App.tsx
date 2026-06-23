@@ -2569,6 +2569,33 @@ function buildWriterRevisionChecklistGroups(
   });
 }
 
+function summarizeWriterRevisionGroup(group: WriterRevisionSectionGroup) {
+  const typeCounts = group.items.reduce<Record<ReviewerCommentType, number>>(
+    (counts, { thread }) => ({
+      ...counts,
+      [thread.comment_type]: counts[thread.comment_type] + 1,
+    }),
+    { major: 0, minor: 0, editorial: 0 },
+  );
+  const statusCounts = group.items.reduce<Record<ReviewerCommentStatus, number>>(
+    (counts, { thread }) => ({
+      ...counts,
+      [thread.status]: counts[thread.status] + 1,
+    }),
+    { draft: 0, addressing: 0, resolved: 0, deferred: 0 },
+  );
+  return { typeCounts, statusCounts };
+}
+
+function formatRevisionCountParts<T extends string>(
+  counts: Record<T, number>,
+  labels: Record<T, string>,
+): string[] {
+  return (Object.keys(counts) as T[])
+    .filter((key) => counts[key] > 0)
+    .map((key) => `${labels[key]} ${counts[key]}`);
+}
+
 function getReviewerSplitWarning(thread: ReviewerCommentThread): string {
   const match =
     thread.manuscript_change.match(/Split warning:\s*(.+?)\s*Manual correction required/i) ??
@@ -2955,6 +2982,154 @@ function buildReviewerDeepComments(params: {
   };
 }
 
+type ReviewerResponseTheme =
+  | "statistics_model"
+  | "data_privacy"
+  | "methods_reporting"
+  | "ethics_submission"
+  | "figures_tables"
+  | "language_editorial"
+  | "general";
+
+function inferReviewerResponseTheme(value: string): ReviewerResponseTheme {
+  const text = value.toLowerCase();
+  if (
+    /\b(statistic|statistics|p value|p-value|confidence interval|ci\b|odds ratio|or-based|hazard ratio|\bhr\b|regression|model|calibration|roc|auc|validation|separation|convergence|schoenfeld|mixed[- ]effects?)\b|统计|模型|p\s*值|置信区间|显著性|校准|收敛|事件编码|外部验证|预测|因果|探索性/.test(
+      text,
+    )
+  ) {
+    return "statistics_model";
+  }
+  if (
+    /\b(ethic|irb|consent|conflict of interest|funding|data availability|generative ai|ai assistance|cover letter|submission)\b|伦理|知情同意|利益冲突|资助|数据可用性|ai\s*声明|投稿|投稿信|期刊要求/.test(
+      text,
+    )
+  ) {
+    return "ethics_submission";
+  }
+  if (/\b(figure|table|legend|resolution|reference|supplement)\b|图表|图|表|图题|表题|引用|参考文献|补充材料|分辨率/.test(text)) {
+    return "figures_tables";
+  }
+  if (
+    /\b(data|dataset|csv|missing|privacy|de-identif|anonym|patient id|raw data|dicom|rtdose|rtstruct|rtplan|tps|gamma|qa)\b|数据|字段|缺失|脱敏|隐私|原始|患者|病例|剂量|计划系统/.test(
+      text,
+    )
+  ) {
+    return "data_privacy";
+  }
+  if (
+    /\b(method|methods|materials|endpoint|outcome|inclusion|exclusion|cohort|sample|eligibility|workflow|protocol)\b|方法|终点|结局|纳入|排除|队列|样本|流程|方案|研究问题/.test(
+      text,
+    )
+  ) {
+    return "methods_reporting";
+  }
+  if (/\b(editorial|typo|grammar|language|wording|format|formatting|proofread)\b|语言|措辞|格式|拼写|语法|润色|表达/.test(text)) {
+    return "language_editorial";
+  }
+  return "general";
+}
+
+function reviewerResponseOpening(
+  theme: ReviewerResponseTheme,
+  responseLevel: "major" | "minor" | "methods",
+): string {
+  if (theme === "statistics_model") {
+    return "We appreciate the reviewer highlighting the statistical interpretation and reporting boundary.";
+  }
+  if (theme === "data_privacy") {
+    return "We appreciate the reviewer drawing attention to the data source, traceability, and privacy safeguards.";
+  }
+  if (theme === "ethics_submission") {
+    return "Thank you for pointing out this submission and disclosure requirement.";
+  }
+  if (theme === "figures_tables") {
+    return "Thank you for noting this presentation and documentation issue.";
+  }
+  if (theme === "language_editorial") {
+    return "Thank you for identifying this wording and style issue.";
+  }
+  if (responseLevel === "minor") {
+    return "Thank you for this helpful suggestion.";
+  }
+  if (responseLevel === "methods") {
+    return "We will make the Methods and Results trail easier to audit.";
+  }
+  return "Thank you for raising this important point.";
+}
+
+function reviewerResponseAction(theme: ReviewerResponseTheme): string {
+  if (theme === "statistics_model") {
+    return (
+      "We will revise the Methods and Results to state the model purpose, event coding, sample-size limitations, "
+      + "convergence or calibration checks, and manual statistical review status. Any OR, HR, or mixed-effects "
+      + "output will remain clearly described as exploratory unless externally validated."
+    );
+  }
+  if (theme === "data_privacy") {
+    return (
+      "We will clarify the data source, field definitions, missing-field handling, de-identification safeguards, "
+      + "and whether raw clinical or DICOM data were retained."
+    );
+  }
+  if (theme === "methods_reporting") {
+    return (
+      "We will expand the relevant Methods text to define the study population, endpoint, analysis workflow, "
+      + "and reproducibility checks, then align the Results wording with verified outputs."
+    );
+  }
+  if (theme === "ethics_submission") {
+    return (
+      "We will add or revise the required ethics, consent, conflict-of-interest, funding, data-availability, "
+      + "and AI-assistance statements according to the target journal requirements."
+    );
+  }
+  if (theme === "figures_tables") {
+    return (
+      "We will check the relevant figures, tables, captions, references, and supplementary materials against "
+      + "the journal instructions and the underlying analysis."
+    );
+  }
+  if (theme === "language_editorial") {
+    return (
+      "We will revise the affected sentence or section for clarity, terminology, and journal style while "
+      + "preserving the scientific meaning."
+    );
+  }
+  return (
+    "We will revise the relevant manuscript text so that the response is specific to the concern, supported by "
+    + "traceable evidence, and consistent with the final Methods, Results, and submission materials."
+  );
+}
+
+function buildReviewerCheckResponse(
+  item: ReviewerCheckItem,
+  index: number,
+  responseLevel: "major" | "minor",
+): string {
+  const theme = inferReviewerResponseTheme(`${item.title} ${item.detail} ${item.recommendation}`);
+  const locationHint =
+    responseLevel === "major"
+      ? "[Insert exact manuscript location and revised text]."
+      : "[Insert section/page/line after revision].";
+  return [
+    `Response ${index + 1}: ${reviewerResponseOpening(theme, responseLevel)}`,
+    reviewerResponseAction(theme),
+    `Specific revision target: ${item.recommendation}`,
+    locationHint,
+  ].join(" ");
+}
+
+function buildReviewerMethodsDataResponse(item: string, index: number): string {
+  const theme = inferReviewerResponseTheme(item);
+  return [
+    `Methods/Data response ${index + 1}: ${reviewerResponseOpening(theme, "methods")}`,
+    reviewerResponseAction(theme),
+    `Working item: ${item}`,
+    "The revised claim will be traceable to the verified data output and will avoid unsupported statistical or clinical conclusions.",
+  ].join(" ");
+}
+
 function buildReviewerResponseDraft(params: {
   reviewerChecks: ReviewerCheckItem[];
   reviewerDeepComments: ReviewerDeepComments;
@@ -2975,30 +3150,21 @@ function buildReviewerResponseDraft(params: {
     detail: concern,
     status: "Drafted",
     severity: "orange" as ReviewerCheckSeverity,
-  }))).slice(0, 5).map(
-    (item, index) =>
-      `Response ${index + 1}: Thank you for raising this important point regarding ${item.title}. We will revise the manuscript by addressing the issue as follows: ${item.recommendation} [Insert exact manuscript location and revised text].`,
-  );
+  }))).slice(0, 5).map((item, index) => buildReviewerCheckResponse(item, index, "major"));
   const minorResponses = (reviewChecks.length ? reviewChecks : reviewerDeepComments.minorConcerns.map((concern) => ({
     title: "Minor concern",
     recommendation: concern,
     detail: concern,
     status: "Drafted",
     severity: "orange" as ReviewerCheckSeverity,
-  }))).slice(0, 5).map(
-    (item, index) =>
-      `Response ${index + 1}: We appreciate this suggestion. We will clarify ${item.title} and revise the relevant wording: ${item.recommendation} [Insert section/page/line after revision].`,
-  );
+  }))).slice(0, 5).map((item, index) => buildReviewerCheckResponse(item, index, "minor"));
   const methodsDataResponses = [
     ...reviewerDeepComments.methodsResultsSuggestions.slice(0, 3),
     ...protocolDataConsistencyCheck.items
       .filter((item) => item.status !== "passed")
       .slice(0, 3)
       .map((item) => `${item.title}: ${item.recommendation}`),
-  ].map(
-    (item, index) =>
-      `Methods/Data response ${index + 1}: ${item} We will update the Methods, Results, or supplementary material accordingly and ensure that the revised claim is traceable to the verified data output.`,
-  );
+  ].map((item, index) => buildReviewerMethodsDataResponse(item, index));
   const manuscriptChanges = [
     ...reviewerDeepComments.revisionPriorities.slice(0, 4),
     ...submissionPackageChecklist.items
@@ -12323,33 +12489,56 @@ function App() {
                           这些提醒来自真实审稿意见映射，只作为人工修改清单，不会自动改写论文正文。
                         </p>
                         <div className="writer-revision-group-list">
-                          {writerRevisionChecklistGroups.map((group) => (
-                            <article key={group.section}>
-                              <div>
-                                <strong>{formatRevisionSectionLabel(group.section)}</strong>
-                                <span>{group.unresolvedCount} 条未解决</span>
-                              </div>
-                              {group.items.length ? (
-                                <ul>
-                                  {group.items.slice(0, 3).map(({ thread }) => (
-                                    <li key={thread.id}>
-                                      <strong>
-                                        {reviewerCommentStatusLabels[thread.status]} ·{" "}
-                                        {formatReviewerLabel(thread.reviewer_label)} ·{" "}
-                                        {reviewerCommentTypeLabels[thread.comment_type]}
-                                      </strong>
-                                      <p>审稿意见：{thread.comment_text}</p>
-                                      <small>
-                                        处理建议：{formatManuscriptChange(thread.manuscript_change) || "待人工确认。"}
-                                      </small>
-                                    </li>
-                                  ))}
-                                </ul>
-                              ) : (
-                                <p>暂无映射到本章节的审稿意见。</p>
-                              )}
-                            </article>
-                          ))}
+                          {writerRevisionChecklistGroups.map((group) => {
+                            const summary = summarizeWriterRevisionGroup(group);
+                            const typeParts = formatRevisionCountParts(
+                              summary.typeCounts,
+                              reviewerCommentTypeLabels,
+                            );
+                            const statusParts = formatRevisionCountParts(
+                              summary.statusCounts,
+                              reviewerCommentStatusLabels,
+                            );
+                            return (
+                              <article key={group.section}>
+                                <div>
+                                  <strong>{formatRevisionSectionLabel(group.section)}</strong>
+                                  <span>{group.unresolvedCount} 条未解决</span>
+                                </div>
+                                {group.items.length ? (
+                                  <>
+                                    <div className="writer-revision-summary">
+                                      <p>
+                                        <strong>类型</strong>
+                                        {typeParts.join(" · ")}
+                                      </p>
+                                      <p>
+                                        <strong>状态</strong>
+                                        {statusParts.join(" · ")}
+                                      </p>
+                                    </div>
+                                    <ul>
+                                      {group.items.slice(0, 3).map(({ thread }) => (
+                                        <li key={thread.id}>
+                                          <strong>
+                                            {reviewerCommentStatusLabels[thread.status]} ·{" "}
+                                            {formatReviewerLabel(thread.reviewer_label)} ·{" "}
+                                            {reviewerCommentTypeLabels[thread.comment_type]}
+                                          </strong>
+                                          <p>审稿意见：{thread.comment_text}</p>
+                                          <small>
+                                            处理建议：{formatManuscriptChange(thread.manuscript_change) || "待人工确认。"}
+                                          </small>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </>
+                                ) : (
+                                  <p>暂无映射到本章节的审稿意见。</p>
+                                )}
+                              </article>
+                            );
+                          })}
                         </div>
                       </section>
                     ) : null}

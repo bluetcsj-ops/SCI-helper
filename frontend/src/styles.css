@@ -2488,6 +2488,28 @@ button {
   padding-left: 18px;
 }
 
+.writer-revision-summary {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.writer-revision-summary p {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  border-radius: 8px;
+  padding: 7px 9px;
+  background: #f6f9fc;
+  color: #4f6074;
+  font-size: 12px;
+}
+
+.writer-revision-summary strong {
+  color: #22354a;
+}
+
 .reviewer-writer-checklist li,
 .writer-revision-group-list li,
 .reviewer-writer-checklist p,

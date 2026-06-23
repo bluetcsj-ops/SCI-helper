@@ -213,6 +213,24 @@ Reviewer 收尾验收方向：
    - 后续应增加自动识别段落和内容的能力，例如识别审稿意见对应的稿件章节、具体段落、内容类型和需要修改的位置。
 4. 如需进一步增强，可增加更多期刊模板或将页码/行号改为结构化字段。
 
+Reviewer / Writer 返修链路增强模块完成标准：
+
+1. 审稿意见导入：
+   - 能识别 Editor / Reviewer 分块，并按 Major / Minor / Editorial 或编号条目拆分。
+   - 复杂 decision letter 若只拆出 1 条、条目过短或缺少 Reviewer 标签，必须显示人工核验提示。
+2. 英文回复草稿：
+   - 真实导入的逐条回复应按统计/模型、数据/隐私、方法、伦理/投稿、图表/引用、语言/格式等主题生成更具体的英文骨架。
+   - 规则型 `Response to Reviewers` 草稿也应减少重复模板句式，保留 `Specific revision target` 或 `Working item`，并避免把 exploratory OR/HR/mixed-effects 写成因果或已验证预测结论。
+   - 所有回复必须保留 Page / Lines / Manuscript location 人工占位。
+3. 章节归属与 Writer 联动：
+   - Reviewer 侧应显示自动章节归属，并支持人工修正和持久化保存。
+   - Writer 侧应按章节显示未解决返修提醒，并展示类型分布和状态分布，方便逐章处理。
+4. 导出：
+   - `response-to-reviewers-mapped.md` 必须包含原始审稿意见、英文回复、manuscript change、状态和定位占位。
+   - `writer-revision-checklist.md` 必须按章节聚合真实审稿意见，并标注章节归属需人工确认。
+5. 本地开发节奏：
+   - 本模块完成前只做本地修复和本地验收；完成一个完整功能模块后，再统一考虑提交和上传。
+
 ## 当前验证记录
 
 最近验证通过：
@@ -315,6 +333,8 @@ $env:DATABASE_URL='sqlite:///:memory:'
    - 逐条英文回复草稿
    - 返修清单章节归属人工修正
    - 返修写作清单
+   - 规则型 `Response to Reviewers` 草稿不再重复旧模板句式，并能按统计/数据/方法/伦理/图表/语言主题给出更具体回复骨架。
+   - Writer 面板的 Reviewer 修改提醒按章节显示类型分布和状态分布。
 8. 逐项测试主要导出按钮。
 
 ## 当前限制
