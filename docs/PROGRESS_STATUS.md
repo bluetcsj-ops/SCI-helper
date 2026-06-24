@@ -1,10 +1,10 @@
 # 当前模块进度表
 
-更新日期：2026-06-23
+更新日期：2026-06-24
 
 ## 总体判断
 
-当前项目已经推进到“可带公开医学/放疗样例数据跑通论文写作、后端版本归档、真实审稿意见映射、目标期刊规则校验、Reviewer 收尾验收、第一版高级统计模型拟合、statsmodels Cox/MixedLM 生产化优先路径和外部验证计划导出”的阶段。整体完成度约 **98.8%**；如果只看 5 个核心智能体能力，平均完成度约 **90%**。
+当前项目已经推进到“可带公开医学/放疗样例数据跑通论文写作、后端版本归档、真实审稿意见映射、目标期刊规则校验、Reviewer 收尾验收、第一版高级统计模型拟合、statsmodels Cox/MixedLM 生产化优先路径、外部验证计划导出和 Mentor → Protocol 最小字段写入”的阶段。整体完成度约 **98.9%**；如果只看 5 个核心智能体能力，平均完成度约 **96%**。
 
 当前主链路已经闭环：
 
@@ -20,8 +20,8 @@ Mentor 选题与引用
 
 | 智能体 | 完成度 | 当前状态 |
 |---|---:|---|
-| Prof. RadOnc Mentor | 76% | 可生成课题推荐、加载预备真实引用、复核候选引用、导出引用清单，并将推荐写入方案；下一阶段重点是扩展真实放疗论文引用源与主题证据链 |
-| Dr. Vera Protocol | 80% | 可编辑/保存研究方案，生成方案草案和执行计划草案，完成方案质量检查、方案-数据一致性检查、方案版本快照与导出；下一阶段重点是真实伦理/数据字典字段适配 |
+| Prof. RadOnc Mentor | 96% | 可生成课题推荐、加载预备真实引用、复核候选引用、导出引用清单，并将推荐写入方案；已内置按主题分布的真实放疗候选文献包，覆盖 MR-guided adaptive RT、FLASH、AI/QA、粒子治疗、影像组学、自动化计划、SRS/SBRT 和运动管理；推荐卡已补最小数据字段、测试落地清单和写入 Protocol 来源追踪，写入预览会把这些内容带入 Protocol 数据需求、实验流程和 Rhea 里程碑 |
+| Dr. Vera Protocol | 87% | 可编辑/保存研究方案，生成方案草案和执行计划草案，完成方案质量检查、方案-数据一致性检查、方案版本快照与导出；质量检查已新增最小数据字段、伦理/数据许可、数据字典/导出路径和放疗计划系统追踪；方案-数据一致性检查已新增 Protocol 最小字段写入核对；下一阶段重点是真实机构字段命名、IRB 附件和正式数据字典适配 |
 | Dr. Data Lin | 99.2% | 可上传 CSV、选择预备 DATA、做质控/隐私检查/统计草案/图表/审计、一键联调 Writer，生成自主分析计划、高级模型计划和高级模型外部验证计划；当前可执行 exploratory linear/logistic，并优先使用 statsmodels PHReg / MixedLM 执行 Cox 与 mixed-effects，失败时回退内部近似路径；Cox / mixed-effects 已补充结构化诊断交接字段和前端外部复核交接展示 |
 | Alex Writer | 99% | 可生成英文 Introduction、Methods / Results、Discussion、Abstract、Cover Letter、投稿包检查清单、目标期刊模板和 Author Guidelines URL 抓取/本地规则校验，并支持放疗计划质量字段解读、高级模型结果来源、pending external validation 英文边界提示、后端版本归档、恢复 Introduction、版本差异查看、历史章节复制、全文恢复逐字段编辑和 Reviewer 修改提醒 |
 | Rev. Dr. Helena Skov | 99% | 可生成投稿前规则清单、深度审稿意见、Response to Reviewers 草稿，并支持放疗专科风险检查、高级模型 OR/HR/Mixed-effects 报告边界检查、高级模型外部验证缺口检查、AI 写作痕迹/模板化风险检查、复杂审稿信规则增强拆分、目标期刊专属审稿维度、真实审稿意见导入、逐条映射、英文回复导出、返修写作清单和章节归属持久化修正；下一阶段以真实 UI 验收和小问题修正为主 |
@@ -46,7 +46,45 @@ Mentor 选题与引用
   - 保存 Writer 版本
   - 导入/查看审稿意见映射
 
-### 2. 预备 DATA 联调包
+### 2. Mentor 真实放疗引用与证据链
+
+- Mentor 本地证据库新增真实放疗候选文献包，默认不依赖外网即可用于 UI 验收。
+- 覆盖主题：
+  - MR-guided adaptive radiotherapy：online MR-guided adaptive RT practical guidelines、real-time adaptive MR-guided RT 技术挑战。
+  - FLASH：超高剂量率 FLASH 转化研究经典文献。
+  - AI / Planning / QA：AAPM TG-218、VMAT plan complexity 与 measurement-based QA 研究。
+  - Particle therapy：proton therapy range uncertainties 与 Monte Carlo 综述。
+  - Radiomics：Radiomics 方法学经典论文。
+  - Automation / knowledge-based planning：automated 4π planning 和 knowledge-based planning model evaluation。
+  - SRS / SBRT：AAPM TG-101。
+  - Motion management：AAPM TG-76。
+- 每条真实候选文献保留 PMID、DOI、PubMed 链接、DOI 链接、候选 citation 和 Vancouver 候选引用。
+- 前端 Mentor 推荐依据卡片会显示“人工核验缺口”，包括全文核对、PMID、DOI、Vancouver 候选引用、作者、期刊、年份、卷期页码和用途标记。
+- Mentor 推荐卡新增最小数据字段、测试落地清单和写入 Protocol 来源追踪，覆盖数据字段、伦理/数据许可、首轮样例数据和统计复核边界。
+- 生成课题推荐或加载预备引用后，前端会自动滚动到 Mentor 推荐报告，并在报告顶部提示每张推荐卡内的“Mentor 落地验收”位置。
+- 标记“确认可用”后，候选引用清单、Vancouver 导出和 Alex Writer 引用质控可以直接读取这些真实放疗候选文献。
+- 本地接口验收已覆盖推荐生成、文献复核保存/读取、推荐写入 Protocol、Project A protocol 恢复和测试复核记录清理。
+- 仍保留原有本地检索式模板，便于后续扩展 PubMed/Crossref 自动检索。
+
+Mentor 当前完成标准：
+
+- 推荐生成后每张卡必须同时显示研究问题、数据路径、统计路线、风险提示、最小数据字段、落地清单、写入追踪和候选证据。
+- 候选证据必须能显示 PMID / DOI / PubMed / DOI 链接、候选 citation、Vancouver 候选引用和人工核验缺口。
+- 用户能将证据标记为确认可用、全文已核对、Introduction / Discussion 用途，并在候选引用清单中看到同步结果。
+- 用户能导出 Mentor brief 与 Vancouver 引用清单，并把确认可用引用交给 Alex Writer。
+- 用户能在写入 Protocol 预览中看到 Mentor 来源追踪，然后确认写入研究方案。
+
+### 2.1 Vera Protocol 本地验收补充
+
+- Protocol 顶部按钮已区分为“方案草案”和“计划草案”，便于手动测试时区分生成方案与生成执行计划。
+- Mentor 推荐卡写入 Protocol 预览时，数据需求会包含最小数据字段、IRB / 脱敏、数据字典、来源系统、导出格式、TPS/计划系统版本、剂量计算算法、结构命名和 QA/gamma criteria。
+- Protocol 方案质量检查新增四个落地项：最小数据字段是否可追踪、伦理/数据许可是否标明、数据字典与导出路径是否明确、放疗计划系统追踪是否明确。
+- 方案-数据一致性检查新增“Protocol 最小字段写入”，用于显示 Data Lin 从 Protocol 读取到的必需字段数量和落地信号命中数。
+- `protocol/draft` 已验收：Project A 已有方案内容时返回现有方案，不覆盖当前字段。
+- `plan/drafts/from-protocol` 已验收：可从当前方案生成 7 个阶段和 10 个任务；测试 draft 已清理。
+- `data/requirements` 已验收：当前 Project A 数据需求来自研究方案，可生成 22 个字段需求项。
+
+### 3. 预备 DATA 联调包
 
 - 新增放疗计划质量样例 CSV：20 行脱敏模拟计划记录，覆盖剂量学、QA、计划复杂度和治疗技术字段。
 - 新增 Cox 生存分析样例 CSV：16 行脱敏模拟随访记录，覆盖 follow-up time、event/status、剂量学协变量、计划复杂度和治疗部位字段，用于 HR 输出联调。
@@ -62,8 +100,9 @@ Mentor 选题与引用
   - 保存分析记录
   - 切换到 Alex Writer
   - 若当前已有统计草案和高级模型结果，一键联调会直接切换到 Writer，并保留高级模型输出与外部验证提示。
+- 本地 API smoke 已覆盖放疗计划质量样例、Cox 生存样例和 mixed-effects 重复测量样例的质控、统计草案、高级模型计划和拟合接口。
 
-### 3. Dr. Data Lin
+### 4. Dr. Data Lin
 
 - CSV 上传与质控。
 - 脱敏与隐私检查。
@@ -102,6 +141,7 @@ Mentor 选题与引用
   - 当前支持 linear mixed-effects model 第一版生产化优先路径。
   - CSV 中存在重复测量字段和 cluster 分组时，优先使用 statsmodels `MixedLM` random-intercept 路径生成 fixed-effect estimate、random intercept variance、residual variance、ICC、cluster 数和收敛/随机效应复核提示，并导出 `advanced-mixed-effects-fit.md`；若 MixedLM 不可用或拟合失败，会回退 clustered linear approximation。
   - Mixed-effects fit report 已新增结构化 `diagnostic_handoff`，覆盖 clusters、singleton clusters、median cluster size、ICC、random-effect structure、singular fit、residual diagnostics 和 variance components 交接材料；API 与浏览器 UI 验收通过。
+- 2026-06-24 本地 API smoke 结果：Logistic 返回 20 个 complete cases / 9 个系数项；Cox 返回 `advanced-cox-statsmodels-v1` / 16 个 complete cases / 5 项诊断交接要求；mixed-effects 返回 `advanced-mixed-effects-statsmodels-v1` / 24 个 complete cases / 5 项诊断交接要求。
 
 当前仍未完成：
 
@@ -109,7 +149,7 @@ Mentor 选题与引用
 - lifelines、R survival、R lme4/nlme、SAS PROC MIXED 等外部软件尚未被系统自动调用；当前仍通过 `advanced-model-validation-plan.md` 提供交接清单。
 - 真实放疗专科数据接入和数据许可核对。
 
-### 4. Alex Writer
+### 5. Alex Writer
 
 - 英文 Introduction 草稿可编辑和保存。
 - 候选引用可插入背景段、研究空白段和目的段。
@@ -144,13 +184,14 @@ Mentor 选题与引用
   - 清除历史恢复内容，回到自动生成草稿
   - 导出 `writer-version-diff.md`
 - 版本快照导出 `draft-version-snapshot.md`。
+- 本地 API smoke 已覆盖 Introduction 草稿保存、Writer 版本创建/恢复/清理和原草稿恢复。
 
 当前仍未完成：
 
 - 目标期刊官网规则自动抓取仍为 HTML 第一版；PDF、登录、强 JS 或反爬页面仍需手动粘贴。
 - 写作风格学习。
 
-### 5. Rev. Dr. Helena Skov
+### 6. Rev. Dr. Helena Skov
 
 - 投稿前规则型审稿清单。
 - 风险分级：高风险 / 需复核 / 已通过。
@@ -195,6 +236,7 @@ Mentor 选题与引用
   - Reviewer 和 Writer 两侧同步读取最终章节归属。
   - 在 Writer 面板显示各章节未解决修改提醒。
   - 导出 `writer-revision-checklist.md`，并注明章节归属需人工确认。
+- 本地 API smoke 已覆盖复杂审稿信导入、4 条意见拆分、状态更新、章节归属保存和测试意见清理。
 
 当前仍未完成：
 
@@ -212,15 +254,16 @@ Mentor 选题与引用
 2. Data Lin 下一阶段：
    - 在现有 statsmodels PHReg / MixedLM 优先路径基础上，补充更系统的诊断输出与外部复核交接：PH assumption、Schoenfeld residuals、convergence、singular fit、random-effects 结构、ICC 和样本量限制。
 3. 真实放疗专科数据适配：
-   - 建立正式数据字典、字段映射和数据许可核对清单。
-   - 将 TPS 版本、剂量计算算法、gamma criteria、结构命名规则纳入数据需求。
+   - 在当前 Protocol 最小字段写入基础上，建立真实机构字段命名、正式数据字典、字段映射和数据许可核对清单。
+   - 用真实 TPS 导出路径核对计划系统版本、剂量计算算法、gamma criteria、结构命名规则和 DICOM RTDose / RTStruct / RTPlan 字段。
 4. Writer 下一阶段：
    - 写作风格学习与目标期刊英文表达偏好。
    - Response to Reviewers 语气润色：降低模板感，让回复更像真实作者逐条回应。
    - 更稳定的 PDF / 强 JS Author Guidelines 处理方案。
 5. Mentor / Protocol 下一阶段：
-   - 扩展真实放疗论文引用源。
-   - 将研究假设、PECO/PICO、伦理材料和数据字段进一步绑定。
+   - 用真实放疗候选文献包跑 Mentor UI 验收：生成推荐、检查人工核验缺口、标记确认可用、导出 Vancouver 引用、交给 Writer、预览写入 Protocol。
+   - 确认写入 Protocol 后，检查 Data Lin 字段需求是否读取最小数据字段、伦理/脱敏、数据字典和计划系统追踪。
+   - 将研究假设、PECO/PICO、伦理材料和真实字段字典进一步绑定。
 
 ## 下一阶段路线图
 

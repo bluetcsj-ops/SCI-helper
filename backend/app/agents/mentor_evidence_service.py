@@ -14,8 +14,102 @@ from app.agents.mentor_models import MentorEvidenceItem
 from app.core.config import settings
 
 
+def _curated_reference(
+    *,
+    search_query: str,
+    evidence_summary: str,
+    recommendation_signal: str,
+    limitation: str,
+    pmid: str,
+    title: str,
+    journal: str,
+    publication_year: str,
+    doi: str,
+    authors: list[str],
+    volume: str | None,
+    issue: str | None,
+    page: str | None,
+    publication_types: list[str],
+    citation_text: str,
+    vancouver_citation: str,
+) -> MentorEvidenceItem:
+    return MentorEvidenceItem(
+        source_type="curated_radiotherapy_reference",
+        evidence_status="curated_reference",
+        external_url=f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/",
+        crossref_url=f"https://doi.org/{doi}",
+        pmid=pmid,
+        title=title,
+        journal=journal,
+        publication_year=publication_year,
+        doi=doi,
+        citation_text=citation_text,
+        vancouver_citation=vancouver_citation,
+        authors=authors,
+        volume=volume,
+        issue=issue,
+        page=page,
+        publication_types=publication_types,
+        review_status="unreviewed",
+        search_query=search_query,
+        evidence_summary=evidence_summary,
+        recommendation_signal=recommendation_signal,
+        limitation=limitation,
+    )
+
+
 LOCAL_EVIDENCE_LIBRARY: dict[str, list[MentorEvidenceItem]] = {
     "mr_linac": [
+        _curated_reference(
+            search_query='"Practical guidelines of online MR-guided adaptive radiotherapy"',
+            evidence_summary="在线 MR 引导自适应放疗实践指南，覆盖 MRgART 工作流、团队协作、在线适配和临床实施边界。",
+            recommendation_signal="适合支撑 MR-Linac / MR-guided adaptive radiotherapy 选题中的流程可行性、在线适配步骤和人工核验要求。",
+            limitation="指南类候选文献可支持方法学背景，但具体病种、剂量累积和终点仍需补充本课题相关原始研究。",
+            pmid="35946325",
+            title="Practical guidelines of online MR-guided adaptive radiotherapy",
+            journal="Journal of Radiation Research",
+            publication_year="2022",
+            doi="10.1093/jrr/rrac048",
+            authors=["Okamoto H", "Igaki H", "Chiba T", "Shibuya K", "Sakasai T", "Jingu K"],
+            volume="63",
+            issue="5",
+            page="730-740",
+            publication_types=["Journal Article"],
+            citation_text=(
+                "Okamoto H, Igaki H, Chiba T, Shibuya K, Sakasai T, Jingu K, et al. "
+                "Practical guidelines of online MR-guided adaptive radiotherapy. "
+                "Journal of Radiation Research. 2022;63(5):730-740. doi:10.1093/jrr/rrac048."
+            ),
+            vancouver_citation=(
+                "Okamoto H, Igaki H, Chiba T, Shibuya K, Sakasai T, Jingu K, et al. "
+                "Practical guidelines of online MR-guided adaptive radiotherapy. "
+                "J Radiat Res. 2022;63(5):730-740. doi:10.1093/jrr/rrac048."
+            ),
+        ),
+        _curated_reference(
+            search_query='"Technical Challenges of Real-Time Adaptive MR-Guided Radiotherapy"',
+            evidence_summary="综述实时自适应 MR 引导放疗的技术挑战，包括影像、运动、在线优化、剂量计算和实时决策边界。",
+            recommendation_signal="适合提醒研究方案提前定义 MR workflow、实时适配、QA 和剂量计算复核点。",
+            limitation="技术综述不能替代本中心平台验证；正式论文仍需说明设备版本、TPS、在线计划策略和 QA 流程。",
+            pmid="33763369",
+            title="Technical Challenges of Real-Time Adaptive MR-Guided Radiotherapy",
+            journal="Frontiers in Oncology",
+            publication_year="2021",
+            doi="10.3389/fonc.2021.634507",
+            authors=["Thorwarth D", "Low DA"],
+            volume="11",
+            issue=None,
+            page="634507",
+            publication_types=["Journal Article", "Review"],
+            citation_text=(
+                "Thorwarth D, Low DA. Technical Challenges of Real-Time Adaptive MR-Guided Radiotherapy. "
+                "Frontiers in Oncology. 2021;11:634507. doi:10.3389/fonc.2021.634507."
+            ),
+            vancouver_citation=(
+                "Thorwarth D, Low DA. Technical Challenges of Real-Time Adaptive MR-Guided Radiotherapy. "
+                "Front Oncol. 2021;11:634507. doi:10.3389/fonc.2021.634507."
+            ),
+        ),
         MentorEvidenceItem(
             source_type="local_search_template",
             search_query='("MR-guided radiotherapy" OR "MR-Linac") AND ("adaptive radiotherapy" OR "online adaptive") AND 2019:2024',
@@ -32,6 +126,32 @@ LOCAL_EVIDENCE_LIBRARY: dict[str, list[MentorEvidenceItem]] = {
         ),
     ],
     "flash": [
+        _curated_reference(
+            search_query='"Ultrahigh dose-rate FLASH irradiation increases the differential response between normal and tumor tissue in mice"',
+            evidence_summary="FLASH 超高剂量率放疗的经典转化研究，提示正常组织保护与肿瘤控制差异反应的基础证据线索。",
+            recommendation_signal="适合作为 FLASH 方向的背景引用，同时提醒该方向更偏设备、剂量率验证和转化研究。",
+            limitation="该研究为动物/转化研究线索，不能直接支持普通临床中心的人体疗效结论；临床选题需另补设备和剂量率实测证据。",
+            pmid="25031268",
+            title="Ultrahigh dose-rate FLASH irradiation increases the differential response between normal and tumor tissue in mice",
+            journal="Science Translational Medicine",
+            publication_year="2014",
+            doi="10.1126/scitranslmed.3008973",
+            authors=["Favaudon V", "Caplier L", "Monceau V", "Pouzoulet F", "Sayarath M", "Fouillade C"],
+            volume="6",
+            issue="245",
+            page="245ra93",
+            publication_types=["Journal Article"],
+            citation_text=(
+                "Favaudon V, Caplier L, Monceau V, Pouzoulet F, Sayarath M, Fouillade C, et al. "
+                "Ultrahigh dose-rate FLASH irradiation increases the differential response between normal and tumor tissue in mice. "
+                "Science Translational Medicine. 2014;6(245):245ra93. doi:10.1126/scitranslmed.3008973."
+            ),
+            vancouver_citation=(
+                "Favaudon V, Caplier L, Monceau V, Pouzoulet F, Sayarath M, Fouillade C, et al. "
+                "Ultrahigh dose-rate FLASH irradiation increases the differential response between normal and tumor tissue in mice. "
+                "Sci Transl Med. 2014;6(245):245ra93. doi:10.1126/scitranslmed.3008973."
+            ),
+        ),
         MentorEvidenceItem(
             source_type="local_search_template",
             search_query='("FLASH radiotherapy" OR "ultra-high dose rate") AND radiotherapy AND 2019:2024',
@@ -41,6 +161,56 @@ LOCAL_EVIDENCE_LIBRARY: dict[str, list[MentorEvidenceItem]] = {
         ),
     ],
     "ai_planning_qa": [
+        _curated_reference(
+            search_query='"Tolerance limits and methodologies for IMRT measurement-based verification QA" "AAPM Task Group No. 218"',
+            evidence_summary="AAPM TG-218 给出 IMRT measurement-based verification QA 的容差、方法学和报告建议，是患者特异性 QA 研究的重要规范依据。",
+            recommendation_signal="适合支撑 QA 通过率、gamma criteria、测量型验证和计划复杂度研究中的方法学边界。",
+            limitation="TG-218 是 QA 方法学建议，不等同于某个 AI 预测模型的验证证据；预测类研究仍需校准、交叉验证和外部复核。",
+            pmid="29443390",
+            title="Tolerance limits and methodologies for IMRT measurement-based verification QA: Recommendations of AAPM Task Group No. 218",
+            journal="Medical Physics",
+            publication_year="2018",
+            doi="10.1002/mp.12810",
+            authors=["Miften M", "Olch A", "Mihailidis D", "Moran J", "Pawlicki T", "Molineu A"],
+            volume="45",
+            issue="4",
+            page="e53-e83",
+            publication_types=["Journal Article", "Review"],
+            citation_text=(
+                "Miften M, Olch A, Mihailidis D, Moran J, Pawlicki T, Molineu A, et al. "
+                "Tolerance limits and methodologies for IMRT measurement-based verification QA: Recommendations of AAPM Task Group No. 218. "
+                "Medical Physics. 2018;45(4):e53-e83. doi:10.1002/mp.12810."
+            ),
+            vancouver_citation=(
+                "Miften M, Olch A, Mihailidis D, Moran J, Pawlicki T, Molineu A, et al. "
+                "Tolerance limits and methodologies for IMRT measurement-based verification QA: Recommendations of AAPM Task Group No. 218. "
+                "Med Phys. 2018;45(4):e53-e83. doi:10.1002/mp.12810."
+            ),
+        ),
+        _curated_reference(
+            search_query='"Quantified VMAT plan complexity in relation to measurement-based quality assurance results"',
+            evidence_summary="该研究将 VMAT 计划复杂度指标与测量型 QA 结果关联，适合作为计划复杂度和 QA 数据建模的具体文献线索。",
+            recommendation_signal="适合把 plan complexity、MU、MLC aperture、gamma pass rate 等字段纳入数据字典和统计路线。",
+            limitation="计划复杂度与 QA 的关系受设备、部位、能量和测量流程影响，正式研究需预设分层或敏感性分析。",
+            pmid="33112467",
+            title="Quantified VMAT plan complexity in relation to measurement-based quality assurance results",
+            journal="Journal of Applied Clinical Medical Physics",
+            publication_year="2020",
+            doi="10.1002/acm2.13048",
+            authors=["Nguyen M", "Chan GH"],
+            volume="21",
+            issue="11",
+            page="132-140",
+            publication_types=["Journal Article"],
+            citation_text=(
+                "Nguyen M, Chan GH. Quantified VMAT plan complexity in relation to measurement-based quality assurance results. "
+                "Journal of Applied Clinical Medical Physics. 2020;21(11):132-140. doi:10.1002/acm2.13048."
+            ),
+            vancouver_citation=(
+                "Nguyen M, Chan GH. Quantified VMAT plan complexity in relation to measurement-based quality assurance results. "
+                "J Appl Clin Med Phys. 2020;21(11):132-140. doi:10.1002/acm2.13048."
+            ),
+        ),
         MentorEvidenceItem(
             source_type="local_search_template",
             search_query='("artificial intelligence" OR "machine learning" OR "deep learning") AND ("treatment planning" OR "quality assurance" OR "patient-specific quality assurance" OR "plan quality") AND radiotherapy',
@@ -57,6 +227,30 @@ LOCAL_EVIDENCE_LIBRARY: dict[str, list[MentorEvidenceItem]] = {
         ),
     ],
     "particle": [
+        _curated_reference(
+            search_query='"Range uncertainties in proton therapy and the role of Monte Carlo simulations"',
+            evidence_summary="质子治疗射程不确定性和 Monte Carlo 剂量计算角色的综述，是粒子治疗鲁棒性和剂量不确定性选题的重要基础。",
+            recommendation_signal="适合支撑粒子治疗计划质量、鲁棒性、CT 值转换和射程不确定性相关研究问题。",
+            limitation="综述提供物理背景，不代表本中心质子/重离子数据已具备；需先确认设备、计划系统和剂量复核条件。",
+            pmid="22571913",
+            title="Range uncertainties in proton therapy and the role of Monte Carlo simulations",
+            journal="Physics in Medicine and Biology",
+            publication_year="2012",
+            doi="10.1088/0031-9155/57/11/R99",
+            authors=["Paganetti H"],
+            volume="57",
+            issue="11",
+            page="R99-117",
+            publication_types=["Journal Article", "Review"],
+            citation_text=(
+                "Paganetti H. Range uncertainties in proton therapy and the role of Monte Carlo simulations. "
+                "Physics in Medicine and Biology. 2012;57(11):R99-117. doi:10.1088/0031-9155/57/11/R99."
+            ),
+            vancouver_citation=(
+                "Paganetti H. Range uncertainties in proton therapy and the role of Monte Carlo simulations. "
+                "Phys Med Biol. 2012;57(11):R99-117. doi:10.1088/0031-9155/57/11/R99."
+            ),
+        ),
         MentorEvidenceItem(
             source_type="local_search_template",
             search_query='("proton therapy" OR "carbon ion therapy") AND ("robustness" OR dosimetry) AND radiotherapy',
@@ -66,6 +260,32 @@ LOCAL_EVIDENCE_LIBRARY: dict[str, list[MentorEvidenceItem]] = {
         ),
     ],
     "radiomics": [
+        _curated_reference(
+            search_query='"Radiomics: extracting more information from medical images using advanced feature analysis"',
+            evidence_summary="Radiomics 经典方法学论文，说明从医学影像中提取定量特征并用于临床研究的基本思路。",
+            recommendation_signal="适合支撑影像组学选题的背景，但必须与放疗剂量、结局字段和过拟合控制一起设计。",
+            limitation="该文献是方法学基础，不直接证明某个放疗结局模型有效；正式研究需补充特征稳定性、多重比较和外部验证。",
+            pmid="22257792",
+            title="Radiomics: extracting more information from medical images using advanced feature analysis",
+            journal="European Journal of Cancer",
+            publication_year="2012",
+            doi="10.1016/j.ejca.2011.11.036",
+            authors=["Lambin P", "Rios-Velazquez E", "Leijenaar R", "Carvalho S", "van Stiphout RG", "Granton P"],
+            volume="48",
+            issue="4",
+            page="441-446",
+            publication_types=["Journal Article", "Review"],
+            citation_text=(
+                "Lambin P, Rios-Velazquez E, Leijenaar R, Carvalho S, van Stiphout RG, Granton P, et al. "
+                "Radiomics: extracting more information from medical images using advanced feature analysis. "
+                "European Journal of Cancer. 2012;48(4):441-446. doi:10.1016/j.ejca.2011.11.036."
+            ),
+            vancouver_citation=(
+                "Lambin P, Rios-Velazquez E, Leijenaar R, Carvalho S, van Stiphout RG, Granton P, et al. "
+                "Radiomics: extracting more information from medical images using advanced feature analysis. "
+                "Eur J Cancer. 2012;48(4):441-446. doi:10.1016/j.ejca.2011.11.036."
+            ),
+        ),
         MentorEvidenceItem(
             source_type="local_search_template",
             search_query='("radiomics" OR "radiogenomics") AND radiotherapy AND outcome',
@@ -75,6 +295,56 @@ LOCAL_EVIDENCE_LIBRARY: dict[str, list[MentorEvidenceItem]] = {
         ),
     ],
     "automation": [
+        _curated_reference(
+            search_query='"Automated 4π radiotherapy treatment planning with evolving knowledge-base"',
+            evidence_summary="自动化 4π 放疗计划研究，使用 evolving knowledge-base 支持计划优化，是自动化计划/知识库优化的具体实现线索。",
+            recommendation_signal="适合支撑自动化计划质量、一致性、优化效率和可复制 workflow 的研究问题。",
+            limitation="4π 自动计划不一定适用于所有 TPS 或临床流程；本中心研究需明确人工计划、自动计划和人工复核责任边界。",
+            pmid="31233619",
+            title="Automated 4π radiotherapy treatment planning with evolving knowledge-base",
+            journal="Medical Physics",
+            publication_year="2019",
+            doi="10.1002/mp.13682",
+            authors=["Landers A", "O'Connor D", "Ruan D", "Sheng K"],
+            volume="46",
+            issue="9",
+            page="3833-3843",
+            publication_types=["Journal Article"],
+            citation_text=(
+                "Landers A, O'Connor D, Ruan D, Sheng K. Automated 4π radiotherapy treatment planning with evolving knowledge-base. "
+                "Medical Physics. 2019;46(9):3833-3843. doi:10.1002/mp.13682."
+            ),
+            vancouver_citation=(
+                "Landers A, O'Connor D, Ruan D, Sheng K. Automated 4π radiotherapy treatment planning with evolving knowledge-base. "
+                "Med Phys. 2019;46(9):3833-3843. doi:10.1002/mp.13682."
+            ),
+        ),
+        _curated_reference(
+            search_query='"Automated evaluation for rapid implementation of knowledge-based radiotherapy planning models"',
+            evidence_summary="该研究关注知识库放疗计划模型的自动化评估与快速实施，适合连接模型上线、计划质量和人工验收流程。",
+            recommendation_signal="适合把模型评估、计划质量指标、实施效率和人工验收清单纳入 Mentor 研究路线。",
+            limitation="知识库计划模型的表现依赖训练计划质量、部位、TPS 和本地约束；正式研究需保留外部或独立复核。",
+            pmid="37703545",
+            title="Automated evaluation for rapid implementation of knowledge-based radiotherapy planning models",
+            journal="Journal of Applied Clinical Medical Physics",
+            publication_year="2023",
+            doi="10.1002/acm2.14152",
+            authors=["Harms J", "Pogue JA", "Cardenas CE", "Stanley DN", "Cardan R", "Popple R"],
+            volume="24",
+            issue="10",
+            page="e14152",
+            publication_types=["Journal Article"],
+            citation_text=(
+                "Harms J, Pogue JA, Cardenas CE, Stanley DN, Cardan R, Popple R. "
+                "Automated evaluation for rapid implementation of knowledge-based radiotherapy planning models. "
+                "Journal of Applied Clinical Medical Physics. 2023;24(10):e14152. doi:10.1002/acm2.14152."
+            ),
+            vancouver_citation=(
+                "Harms J, Pogue JA, Cardenas CE, Stanley DN, Cardan R, Popple R. "
+                "Automated evaluation for rapid implementation of knowledge-based radiotherapy planning models. "
+                "J Appl Clin Med Phys. 2023;24(10):e14152. doi:10.1002/acm2.14152."
+            ),
+        ),
         MentorEvidenceItem(
             source_type="local_search_template",
             search_query='("automated treatment planning" OR "knowledge-based planning") AND radiotherapy AND workflow',
@@ -84,6 +354,32 @@ LOCAL_EVIDENCE_LIBRARY: dict[str, list[MentorEvidenceItem]] = {
         ),
     ],
     "sbrt": [
+        _curated_reference(
+            search_query='"Stereotactic body radiation therapy: the report of AAPM Task Group 101"',
+            evidence_summary="AAPM TG-101 是 SBRT 物理、剂量、运动管理和实施质量的重要报告，可支撑 SRS/SBRT 计划质量研究的规范背景。",
+            recommendation_signal="适合提醒方案定义 dose gradient、OAR 约束、处方分割、运动管理和计划 QA 边界。",
+            limitation="TG 报告可作为技术规范背景，具体病种和计划策略仍需补充近年原始研究与本中心数据。",
+            pmid="20879569",
+            title="Stereotactic body radiation therapy: the report of AAPM Task Group 101",
+            journal="Medical Physics",
+            publication_year="2010",
+            doi="10.1118/1.3438081",
+            authors=["Benedict SH", "Yenice KM", "Followill D", "Galvin JM", "Hinson W", "Kavanagh B"],
+            volume="37",
+            issue="8",
+            page="4078-4101",
+            publication_types=["Journal Article"],
+            citation_text=(
+                "Benedict SH, Yenice KM, Followill D, Galvin JM, Hinson W, Kavanagh B, et al. "
+                "Stereotactic body radiation therapy: the report of AAPM Task Group 101. "
+                "Medical Physics. 2010;37(8):4078-4101. doi:10.1118/1.3438081."
+            ),
+            vancouver_citation=(
+                "Benedict SH, Yenice KM, Followill D, Galvin JM, Hinson W, Kavanagh B, et al. "
+                "Stereotactic body radiation therapy: the report of AAPM Task Group 101. "
+                "Med Phys. 2010;37(8):4078-4101. doi:10.1118/1.3438081."
+            ),
+        ),
         MentorEvidenceItem(
             source_type="local_search_template",
             search_query='("SRS" OR "SBRT") AND ("dose gradient" OR "organ at risk" OR "plan quality")',
@@ -93,6 +389,32 @@ LOCAL_EVIDENCE_LIBRARY: dict[str, list[MentorEvidenceItem]] = {
         ),
     ],
     "motion": [
+        _curated_reference(
+            search_query='"The management of respiratory motion in radiation oncology report of AAPM Task Group 76"',
+            evidence_summary="AAPM TG-76 总结呼吸运动管理在放疗中的模拟、成像、计划和治疗实施要求，是运动管理选题的重要规范背景。",
+            recommendation_signal="适合支撑 4DCT、门控、tracking、边界设置、SBRT 运动管理和流程效率相关研究路线。",
+            limitation="TG-76 是基础规范文献，当前设备、影像频率、门控阈值和计划流程仍需按本中心实际复核。",
+            pmid="17089851",
+            title="The management of respiratory motion in radiation oncology report of AAPM Task Group 76",
+            journal="Medical Physics",
+            publication_year="2006",
+            doi="10.1118/1.2349696",
+            authors=["Keall PJ", "Mageras GS", "Balter JM", "Emery RS", "Forster KM", "Jiang SB"],
+            volume="33",
+            issue="10",
+            page="3874-3900",
+            publication_types=["Journal Article"],
+            citation_text=(
+                "Keall PJ, Mageras GS, Balter JM, Emery RS, Forster KM, Jiang SB, et al. "
+                "The management of respiratory motion in radiation oncology report of AAPM Task Group 76. "
+                "Medical Physics. 2006;33(10):3874-3900. doi:10.1118/1.2349696."
+            ),
+            vancouver_citation=(
+                "Keall PJ, Mageras GS, Balter JM, Emery RS, Forster KM, Jiang SB, et al. "
+                "The management of respiratory motion in radiation oncology report of AAPM Task Group 76. "
+                "Med Phys. 2006;33(10):3874-3900. doi:10.1118/1.2349696."
+            ),
+        ),
         MentorEvidenceItem(
             source_type="local_search_template",
             search_query='("motion management" OR gating OR tracking OR "4DCT") AND radiotherapy AND SBRT',
@@ -180,9 +502,9 @@ class LocalMentorEvidenceProvider:
         return [
             item.model_copy(
                 update={
-                    "evidence_status": "local_template",
+                    "evidence_status": item.evidence_status or "local_template",
                     "retrieved_at": retrieved_at,
-                    "external_url": None,
+                    "external_url": item.external_url,
                 }
             )
             for item in evidence_items

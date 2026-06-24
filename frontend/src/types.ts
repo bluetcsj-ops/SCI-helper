@@ -59,6 +59,9 @@ export interface MentorRecommendationCard {
   innovation_point: string;
   feasibility_note: string;
   risk_flags: string[];
+  minimum_data_fields: string[];
+  readiness_checklist: string[];
+  protocol_trace: string[];
   first_milestones: string[];
   evidence_items: MentorEvidenceItem[];
   target_journals: string[];

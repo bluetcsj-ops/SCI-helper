@@ -244,6 +244,8 @@ class MentorService:
             else "建议把方法学控制在剂量学对比或流程评估范围内。"
         )
         topic_plan = self._topic_plan(topic.topic_id, payload)
+        evidence_items = mentor_evidence_service.get_topic_evidence(topic.topic_id)
+        minimum_data_fields = self._minimum_data_fields(topic.topic_id)
         return MentorRecommendationCard(
             title=self._build_title(topic.topic_id),
             research_question=topic_plan["research_question"],
@@ -257,14 +259,127 @@ class MentorService:
             innovation_point=f"{topic.summary} {programming_note}",
             feasibility_note=f"按每周 {payload.weekly_hours} 小时估计，先做单中心回顾性首轮分析通常更可控。",
             risk_flags=self._risk_flags(topic.topic_id, payload),
+            minimum_data_fields=minimum_data_fields,
+            readiness_checklist=self._readiness_checklist(
+                topic_id=topic.topic_id,
+                payload=payload,
+                minimum_data_fields=minimum_data_fields,
+            ),
+            protocol_trace=self._protocol_trace_points(
+                topic=topic,
+                evidence_count=len(evidence_items),
+                payload=payload,
+            ),
             first_milestones=[
                 "第 1 周：锁定病例范围、主要终点和最小字段清单。",
                 "第 2-3 周：导出 10-20 例脱敏样例数据并完成字段质控。",
                 "第 4-6 周：完成首轮描述统计、图表草案和 Methods/Results 骨架。",
             ],
-            evidence_items=mentor_evidence_service.get_topic_evidence(topic.topic_id),
+            evidence_items=evidence_items,
             target_journals=TOPIC_JOURNALS.get(topic.topic_id, ["JACMP", "Medical Physics"]),
         )
+
+    def _minimum_data_fields(self, topic_id: str) -> list[str]:
+        shared_fields = [
+            "匿名病例或计划 ID",
+            "治疗部位",
+            "计划系统和版本",
+            "处方剂量与分割次数",
+            "主要终点字段",
+        ]
+        topic_fields: dict[str, list[str]] = {
+            "mr_linac": [
+                "原计划与在线自适应计划标识",
+                "分次序号或治疗日期",
+                "PTV/CTV 覆盖指标",
+                "OAR 剂量指标",
+                "在线适配耗时或审核结果",
+            ],
+            "flash": [
+                "超高剂量率设备或实验平台标识",
+                "剂量率或束流参数",
+                "剂量学验证指标",
+                "实验或临床适用边界说明",
+            ],
+            "ai_planning_qa": [
+                "计划 ID",
+                "QA 结果标签",
+                "gamma pass rate 或质控通过率",
+                "计划复杂度或 MU",
+                "设备/部位分层变量",
+            ],
+            "particle": [
+                "粒子类型和能量/射程相关参数",
+                "鲁棒性设置",
+                "靶区和 OAR 剂量指标",
+                "不确定性或 range margin 字段",
+            ],
+            "radiomics": [
+                "影像派生特征版本",
+                "影像序列或扫描参数",
+                "剂量学协变量",
+                "结局或毒性标签",
+                "特征筛选记录",
+            ],
+            "automation": [
+                "人工计划和自动化计划配对 ID",
+                "计划质量评分或剂量学指标",
+                "人工计划时间或自动化运行时间",
+                "返工或人工调整记录",
+            ],
+            "sbrt": [
+                "靶区体积",
+                "PTV D95% / V95%",
+                "剂量梯度或适形指数",
+                "关键 OAR Dmax/Dmean",
+                "计划技术和处方分割",
+            ],
+            "motion": [
+                "4DCT/CBCT 或 tracking 指标",
+                "运动管理策略",
+                "边界或 ITV/PTV margin",
+                "治疗执行时间",
+                "剂量偏差或配准质量指标",
+            ],
+        }
+        return shared_fields + topic_fields.get(topic_id, ["计划质量指标", "流程效率指标"])
+
+    def _readiness_checklist(
+        self,
+        *,
+        topic_id: str,
+        payload: MentorQuestionnaireRequest,
+        minimum_data_fields: list[str],
+    ) -> list[str]:
+        checklist = [
+            f"最小字段：先确认 {', '.join(minimum_data_fields[:5])} 是否可从现有系统导出。",
+            "伦理/数据许可：正式使用真实病例前确认 IRB、数据使用授权和脱敏规则。",
+            "首轮样例数据：先导出 10-20 例脱敏 CSV，交给 Dr. Data Lin 做字段覆盖、缺失率和隐私检查。",
+            "统计复核边界：当前 Mentor 只给选题和方法路线，正式 P 值、CI、模型诊断需由 Data Lin 和人工统计复核确认。",
+        ]
+        if not payload.data_types:
+            checklist.append("当前未填写可用数据类型，测试前应先补充 RTDose、RTStruct、QA、CBCT 或 log files 等来源。")
+        if topic_id in {"radiomics", "ai_planning_qa"}:
+            checklist.append("建模类题目需预先定义训练/验证边界，避免把探索性模型写成已验证预测工具。")
+        if topic_id in {"flash", "particle"}:
+            checklist.append("设备依赖较强，测试前应确认本中心是否真的拥有对应平台或可访问合作数据。")
+        return checklist
+
+    def _protocol_trace_points(
+        self,
+        *,
+        topic: MentorTrendItem,
+        evidence_count: int,
+        payload: MentorQuestionnaireRequest,
+    ) -> list[str]:
+        data_types = ", ".join(payload.data_types[:4]) if payload.data_types else "数据类型待补充"
+        return [
+            f"来源趋势主题：{topic.title}（{topic.topic_id}）。",
+            f"推荐生成时设备/计划系统：{payload.equipment_summary.strip() or '设备待补充'} / {payload.planning_systems.strip() or '计划系统待补充'}。",
+            f"推荐生成时数据来源：{data_types}。",
+            f"候选证据数量：{evidence_count} 条；写入 Protocol 前建议至少标记 1-2 条为确认可用。",
+            "写入 Protocol 后仍需在 Vera Protocol 中人工确认研究问题、主要终点、数据需求和统计路线。",
+        ]
 
     def _topic_plan(self, topic_id: str, payload: MentorQuestionnaireRequest) -> dict[str, str]:
         systems = payload.planning_systems.strip() or "现有计划系统"

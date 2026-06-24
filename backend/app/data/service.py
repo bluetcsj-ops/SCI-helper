@@ -2904,13 +2904,23 @@ class DataWorkspaceService:
         return items
 
     def _split_requirement_text(self, value: str) -> list[str]:
-        normalized = re.sub(r"[；;\n]+", "、", value)
-        parts = re.split(r"[、，,]", normalized)
+        parts: list[str] = []
+        for line in re.split(r"[；;\n]+", value):
+            line = line.strip()
+            if not line:
+                continue
+            if re.match(r"^[-•*]\s*", line):
+                parts.append(line)
+                continue
+            parts.extend(re.split(r"[、，,]", line))
         labels: list[str] = []
         for part in parts:
-            label = re.sub(r"^(至少需要|需要|包括|以及|和)", "", part.strip())
+            label = re.sub(r"^[-•*\d.、\s]+", "", part.strip())
+            label = re.sub(r"^(至少需要|需要|包括|以及|和)", "", label)
             label = label.strip(" ：:。. ")
-            if 2 <= len(label) <= 80 and label not in {"等", "指标", "数据"}:
+            if label in {"最小数据字段", "测试落地清单", "写入追踪", "Mentor 写入追踪"}:
+                continue
+            if 2 <= len(label) <= 120 and label not in {"等", "指标", "数据"}:
                 labels.append(label)
         return labels
 

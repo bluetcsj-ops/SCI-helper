@@ -19,7 +19,7 @@ import {
   Upload,
   Wand2,
 } from "lucide-react";
-import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   applyProjectPlanDraft,
@@ -665,6 +665,31 @@ function manuscriptChartLine(title: string, narrative: string): string {
 }
 
 function mentorCardToProtocolUpdate(card: MentorRecommendationCard): ProjectProtocolUpdate {
+  const minimumDataFields = (card.minimum_data_fields ?? []).filter((field) => field.trim());
+  const readinessChecklist = (card.readiness_checklist ?? []).filter((item) => item.trim());
+  const protocolTrace = (card.protocol_trace ?? []).filter((item) => item.trim());
+  const dataRequirementLines = [
+    card.data_pathway,
+    minimumDataFields.length ? "最小数据字段：" : null,
+    ...minimumDataFields.map((field) => `- ${field}`),
+    "- 伦理与脱敏：确认 IRB、数据使用授权、脱敏规则和原始数据保存边界。",
+    "- 数据字典：记录字段中文名、英文列名、单位、来源系统、导出格式、缺失值编码和派生规则。",
+    "- 计划系统追踪：记录 TPS/计划系统版本、剂量计算算法、机器或设备型号、结构命名规则和 QA/gamma criteria。",
+  ].filter(Boolean) as string[];
+  const workflowLines = [
+    card.methods_route,
+    readinessChecklist.length ? "测试落地清单：" : null,
+    ...readinessChecklist.map((item) => `- ${item}`),
+    protocolTrace.length ? "Mentor 写入追踪：" : null,
+    ...protocolTrace.map((item) => `- ${item}`),
+    card.first_milestones.length ? "首轮里程碑：" : null,
+    ...card.first_milestones.map((item) => `- ${item}`),
+  ].filter(Boolean) as string[];
+  const milestoneLines = [
+    ...card.first_milestones,
+    ...readinessChecklist.slice(0, 3).map((item) => `验收：${item}`),
+    ...protocolTrace.slice(0, 2).map((item) => `追踪：${item}`),
+  ];
   return {
     research_question: card.research_question,
     hypothesis: `围绕“${card.title}”，假设该研究路线能够识别有临床或流程意义的放疗物理差异，并形成可复核的剂量学、效率或质量控制证据。`,
@@ -673,17 +698,18 @@ function mentorCardToProtocolUpdate(card: MentorRecommendationCard): ProjectProt
     secondary_endpoints: "次要终点可包括靶区覆盖、剂量梯度、适形指数、均匀性指数、计划复杂度、处理时间、返工率、亚组稳定性和敏感性分析。",
     inclusion_criteria: "纳入已完成标准治疗或质控流程、关键计划/剂量/结构数据完整、可追溯计划系统版本、并已完成脱敏的数据记录。",
     exclusion_criteria: "排除关键字段缺失、计划或影像质量不可复核、治疗流程中断、数据来源不一致、以及存在直接身份标识或脱敏不充分风险的记录。",
-    data_requirements: card.data_pathway,
-    experiment_workflow: [card.methods_route, ...card.first_milestones].join("\n"),
+    data_requirements: dataRequirementLines.join("\n"),
+    experiment_workflow: workflowLines.join("\n"),
     statistical_plan: card.statistical_plan,
     target_journals: card.target_journals.join("、"),
-    rhea_milestones: card.first_milestones.join("\n"),
+    rhea_milestones: milestoneLines.join("\n"),
   };
 }
 
 function formatMentorEvidenceStatus(status: string): string {
   const labels: Record<string, string> = {
     local_template: "本地证据模板",
+    curated_reference: "本地核准候选文献",
     pubmed: "PubMed 检索结果",
     pubmed_crossref: "PubMed + Crossref 候选",
     crossref: "Crossref 检索结果",
@@ -798,6 +824,23 @@ function buildPreparedReferenceReport(): MentorRecommendationResponse {
         risk_flags: [
           "MIMIC-IV Demo 是 ICU/EHR 数据，不是放疗计划数据。",
           "公开 demo 仍需按 PhysioNet 要求引用来源。",
+        ],
+        minimum_data_fields: [
+          "公开数据集标识",
+          "数据版本",
+          "派生 CSV 字段",
+          "主要结局字段",
+          "数据源引用 DOI",
+        ],
+        readiness_checklist: [
+          "确认预备 CSV 已能在 Dr. Data Lin 中生成质控报告和统计草案。",
+          "确认公开数据源引用只用于联调，不写成当前放疗课题的核心领域证据。",
+          "正式放疗课题需替换为本中心伦理批准后的真实脱敏数据。",
+        ],
+        protocol_trace: [
+          "来源：预备 DATA 引用包。",
+          "用途：验证 Mentor 候选引用、Writer 引用绑定和导出链路。",
+          "写入 Protocol 前需确认该卡仅为联调样例，不代表正式研究问题。",
         ],
         first_milestones: [
           "加载预备 CSV 并生成质控报告",
@@ -3355,6 +3398,46 @@ function buildProtocolQualitySummary(protocol: ProjectProtocol | null): Protocol
       recommendation: "投稿前继续核对该项是否与数据字段、伦理材料和目标期刊要求一致。",
     };
   };
+  const checkSignals = (
+    key: string,
+    title: string,
+    text: string,
+    keywords: string[],
+    highRiskWhenMissing: boolean,
+    recommendation: string,
+  ): ProtocolQualityItem => {
+    const normalizedText = text.toLowerCase();
+    const matchedKeywords = keywords.filter((keyword) => normalizedText.includes(keyword.toLowerCase()));
+    if (!text.trim()) {
+      return {
+        key,
+        title,
+        status: highRiskWhenMissing ? "high_risk" : "needs_input",
+        detail: "当前为空。",
+        recommendation,
+      };
+    }
+    if (!matchedKeywords.length) {
+      return {
+        key,
+        title,
+        status: highRiskWhenMissing ? "high_risk" : "needs_input",
+        detail: "尚未找到可追踪的落地关键词。",
+        recommendation,
+      };
+    }
+    return {
+      key,
+      title,
+      status: "passed",
+      detail: `已覆盖 ${matchedKeywords.slice(0, 5).join("、")} 等落地信号。`,
+      recommendation: "进入正式方案前仍需人工核对字段定义、伦理文件和真实系统导出路径。",
+    };
+  };
+  const dataRequirementsText = valueFor("data_requirements");
+  const workflowText = valueFor("experiment_workflow");
+  const milestoneText = valueFor("rhea_milestones");
+  const implementationText = [dataRequirementsText, workflowText, milestoneText].join("\n");
   const items: ProtocolQualityItem[] = [
     checkText("research_question", "研究问题是否明确", 20, true, "先写清对象、干预/暴露、比较和主要结局。"),
     checkText("hypothesis", "研究假设是否存在", 20, true, "补充方向性假设，并避免写成泛泛目标。"),
@@ -3363,6 +3446,38 @@ function buildProtocolQualitySummary(protocol: ProjectProtocol | null): Protocol
     checkText("inclusion_criteria", "纳入标准是否完整", 20, true, "写清病例来源、时间范围、治疗方式和最低数据要求。"),
     checkText("exclusion_criteria", "排除标准是否完整", 20, false, "列出缺失关键数据、重复病例、质控不可复核等排除条件。"),
     checkText("data_requirements", "数据需求是否可执行", 30, true, "列出必需字段、来源系统、导出格式和脱敏要求。"),
+    checkSignals(
+      "minimum_data_fields",
+      "最小数据字段是否可追踪",
+      dataRequirementsText,
+      ["最小数据字段", "字段", "计划", "剂量", "QA", "RTDose", "RTStruct", "RTPlan"],
+      true,
+      "把 Mentor 推荐卡中的最小数据字段写入数据需求，避免只写研究方向而没有可落地字段。",
+    ),
+    checkSignals(
+      "ethics_data_permission",
+      "伦理/数据许可是否标明",
+      implementationText,
+      ["IRB", "伦理", "数据使用授权", "脱敏", "隐私"],
+      true,
+      "补充 IRB、数据使用授权、脱敏规则和原始数据保存边界。",
+    ),
+    checkSignals(
+      "data_dictionary_export",
+      "数据字典与导出路径是否明确",
+      dataRequirementsText,
+      ["数据字典", "字段中文名", "英文列名", "单位", "来源系统", "导出格式", "缺失值", "派生规则"],
+      false,
+      "补充字段字典、来源系统、导出格式、缺失值编码和派生规则。",
+    ),
+    checkSignals(
+      "rt_plan_traceability",
+      "放疗计划系统追踪是否明确",
+      implementationText,
+      ["TPS", "计划系统", "版本", "剂量计算", "结构命名", "QA", "gamma", "RTDose", "RTStruct", "RTPlan"],
+      false,
+      "补充 TPS/计划系统版本、剂量计算算法、结构命名规则和 QA/gamma criteria。",
+    ),
     checkText("statistical_plan", "统计路线是否存在", 30, true, "说明描述性统计、组间比较、配对/多重比较和显著性边界。"),
     checkText("experiment_workflow", "实验流程是否可复现", 30, false, "补充数据导出、清洗、质控、统计、图表和审稿复核顺序。"),
     checkText("rhea_milestones", "Rhea 里程碑是否可监控", 20, false, "拆成可执行节点，并写清每个节点的交付物。"),
@@ -3414,6 +3529,26 @@ function buildProtocolDataConsistencyCheck(params: {
   const missingRequiredCount = qualityReport?.missing_required_fields.length ?? requiredItemCount;
   const privacyRisk = qualityReport?.privacy_report?.risk_level ?? "green";
   const formalTestReport = statisticsReport?.formal_test_report ?? null;
+  const protocolDataRequirements = protocol?.data_requirements?.trim() ?? "";
+  const protocolDataRequirementSignals = [
+    "最小数据字段",
+    "IRB",
+    "伦理",
+    "数据使用授权",
+    "脱敏",
+    "数据字典",
+    "来源系统",
+    "导出格式",
+    "计划系统",
+    "TPS",
+    "RTDose",
+    "RTStruct",
+    "RTPlan",
+    "gamma",
+  ];
+  const matchedProtocolDataRequirementSignals = protocolDataRequirementSignals.filter((keyword) =>
+    protocolDataRequirements.toLowerCase().includes(keyword.toLowerCase()),
+  );
   const items: ProtocolDataConsistencyItem[] = [
     {
       title: "研究问题与数据字段",
@@ -3460,6 +3595,21 @@ function buildProtocolDataConsistencyCheck(params: {
       recommendation: missingRequiredCount
         ? "补齐缺失字段，或在方案中说明替代字段和不可获得字段。"
         : "保持数据需求清单与 Methods 字段说明一致。",
+    },
+    {
+      title: "Protocol 最小字段写入",
+      status: protocolDataRequirements
+        ? requiredItemCount >= 5 && matchedProtocolDataRequirementSignals.length >= 3
+          ? "passed"
+          : "review"
+        : "blocked",
+      detail: protocolDataRequirements
+        ? `Data Lin 当前可从 Protocol 读取 ${requiredItemCount} 个必需字段；方案命中 ${matchedProtocolDataRequirementSignals.length} 类落地信号。`
+        : "Protocol 尚未填写数据需求，无法生成最小字段链路。",
+      recommendation:
+        protocolDataRequirements && requiredItemCount >= 5
+          ? "继续核对字段名、单位、导出来源和真实 CSV 列名是否一致。"
+          : "从 Mentor 推荐卡写入最小数据字段、伦理/脱敏、数据字典和计划系统追踪信息。",
     },
     {
       title: "统计路线与 Data Lin 建议",
@@ -4414,6 +4564,7 @@ function createWriterIntroductionDraftForm(): WriterIntroductionDraftUpdate {
 }
 
 function App() {
+  const mentorReportRef = useRef<HTMLDivElement | null>(null);
   const [dashboard, setDashboard] = useState<DashboardSummary | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [agents, setAgents] = useState<AgentProfile[]>([]);
@@ -5725,11 +5876,18 @@ function App() {
         interest_topics: mentorForm.interestTopics,
       });
       setMentorRecommendationReport(applyMentorEvidenceReviews(report, mentorEvidenceReviews));
+      scrollMentorReportIntoView();
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "虚拟导师推荐生成失败。");
     } finally {
       setIsMentorSubmitting(false);
     }
+  }
+
+  function scrollMentorReportIntoView() {
+    window.setTimeout(() => {
+      mentorReportRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 50);
   }
 
   function handleMentorInterestToggle(topicId: string) {
@@ -5859,6 +6017,12 @@ function App() {
         `- 可行性：${item.feasibility_note}`,
         "- 风险提示：",
         ...item.risk_flags.map((risk) => `  - ${risk}`),
+        "- 最小数据字段：",
+        ...(item.minimum_data_fields ?? []).map((field) => `  - ${field}`),
+        "- 测试落地清单：",
+        ...(item.readiness_checklist ?? []).map((check) => `  - ${check}`),
+        "- 写入追踪：",
+        ...(item.protocol_trace ?? []).map((trace) => `  - ${trace}`),
         "- 推荐依据：",
         ...item.evidence_items.flatMap((evidence) => [
           `  - 状态：${formatMentorEvidenceStatus(evidence.evidence_status)}`,
@@ -7684,6 +7848,7 @@ function App() {
     const report = buildPreparedReferenceReport();
     setMentorRecommendationReport(applyMentorEvidenceReviews(report, mentorEvidenceReviews));
     setSelectedAgentId("mentor");
+    scrollMentorReportIntoView();
   }
 
   function handleOutcomeColumnToggle(columnName: string) {
@@ -9404,7 +9569,7 @@ function App() {
                         ) : (
                           <Wand2 aria-hidden="true" size={16} />
                         )}
-                        <span>草案</span>
+                        <span>方案草案</span>
                       </button>
                       <button
                         type="button"
@@ -9423,7 +9588,7 @@ function App() {
                         ) : (
                           <ListChecks aria-hidden="true" size={16} />
                         )}
-                        <span>草案</span>
+                        <span>计划草案</span>
                       </button>
                       <button
                         type="button"
@@ -11301,12 +11466,16 @@ function App() {
                     </form>
 
                     {mentorRecommendationReport ? (
-                      <div className="mentor-report">
+                      <div className="mentor-report" ref={mentorReportRef}>
                         <div className="mentor-report-toolbar">
                           <button type="button" onClick={handleDownloadMentorBrief}>
                             <Download aria-hidden="true" size={15} />
                             <span>导出建议书</span>
                           </button>
+                        </div>
+                        <div className="mentor-report-guide" role="status">
+                          <strong>已生成 {mentorRecommendationReport.recommendations.length} 张推荐卡</strong>
+                          <span>每张推荐卡内的 Mentor 落地验收均包含：最小数据字段 / 测试落地清单 / 写入追踪。</span>
                         </div>
                         <div className="mentor-report-summary">
                           <div className="mentor-section-head">
@@ -11350,13 +11519,59 @@ function App() {
                           {mentorRecommendationReport.recommendations.map((item) => (
                             <article className="mentor-recommendation-card" key={item.title}>
                               <h4>{item.title}</h4>
-                              <p>{item.research_question}</p>
-                              <p>{item.why_fit}</p>
-                              <small>{item.data_pathway}</small>
-                              <small>{item.methods_route}</small>
-                              <small>{item.statistical_plan}</small>
-                              <small>{item.innovation_point}</small>
-                              <small>{item.feasibility_note}</small>
+                              <div className="mentor-card-overview">
+                                <article className="mentor-card-overview-item is-wide">
+                                  <strong>研究问题</strong>
+                                  <p>{item.research_question}</p>
+                                </article>
+                                <article className="mentor-card-overview-item is-wide">
+                                  <strong>匹配说明</strong>
+                                  <p>{item.why_fit}</p>
+                                </article>
+                                <article className="mentor-card-overview-item">
+                                  <strong>数据路径</strong>
+                                  <small>{item.data_pathway}</small>
+                                </article>
+                                <article className="mentor-card-overview-item">
+                                  <strong>方法路线</strong>
+                                  <small>{item.methods_route}</small>
+                                </article>
+                                <article className="mentor-card-overview-item">
+                                  <strong>统计建议</strong>
+                                  <small>{item.statistical_plan}</small>
+                                </article>
+                                <article className="mentor-card-overview-item">
+                                  <strong>创新点</strong>
+                                  <small>{item.innovation_point}</small>
+                                </article>
+                                <article className="mentor-card-overview-item">
+                                  <strong>可行性</strong>
+                                  <small>{item.feasibility_note}</small>
+                                </article>
+                              </div>
+                              <div className="mentor-readiness-panel">
+                                <strong>Mentor 落地验收</strong>
+                                <div className="mentor-readiness-grid">
+                                  <div className="mentor-card-list">
+                                    <strong>最小数据字段</strong>
+                                    {(item.minimum_data_fields ?? []).map((field) => (
+                                      <small key={field}>{field}</small>
+                                    ))}
+                                  </div>
+                                  <div className="mentor-card-list">
+                                    <strong>测试落地清单</strong>
+                                    {(item.readiness_checklist ?? []).map((check) => (
+                                      <small key={check}>{check}</small>
+                                    ))}
+                                  </div>
+                                  <div className="mentor-card-list">
+                                    <strong>写入追踪</strong>
+                                    {(item.protocol_trace ?? []).map((trace) => (
+                                      <small key={trace}>{trace}</small>
+                                    ))}
+                                  </div>
+                                </div>
+                              </div>
                               <div className="mentor-card-list">
                                 <strong>风险提示</strong>
                                 {item.risk_flags.map((risk) => (
@@ -11408,6 +11623,27 @@ function App() {
                                     <code>{evidence.search_query}</code>
                                     <small>{evidence.recommendation_signal}</small>
                                     <em>{evidence.limitation}</em>
+                                    {(() => {
+                                      const manualCheckItems = mentorReferenceManualCheckItems(evidence);
+                                      return (
+                                        <div
+                                          className={
+                                            manualCheckItems.length
+                                              ? "mentor-evidence-quality"
+                                              : "mentor-evidence-quality is-ready"
+                                          }
+                                        >
+                                          <strong>
+                                            {manualCheckItems.length ? "人工核验缺口" : "基础元数据完整"}
+                                          </strong>
+                                          {manualCheckItems.length ? (
+                                            <small>{manualCheckItems.join(" / ")}</small>
+                                          ) : (
+                                            <small>仍需投稿前对照全文、DOI 页面和目标期刊引用格式。</small>
+                                          )}
+                                        </div>
+                                      );
+                                    })()}
                                     <div className="mentor-evidence-review-actions">
                                       {[
                                         { value: "unreviewed", label: "待复核" },
@@ -11581,6 +11817,10 @@ function App() {
                               <article>
                                 <strong>Rhea 里程碑</strong>
                                 <p>{pendingMentorProtocolUpdate.rhea_milestones}</p>
+                              </article>
+                              <article>
+                                <strong>Mentor 来源追踪</strong>
+                                <p>{(pendingMentorProtocolCard.protocol_trace ?? []).join(" ") || "旧推荐卡未包含来源追踪，请重新生成课题推荐后再写入。"}</p>
                               </article>
                             </div>
                             <div className="mentor-preview-actions">

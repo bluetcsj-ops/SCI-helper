@@ -66,6 +66,9 @@ class MentorRecommendationCard(BaseModel):
     innovation_point: str
     feasibility_note: str
     risk_flags: list[str] = Field(default_factory=list)
+    minimum_data_fields: list[str] = Field(default_factory=list)
+    readiness_checklist: list[str] = Field(default_factory=list)
+    protocol_trace: list[str] = Field(default_factory=list)
     first_milestones: list[str] = Field(default_factory=list)
     evidence_items: list[MentorEvidenceItem] = Field(default_factory=list)
     target_journals: list[str] = Field(default_factory=list)

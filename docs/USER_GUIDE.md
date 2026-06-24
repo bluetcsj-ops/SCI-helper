@@ -7,7 +7,7 @@
 打开 PowerShell：
 
 ```powershell
-cd "D:\SCI helper\SCI-helper\backend"
+cd "J:\Radiation Therapy SCI assitant\backend"
 .\.venv\Scripts\Activate.ps1
 uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
@@ -24,7 +24,7 @@ http://127.0.0.1:8000/docs
 打开第二个 PowerShell：
 
 ```powershell
-cd "D:\SCI helper\SCI-helper\frontend"
+cd "J:\Radiation Therapy SCI assitant\frontend"
 npm.cmd run dev -- --host 127.0.0.1 --port 3000
 ```
 
@@ -97,29 +97,47 @@ Mixed-effects 重复测量样例的验收方式：
 
 - 查看趋势概览。
 - 填写设备、计划系统、数据类型、科研时间和兴趣方向。
-- 生成课题推荐。
+- 生成课题推荐。生成后页面会自动滚到推荐报告，并显示“已生成 X 张推荐卡”的提示条。
+- 在每张推荐卡的 **Mentor 落地验收** 区域核对：
+  - 最小数据字段
+  - 测试落地清单
+  - 写入 Protocol 来源追踪
 - 点击 **加载预备引用**，快速载入真实公开数据源引用。
+- 在推荐依据中查看：
+  - PMID / DOI
+  - PubMed / DOI 链接
+  - 候选 citation
+  - Vancouver 候选引用
+  - 人工核验缺口
 - 将候选引用标记为：
   - 待复核
   - 确认可用
   - 排除
 - 标记全文核对和 Introduction / Discussion 用途。
 - 导出 `references-vancouver.md`。
-- 将推荐卡写入研究方案。
+- 导出 Mentor brief，核对推荐卡、候选证据、最小数据字段和写入追踪是否完整。
+- 点击 **交给 Alex Writer**，把确认可用的候选引用交给 Writer。
+- 点击 **预览写入**，检查写入研究方案前的研究问题、数据需求、统计路线、Rhea 里程碑和 Mentor 来源追踪；数据需求中应包含最小数据字段、IRB / 脱敏、数据字典、来源系统、导出格式和计划系统追踪，再确认写入研究方案。
 
 ## 6. Vera Protocol 研究方案
 
 点击 **Dr. Vera Protocol** 后，可以：
 
-- 生成方案草案。
 - 编辑并保存结构化方案字段。
-- 生成 Rhea 执行计划草案。
+- 点击 **方案草案** 生成或读取方案草案。
+- 点击 **计划草案** 生成 Rhea 执行计划草案。
 - 应用计划草案到当前项目。
 - 查看 **方案质量检查**：
   - 完成度百分比
   - 已通过 / 需补充 / 高风险
   - 下一步建议
+  - 最小数据字段是否可追踪
+  - 伦理/数据许可是否标明
+  - 数据字典与导出路径是否明确
+  - 放疗计划系统追踪是否明确
 - 导出 `protocol-quality-check.md`。
+- 查看 **方案-数据一致性检查**，重点核对 **Protocol 最小字段写入** 是否显示 Data Lin 已从 Protocol 读取必需字段，并导出 `protocol-data-consistency-check.md`。
+- 查看 **Protocol version snapshot** 并导出 `protocol-version-snapshot.md`。
 
 方案字段包括：
 
@@ -143,7 +161,7 @@ Mixed-effects 重复测量样例的验收方式：
 - 上传脱敏 CSV。
 - 加载预备 DATA。
 - 一键联调到 Writer。
-- 查看字段需求。
+- 查看字段需求；如果刚从 Mentor 写入 Protocol，应能看到来自 Protocol 的最小字段、伦理/脱敏、数据字典和计划系统追踪相关需求。
 - 查看 CSV 质控报告。
 - 查看脱敏与隐私检查。
 - 选择分组列和结局列。

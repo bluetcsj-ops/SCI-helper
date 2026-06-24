@@ -5337,7 +5337,6 @@ button {
   .mentor-prepared-row,
   .mentor-trend-grid,
   .mentor-strength-list,
-  .mentor-recommendation-list,
   .mentor-form-grid,
   .mentor-interest-list,
   .writer-outline-grid,
@@ -5465,10 +5464,15 @@ button {
 }
 
 .mentor-trend-grid,
-.mentor-strength-list,
-.mentor-recommendation-list {
+.mentor-strength-list {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.mentor-recommendation-list {
+  display: grid;
+  grid-template-columns: 1fr;
   gap: 14px;
 }
 
@@ -5606,6 +5610,7 @@ button {
 .mentor-report {
   display: grid;
   gap: 14px;
+  scroll-margin-top: 24px;
 }
 
 .mentor-report-toolbar {
@@ -5626,9 +5631,70 @@ button {
   cursor: pointer;
 }
 
+.mentor-report-guide {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid rgba(34, 197, 94, 0.26);
+  border-radius: 8px;
+  background: rgba(240, 253, 244, 0.92);
+}
+
+.mentor-report-guide strong {
+  color: #166534;
+  font-size: 13px;
+}
+
+.mentor-report-guide span {
+  color: #3f6248;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .mentor-recommendation-card {
   display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.mentor-recommendation-card > h4 {
+  margin: 0;
+}
+
+.mentor-recommendation-card > .mentor-card-action {
+  width: fit-content;
+}
+
+.mentor-card-overview {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 10px;
+}
+
+.mentor-card-overview-item {
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  min-width: 0;
+  border-radius: 8px;
+  padding: 12px;
+  background: rgba(248, 250, 252, 0.92);
+}
+
+.mentor-card-overview-item.is-wide {
+  grid-column: 1 / -1;
+}
+
+.mentor-card-overview-item strong {
+  color: #334155;
+  font-size: 13px;
+}
+
+.mentor-card-overview-item p,
+.mentor-card-overview-item small {
+  margin: 0;
+  color: #273548;
+  line-height: 1.55;
 }
 
 .mentor-recommendation-card span {
@@ -5654,15 +5720,52 @@ button {
   display: block;
 }
 
+.mentor-recommendation-card > .mentor-card-list {
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  align-items: start;
+}
+
+.mentor-recommendation-card > .mentor-card-list > strong {
+  grid-column: 1 / -1;
+}
+
+.mentor-readiness-panel {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid rgba(34, 197, 94, 0.26);
+  border-radius: 8px;
+  background: rgba(240, 253, 244, 0.86);
+}
+
+.mentor-readiness-panel > strong {
+  color: #166534;
+  font-size: 13px;
+}
+
+.mentor-readiness-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: stretch;
+}
+
+.mentor-readiness-grid > .mentor-card-list {
+  min-width: 0;
+}
+
 .mentor-evidence-list {
   display: grid;
   gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  align-items: start;
   padding: 10px;
   border-radius: 8px;
   background: rgba(239, 246, 255, 0.72);
 }
 
 .mentor-evidence-list > strong {
+  grid-column: 1 / -1;
   color: #1e3a8a;
   font-size: 13px;
 }
@@ -5743,6 +5846,53 @@ button {
   color: #64748b;
   font-size: 12px;
   font-style: normal;
+}
+
+.mentor-evidence-quality {
+  display: grid;
+  gap: 3px;
+  border-radius: 6px;
+  padding: 7px 8px;
+  background: #fff7ed;
+  color: #9a3412;
+}
+
+.mentor-evidence-quality.is-ready {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.mentor-evidence-quality strong {
+  font-size: 12px;
+}
+
+.mentor-evidence-quality small {
+  color: inherit;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+@media (max-width: 900px) {
+  .mentor-recommendation-card {
+    grid-template-columns: 1fr;
+  }
+
+  .mentor-recommendation-card > h4,
+  .mentor-recommendation-card > p,
+  .mentor-recommendation-card > small,
+  .mentor-recommendation-card > .mentor-card-list,
+  .mentor-recommendation-card > .mentor-readiness-panel,
+  .mentor-recommendation-card > .mentor-evidence-list,
+  .mentor-recommendation-card > span,
+  .mentor-recommendation-card > .mentor-card-action {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  .mentor-readiness-grid,
+  .mentor-evidence-list {
+    grid-template-columns: 1fr;
+  }
 }
 
 .mentor-evidence-review-actions {
