@@ -137,6 +137,12 @@ Mixed-effects 重复测量样例的验收方式：
   - 放疗计划系统追踪是否明确
 - 导出 `protocol-quality-check.md`。
 - 查看 **方案-数据一致性检查**，重点核对 **Protocol 最小字段写入** 是否显示 Data Lin 已从 Protocol 读取必需字段，并导出 `protocol-data-consistency-check.md`。
+- 查看 **真实数据适配清单**：
+  - 真实字段字典
+  - 伦理与数据许可
+  - 计划系统与 DICOM 追踪
+  - CSV 字段落地
+  - 统计复核边界
 - 查看 **Protocol version snapshot** 并导出 `protocol-version-snapshot.md`。
 
 方案字段包括：
@@ -162,6 +168,12 @@ Mixed-effects 重复测量样例的验收方式：
 - 加载预备 DATA。
 - 一键联调到 Writer。
 - 查看字段需求；如果刚从 Mentor 写入 Protocol，应能看到来自 Protocol 的最小字段、伦理/脱敏、数据字典和计划系统追踪相关需求。
+- 查看字段需求分类统计：
+  - 最小字段
+  - 伦理/脱敏
+  - 数据字典
+  - TPS/DICOM
+  - 终点/统计
 - 查看 CSV 质控报告。
 - 查看脱敏与隐私检查。
 - 选择分组列和结局列。
@@ -191,12 +203,17 @@ Mixed-effects 重复测量样例的验收方式：
 - 查看字段级引用映射。
 - 查看引用质控摘要。
 - 查看 Methods / Results 草稿。
+- 查看 **数据与方案交接摘要**，核对：
+  - Protocol 真实数据适配
+  - Data Lin 字段分类
+  - CSV 覆盖与隐私
+  - Methods / Results 写作边界
 - 导出：
   - `alex-writer-outline.md`
   - `introduction-draft.md`
   - `methods-results-draft.md`
 
-Methods / Results 草稿来自 Data Lin 的质控、统计、图表和正式检验状态。未执行正式检验时，系统会明确提示不能写 P 值或显著性结论。
+Methods / Results 草稿来自 Data Lin 的质控、统计、图表和正式检验状态。未执行正式检验时，系统会明确提示不能写 P 值或显著性结论。`methods-results-draft.md` 会包含 Writer 数据与方案交接摘要，正式写作前应先处理其中的需复核项。
 
 ## 9. Reviewer 投稿前审查
 

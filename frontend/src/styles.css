@@ -915,6 +915,45 @@ button {
   font-weight: 900;
 }
 
+.data-requirement-category-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.data-requirement-category {
+  border-radius: 999px;
+  padding: 5px 8px;
+  color: #37536a;
+  background: #edf4f8;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.data-requirement-category.category-ethics_privacy,
+.requirement-item.category-ethics_privacy .requirement-badges span:first-child {
+  color: #8b4c16;
+  background: #fff0cf;
+}
+
+.data-requirement-category.category-data_dictionary,
+.requirement-item.category-data_dictionary .requirement-badges span:first-child {
+  color: #215f70;
+  background: #dcf3f8;
+}
+
+.data-requirement-category.category-rt_trace,
+.requirement-item.category-rt_trace .requirement-badges span:first-child {
+  color: #245c46;
+  background: #dff4e7;
+}
+
+.data-requirement-category.category-endpoint_statistics,
+.requirement-item.category-endpoint_statistics .requirement-badges span:first-child {
+  color: #4f4b8f;
+  background: #ecebff;
+}
+
 .requirement-list,
 .data-issue-list,
 .privacy-finding-list,
@@ -931,9 +970,34 @@ button {
 .column-quality-item {
   display: grid;
   gap: 10px;
+  border-left: 4px solid transparent;
   border-radius: 8px;
   padding: 11px 12px;
   background: #f7f3ec;
+}
+
+.requirement-item.category-minimum_field {
+  border-left-color: #5d7890;
+}
+
+.requirement-item.category-ethics_privacy {
+  border-left-color: #d97706;
+}
+
+.requirement-item.category-data_dictionary {
+  border-left-color: #2f7197;
+}
+
+.requirement-item.category-rt_trace {
+  border-left-color: #2d6e52;
+}
+
+.requirement-item.category-endpoint_statistics {
+  border-left-color: #5b56a3;
+}
+
+.requirement-item.category-other {
+  border-left-color: #8a7a66;
 }
 
 .requirement-item,
@@ -983,7 +1047,18 @@ button {
   line-height: 1.5;
 }
 
-.requirement-item > span,
+.requirement-category-hint {
+  color: #6a7887;
+  font-size: 12px;
+}
+
+.requirement-badges {
+  display: grid;
+  justify-items: end;
+  gap: 6px;
+}
+
+.requirement-badges span,
 .column-quality-item > span {
   border-radius: 999px;
   padding: 5px 8px;
@@ -1436,6 +1511,99 @@ button {
   border-radius: 8px;
   padding: 9px 10px;
   background: #f2f8f4;
+}
+
+.writer-data-handoff-panel {
+  display: grid;
+  gap: 10px;
+  border: 1px solid rgba(47, 113, 151, 0.16);
+  border-radius: 8px;
+  padding: 12px;
+  background: #f8fbff;
+}
+
+.writer-data-handoff-panel.status-review {
+  border-color: rgba(217, 119, 6, 0.22);
+  background: #fffaf1;
+}
+
+.writer-data-handoff-panel.status-blocked {
+  border-color: rgba(196, 63, 63, 0.22);
+  background: #fff7f7;
+}
+
+.writer-data-handoff-head,
+.writer-data-handoff-card div {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.writer-data-handoff-head strong,
+.writer-data-handoff-card strong {
+  color: #22354a;
+}
+
+.writer-data-handoff-head small,
+.writer-data-handoff-card small,
+.writer-data-handoff-card li {
+  color: #4f6074;
+  line-height: 1.45;
+}
+
+.writer-data-handoff-head span,
+.writer-data-handoff-card span {
+  border-radius: 999px;
+  padding: 4px 8px;
+  color: #245c46;
+  background: #dff4e7;
+  font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.writer-data-handoff-panel.status-review > .writer-data-handoff-head span,
+.writer-data-handoff-card.status-review span {
+  color: #8c4d10;
+  background: #ffe8c7;
+}
+
+.writer-data-handoff-panel.status-blocked > .writer-data-handoff-head span,
+.writer-data-handoff-card.status-blocked span {
+  color: #8b1e2d;
+  background: #ffe0e4;
+}
+
+.writer-data-handoff-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.writer-data-handoff-card {
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  border-left: 4px solid #2d6e52;
+  border-radius: 8px;
+  padding: 10px;
+  background: #ffffff;
+}
+
+.writer-data-handoff-card.status-review {
+  border-left-color: #d97706;
+}
+
+.writer-data-handoff-card.status-blocked {
+  border-left-color: #c43f3f;
+}
+
+.writer-data-handoff-card ul {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding-left: 18px;
 }
 
 .writer-methods-results-layout article {
@@ -4693,6 +4861,90 @@ button {
   font-weight: 800;
 }
 
+.protocol-realworld-panel {
+  display: grid;
+  gap: 12px;
+  border: 1px solid rgba(47, 113, 151, 0.16);
+  border-radius: 8px;
+  padding: 12px;
+  background: #f8fbff;
+}
+
+.protocol-realworld-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.protocol-realworld-item {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  min-height: 188px;
+  border: 1px solid rgba(36, 48, 64, 0.1);
+  border-left-width: 4px;
+  border-radius: 8px;
+  padding: 10px;
+  background: #ffffff;
+}
+
+.protocol-realworld-item.status-ready {
+  border-left-color: #2d6e52;
+}
+
+.protocol-realworld-item.status-needs_review {
+  border-left-color: #d97706;
+}
+
+.protocol-realworld-item.status-blocked {
+  border-left-color: #c43f3f;
+}
+
+.protocol-realworld-item div {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.protocol-realworld-item strong {
+  color: #22354a;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.protocol-realworld-item small,
+.protocol-realworld-item p {
+  margin: 0;
+  color: #4f6074;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.protocol-realworld-item span {
+  justify-self: start;
+  border-radius: 999px;
+  padding: 4px 7px;
+  color: #4f6074;
+  background: #eef2f6;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.protocol-realworld-item.status-ready span {
+  color: #245c46;
+  background: #dff4e7;
+}
+
+.protocol-realworld-item.status-needs_review span {
+  color: #8c4d10;
+  background: #ffe8c7;
+}
+
+.protocol-realworld-item.status-blocked span {
+  color: #8b1e2d;
+  background: #ffe0e4;
+}
+
 .protocol-version-panel {
   display: grid;
   gap: 12px;
@@ -5333,6 +5585,7 @@ button {
   .paired-long-grid,
   .protocol-quality-list,
   .protocol-consistency-list,
+  .protocol-realworld-grid,
   .protocol-version-grid,
   .mentor-prepared-row,
   .mentor-trend-grid,
@@ -5340,6 +5593,7 @@ button {
   .mentor-form-grid,
   .mentor-interest-list,
   .writer-outline-grid,
+  .writer-data-handoff-grid,
   .writer-methods-results-layout,
   .writer-abstract-layout,
   .writer-cover-letter-layout,
@@ -5399,6 +5653,10 @@ button {
 
   .chart-bar-value {
     text-align: left;
+  }
+
+  .requirement-badges {
+    justify-items: start;
   }
 
   .chart-export-toolbar {

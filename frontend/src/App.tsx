@@ -74,6 +74,7 @@ import type {
   DataAuditLog,
   DataAnalysisRecord,
   DataQualityReport,
+  DataRequirementItem,
   DataRequirementSpec,
   DataStatisticsReport,
   DashboardSummary,
@@ -3667,6 +3668,285 @@ function buildProtocolDataConsistencyCheck(params: {
   };
 }
 
+function buildProtocolRealWorldReadiness(params: {
+  protocol: ProjectProtocol | null;
+  dataRequirementSpec: DataRequirementSpec | null;
+  qualityReport: DataQualityReport | null;
+}): ProtocolRealWorldReadiness {
+  const { protocol, dataRequirementSpec, qualityReport } = params;
+  const dataText = protocol?.data_requirements?.trim() ?? "";
+  const workflowText = protocol?.experiment_workflow?.trim() ?? "";
+  const criteriaText = [protocol?.inclusion_criteria, protocol?.exclusion_criteria].filter(Boolean).join("\n");
+  const combinedText = [dataText, workflowText, criteriaText].join("\n").toLowerCase();
+  const requiredFieldCount = dataRequirementSpec?.items.filter((item) => item.required).length ?? 0;
+  const csvColumnCount = qualityReport?.columns.length ?? 0;
+  const matchedRequiredCount = qualityReport?.matched_required_fields.length ?? 0;
+  const missingRequiredCount = qualityReport?.missing_required_fields.length ?? requiredFieldCount;
+  const hasAny = (keywords: string[]) => keywords.some((keyword) => combinedText.includes(keyword.toLowerCase()));
+  const checklist: ProtocolRealWorldReadinessItem[] = [
+    {
+      title: "真实字段字典",
+      status: hasAny(["数据字典", "字段中文名", "英文列名", "单位", "缺失值", "派生规则"])
+        ? "ready"
+        : dataText
+          ? "needs_review"
+          : "blocked",
+      detail: dataText
+        ? `Protocol 已写入数据需求；Data Lin 当前读取 ${requiredFieldCount} 个必需字段。`
+        : "Protocol 尚未写入数据需求。",
+      action: "逐项确认字段中文名、英文列名、单位、来源系统、导出格式、缺失值编码和派生规则。",
+    },
+    {
+      title: "伦理与数据许可",
+      status: hasAny(["IRB", "伦理", "数据使用授权", "脱敏", "隐私"])
+        ? "ready"
+        : criteriaText || workflowText
+          ? "needs_review"
+          : "blocked",
+      detail: hasAny(["IRB", "伦理", "数据使用授权", "脱敏", "隐私"])
+        ? "Protocol 已出现伦理、授权或脱敏信号。"
+        : "Protocol 中尚未明确 IRB、数据使用授权或脱敏边界。",
+      action: "正式测试前确认 IRB 编号或豁免依据、数据使用授权、脱敏规则和原始数据保存边界。",
+    },
+    {
+      title: "计划系统与 DICOM 追踪",
+      status: hasAny(["TPS", "计划系统", "RTDose", "RTStruct", "RTPlan", "剂量计算", "结构命名", "gamma"])
+        ? "ready"
+        : dataText
+          ? "needs_review"
+          : "blocked",
+      detail: hasAny(["TPS", "计划系统", "RTDose", "RTStruct", "RTPlan", "剂量计算", "结构命名", "gamma"])
+        ? "Protocol 已包含放疗计划系统或 DICOM/QA 追踪信号。"
+        : "尚未看到 TPS、DICOM RT 或 QA/gamma 追踪信号。",
+      action: "核对 TPS/计划软件版本、剂量计算算法、机器/MLC 型号、结构命名规则和 QA/gamma criteria。",
+    },
+    {
+      title: "CSV 字段落地",
+      status: qualityReport
+        ? missingRequiredCount
+          ? "needs_review"
+          : "ready"
+        : "needs_review",
+      detail: qualityReport
+        ? `当前 CSV 有 ${csvColumnCount} 列；匹配 ${matchedRequiredCount} 个必需字段，缺少 ${missingRequiredCount} 个。`
+        : "尚未生成 CSV 质控报告，无法核对真实列名。",
+      action: "加载真实或预备 CSV 后，确认必需字段、派生字段和替代字段能映射到实际列名。",
+    },
+    {
+      title: "统计复核边界",
+      status: hasAny(["统计复核", "P 值", "CI", "置信区间", "多重比较", "外部复核", "人工确认"])
+        ? "ready"
+        : workflowText || protocol?.statistical_plan
+          ? "needs_review"
+          : "blocked",
+      detail: protocol?.statistical_plan
+        ? "Protocol 已填写统计路线。"
+        : "Protocol 尚未填写统计路线。",
+      action: "正式写作前确认描述性统计、分组比较、模型诊断、P 值/CI 使用边界和外部统计复核责任人。",
+    },
+  ];
+  const readyCount = checklist.filter((item) => item.status === "ready").length;
+  const reviewCount = checklist.filter((item) => item.status === "needs_review").length;
+  const blockedCount = checklist.filter((item) => item.status === "blocked").length;
+  return {
+    readyCount,
+    reviewCount,
+    blockedCount,
+    overallStatus: blockedCount
+      ? "真实数据适配未就绪"
+      : reviewCount
+        ? "真实数据适配需复核"
+        : "真实数据适配可测试",
+    checklist,
+  };
+}
+
+function classifyDataRequirementItem(item: DataRequirementItem): DataRequirementCategory {
+  const text = `${item.label} ${item.source} ${item.rationale}`.toLowerCase();
+  const hasAny = (keywords: string[]) => keywords.some((keyword) => text.includes(keyword.toLowerCase()));
+  if (hasAny(["IRB", "伦理", "数据使用授权", "脱敏", "隐私", "原始数据保存"])) {
+    return "ethics_privacy";
+  }
+  if (hasAny(["数据字典", "字段中文名", "英文列名", "单位", "来源系统", "导出格式", "缺失值", "派生规则"])) {
+    return "data_dictionary";
+  }
+  if (hasAny(["TPS", "计划系统", "DICOM", "RTDose", "RTStruct", "RTPlan", "剂量计算", "结构命名", "gamma", "MLC"])) {
+    return "rt_trace";
+  }
+  if (item.category === "endpoint" || hasAny(["终点", "结局", "outcome", "统计", "P 值", "CI", "置信区间"])) {
+    return "endpoint_statistics";
+  }
+  if (
+    hasAny([
+      "患者",
+      "病例",
+      "计划 ID",
+      "治疗部位",
+      "处方",
+      "剂量",
+      "分割",
+      "靶区",
+      "体积",
+      "OAR",
+      "MU",
+      "设备",
+      "机器",
+      "照射技术",
+    ])
+  ) {
+    return "minimum_field";
+  }
+  if (item.source.includes("Project Protocol") || item.category === "protocol") {
+    return "minimum_field";
+  }
+  return "other";
+}
+
+function buildDataRequirementReadiness(spec: DataRequirementSpec | null): DataRequirementReadiness {
+  const categories: DataRequirementCategoryMeta[] = [
+    {
+      category: "minimum_field",
+      label: "最小字段",
+      hint: "来自 Protocol 的病例、计划、剂量、QA 或流程字段。",
+      count: 0,
+    },
+    {
+      category: "ethics_privacy",
+      label: "伦理/脱敏",
+      hint: "IRB、数据使用授权、脱敏和隐私边界。",
+      count: 0,
+    },
+    {
+      category: "data_dictionary",
+      label: "数据字典",
+      hint: "字段名、单位、来源系统、导出格式、缺失值和派生规则。",
+      count: 0,
+    },
+    {
+      category: "rt_trace",
+      label: "TPS/DICOM",
+      hint: "计划系统、DICOM RT、剂量计算、结构命名和 QA/gamma。",
+      count: 0,
+    },
+    {
+      category: "endpoint_statistics",
+      label: "终点/统计",
+      hint: "主要/次要终点、结局变量和统计复核边界。",
+      count: 0,
+    },
+    {
+      category: "other",
+      label: "其他",
+      hint: "仍需人工判断归属的字段需求。",
+      count: 0,
+    },
+  ];
+  const categoryById = Object.fromEntries(categories.map((item) => [item.category, item])) as Record<
+    DataRequirementCategory,
+    DataRequirementCategoryMeta
+  >;
+  const classifiedItems = (spec?.items ?? []).map((item) => {
+    const category = classifyDataRequirementItem(item);
+    categoryById[category].count += 1;
+    return {
+      item,
+      category,
+      categoryLabel: categoryById[category].label,
+      categoryHint: categoryById[category].hint,
+    };
+  });
+  return {
+    categories: categories.filter((category) => category.count > 0),
+    classifiedItems,
+  };
+}
+
+function buildWriterDataHandoffSummary(params: {
+  protocolRealWorldReadiness: ProtocolRealWorldReadiness;
+  protocolDataConsistencyCheck: ProtocolDataConsistencyCheck;
+  dataRequirementReadiness: DataRequirementReadiness;
+  qualityReport: DataQualityReport | null;
+}): WriterDataHandoffSummary {
+  const {
+    protocolRealWorldReadiness,
+    protocolDataConsistencyCheck,
+    dataRequirementReadiness,
+    qualityReport,
+  } = params;
+  const privacyRisk = qualityReport?.privacy_report?.risk_level ?? "green";
+  const missingRequiredCount = qualityReport?.missing_required_fields.length ?? 0;
+  const blockedCount =
+    protocolRealWorldReadiness.blockedCount +
+    protocolDataConsistencyCheck.blockedCount +
+    (privacyRisk === "red" ? 1 : 0);
+  const reviewCount =
+    protocolRealWorldReadiness.reviewCount +
+    protocolDataConsistencyCheck.reviewCount +
+    missingRequiredCount +
+    (privacyRisk === "orange" ? 1 : 0);
+  const status: WriterDataHandoffStatus = blockedCount ? "blocked" : reviewCount ? "review" : "ready";
+  const categoryLines = dataRequirementReadiness.categories.length
+    ? dataRequirementReadiness.categories.map((category) => `${category.label}: ${category.count}`)
+    : ["当前尚未读取字段需求分类。"];
+  const adaptationActions = protocolRealWorldReadiness.checklist
+    .filter((item) => item.status !== "ready")
+    .map((item) => `${item.title}: ${item.action}`);
+  const consistencyActions = protocolDataConsistencyCheck.items
+    .filter((item) => item.status !== "passed")
+    .map((item) => `${item.title}: ${item.recommendation}`);
+  const csvCoverageLines = qualityReport
+    ? [
+        `CSV: ${qualityReport.file_name}`,
+        `${qualityReport.row_count} rows / ${qualityReport.column_count} columns`,
+        `Matched required fields: ${qualityReport.matched_required_fields.length}`,
+        `Missing required fields: ${qualityReport.missing_required_fields.length}`,
+        `Privacy risk: ${qualityReport.privacy_report?.risk_level ?? "green"}`,
+      ]
+    : ["CSV quality report is not available yet."];
+
+  return {
+    status,
+    statusLabel:
+      status === "ready"
+        ? "可进入英文草稿核对"
+        : status === "review"
+          ? "写作前需人工复核"
+          : "暂不建议进入正文写作",
+    cards: [
+      {
+        title: "Protocol 真实数据适配",
+        status: protocolRealWorldReadiness.blockedCount
+          ? "blocked"
+          : protocolRealWorldReadiness.reviewCount
+            ? "review"
+            : "ready",
+        detail: protocolRealWorldReadiness.overallStatus,
+        items: adaptationActions.length ? adaptationActions : ["真实数据适配清单当前均为可测试状态。"],
+      },
+      {
+        title: "Data Lin 字段分类",
+        status: dataRequirementReadiness.categories.length ? "ready" : "review",
+        detail: "字段需求按写作前核对用途分组。",
+        items: categoryLines,
+      },
+      {
+        title: "CSV 覆盖与隐私",
+        status: !qualityReport ? "review" : privacyRisk === "red" ? "blocked" : missingRequiredCount ? "review" : "ready",
+        detail: qualityReport ? "已读取 CSV 质控报告。" : "尚未读取 CSV 质控报告。",
+        items: csvCoverageLines,
+      },
+      {
+        title: "Methods / Results 写作边界",
+        status: consistencyActions.length || missingRequiredCount ? "review" : "ready",
+        detail: protocolDataConsistencyCheck.overallStatus,
+        items: consistencyActions.length
+          ? consistencyActions.slice(0, 5)
+          : ["当前没有系统识别出的方案-数据阻断；正式投稿前仍需人工复核。"],
+      },
+    ],
+  };
+}
+
 function buildProtocolVersionSnapshot(params: {
   selectedProject: Project | null | undefined;
   protocolQualitySummary: ProtocolQualitySummary;
@@ -3771,6 +4051,21 @@ interface WriterMethodsResultsDraft {
   advancedModelLines: string[];
   chartLines: string[];
   missingItems: string[];
+}
+
+type WriterDataHandoffStatus = "ready" | "review" | "blocked";
+
+interface WriterDataHandoffCard {
+  title: string;
+  status: WriterDataHandoffStatus;
+  detail: string;
+  items: string[];
+}
+
+interface WriterDataHandoffSummary {
+  status: WriterDataHandoffStatus;
+  statusLabel: string;
+  cards: WriterDataHandoffCard[];
 }
 
 interface WriterDiscussionDraft {
@@ -4063,6 +4358,50 @@ interface ProtocolDataConsistencyCheck {
   blockedCount: number;
   overallStatus: string;
   items: ProtocolDataConsistencyItem[];
+}
+
+type ProtocolRealWorldReadinessStatus = "ready" | "needs_review" | "blocked";
+
+interface ProtocolRealWorldReadinessItem {
+  title: string;
+  status: ProtocolRealWorldReadinessStatus;
+  detail: string;
+  action: string;
+}
+
+interface ProtocolRealWorldReadiness {
+  readyCount: number;
+  reviewCount: number;
+  blockedCount: number;
+  overallStatus: string;
+  checklist: ProtocolRealWorldReadinessItem[];
+}
+
+type DataRequirementCategory =
+  | "minimum_field"
+  | "ethics_privacy"
+  | "data_dictionary"
+  | "rt_trace"
+  | "endpoint_statistics"
+  | "other";
+
+interface DataRequirementCategoryMeta {
+  category: DataRequirementCategory;
+  label: string;
+  hint: string;
+  count: number;
+}
+
+interface ClassifiedDataRequirementItem {
+  item: DataRequirementItem;
+  category: DataRequirementCategory;
+  categoryLabel: string;
+  categoryHint: string;
+}
+
+interface DataRequirementReadiness {
+  categories: DataRequirementCategoryMeta[];
+  classifiedItems: ClassifiedDataRequirementItem[];
 }
 
 interface ProtocolVersionSnapshot {
@@ -4746,14 +5085,15 @@ function App() {
     return reminderSummary.reminders.slice(0, 3);
   }, [reminderSummary]);
 
+  const dataRequirementReadiness = useMemo(
+    () => buildDataRequirementReadiness(dataRequirementSpec),
+    [dataRequirementSpec],
+  );
   const visibleDataRequirements = useMemo(() => {
-    if (!dataRequirementSpec) {
-      return [];
-    }
     return showAllDataRequirements
-      ? dataRequirementSpec.items
-      : dataRequirementSpec.items.slice(0, 6);
-  }, [dataRequirementSpec, showAllDataRequirements]);
+      ? dataRequirementReadiness.classifiedItems
+      : dataRequirementReadiness.classifiedItems.slice(0, 6);
+  }, [dataRequirementReadiness, showAllDataRequirements]);
 
   const mentorTrendHighlights = useMemo(() => {
     return [...(mentorTrendSnapshot?.trends ?? [])]
@@ -4887,6 +5227,15 @@ function App() {
       }),
     [protocol, dataRequirementSpec, qualityReport, statisticsReport, dataAnalysisPlanSuggestion],
   );
+  const protocolRealWorldReadiness = useMemo(
+    () =>
+      buildProtocolRealWorldReadiness({
+        protocol,
+        dataRequirementSpec,
+        qualityReport,
+      }),
+    [protocol, dataRequirementSpec, qualityReport],
+  );
   const protocolVersionSnapshot = useMemo(
     () =>
       buildProtocolVersionSnapshot({
@@ -4896,6 +5245,16 @@ function App() {
         dataAnalysisPlanSuggestion,
       }),
     [selectedProject, protocolQualitySummary, protocolDataConsistencyCheck, dataAnalysisPlanSuggestion],
+  );
+  const writerDataHandoffSummary = useMemo(
+    () =>
+      buildWriterDataHandoffSummary({
+        protocolRealWorldReadiness,
+        protocolDataConsistencyCheck,
+        dataRequirementReadiness,
+        qualityReport,
+      }),
+    [protocolRealWorldReadiness, protocolDataConsistencyCheck, dataRequirementReadiness, qualityReport],
   );
 
   const privacyReport = qualityReport?.privacy_report ?? null;
@@ -6428,6 +6787,17 @@ function App() {
             "",
           ]
         : [
+      "## Writer 数据与方案交接摘要",
+      "",
+      `- 状态：${writerDataHandoffSummary.statusLabel}`,
+      "",
+      ...writerDataHandoffSummary.cards.flatMap((card, index) => [
+        `### ${index + 1}. ${card.title}`,
+        `- 状态：${card.status === "ready" ? "可用" : card.status === "review" ? "需复核" : "阻断"}`,
+        `- 细节：${card.detail}`,
+        ...card.items.map((item) => `- ${item}`),
+        "",
+      ]),
       "## Methods",
       ...writerMethodsResultsDraft!.methodsParagraphs.flatMap((paragraph) => [paragraph, ""]),
       "## Results",
@@ -7291,6 +7661,21 @@ function App() {
         }`,
         `- 详情：${item.detail}`,
         `- 建议：${item.recommendation}`,
+        "",
+      ]),
+      "## 真实数据适配清单",
+      `- 总体状态：${protocolRealWorldReadiness.overallStatus}`,
+      `- 可测试：${protocolRealWorldReadiness.readyCount}`,
+      `- 需复核：${protocolRealWorldReadiness.reviewCount}`,
+      `- 阻断项：${protocolRealWorldReadiness.blockedCount}`,
+      "",
+      ...protocolRealWorldReadiness.checklist.flatMap((item, index) => [
+        `### ${index + 1}. ${item.title}`,
+        `- 状态：${
+          item.status === "ready" ? "可测试" : item.status === "needs_review" ? "需复核" : "阻断"
+        }`,
+        `- 详情：${item.detail}`,
+        `- 测试动作：${item.action}`,
         "",
       ]),
       "## 使用边界",
@@ -9681,6 +10066,38 @@ function App() {
                         ))}
                       </div>
                     </section>
+                    <section className="protocol-realworld-panel">
+                      <div className="protocol-quality-head">
+                        <div>
+                          <p className="eyebrow">真实数据适配清单</p>
+                          <h4>{protocolRealWorldReadiness.overallStatus}</h4>
+                          <small>面向真实字段字典、伦理许可、TPS/DICOM 追踪和统计复核边界。</small>
+                        </div>
+                      </div>
+                      <div className="protocol-quality-metrics">
+                        <span>可测试 {protocolRealWorldReadiness.readyCount}</span>
+                        <span>需复核 {protocolRealWorldReadiness.reviewCount}</span>
+                        <span>阻断项 {protocolRealWorldReadiness.blockedCount}</span>
+                      </div>
+                      <div className="protocol-realworld-grid">
+                        {protocolRealWorldReadiness.checklist.map((item) => (
+                          <article className={`protocol-realworld-item status-${item.status}`} key={item.title}>
+                            <div>
+                              <strong>{item.title}</strong>
+                              <small>{item.detail}</small>
+                            </div>
+                            <span>
+                              {item.status === "ready"
+                                ? "可测试"
+                                : item.status === "needs_review"
+                                  ? "需复核"
+                                  : "阻断"}
+                            </span>
+                            <p>{item.action}</p>
+                          </article>
+                        ))}
+                      </div>
+                    </section>
                     <section className="protocol-version-panel">
                       <div className="protocol-quality-head">
                         <div>
@@ -9911,15 +10328,32 @@ function App() {
                           {dataRequirementSpec?.generated_from_protocol ? "来自研究方案" : "默认模板"}
                         </span>
                       </div>
+                      {dataRequirementReadiness.categories.length ? (
+                        <div className="data-requirement-category-strip">
+                          {dataRequirementReadiness.categories.map((category) => (
+                            <span
+                              className={`data-requirement-category category-${category.category}`}
+                              key={category.category}
+                              title={category.hint}
+                            >
+                              {category.label} {category.count}
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
 
                       <div className="requirement-list">
-                        {visibleDataRequirements.map((item) => (
-                          <article className="requirement-item" key={item.id}>
+                        {visibleDataRequirements.map(({ item, category, categoryLabel, categoryHint }) => (
+                          <article className={`requirement-item category-${category}`} key={item.id}>
                             <div>
                               <strong>{item.label}</strong>
                               <small>{item.rationale}</small>
+                              <small className="requirement-category-hint">{categoryHint}</small>
                             </div>
-                            <span>{item.required ? "必需" : "建议"}</span>
+                            <div className="requirement-badges">
+                              <span>{categoryLabel}</span>
+                              <span>{item.required ? "必需" : "建议"}</span>
+                            </div>
                           </article>
                         ))}
                       </div>
@@ -12074,6 +12508,43 @@ function App() {
                         </div>
                       ) : writerMethodsResultsDraft ? (
                         <>
+                        <section className={`writer-data-handoff-panel status-${writerDataHandoffSummary.status}`}>
+                          <div className="writer-data-handoff-head">
+                            <div>
+                              <strong>数据与方案交接摘要</strong>
+                              <small>{writerDataHandoffSummary.statusLabel}</small>
+                            </div>
+                            <span>
+                              {writerDataHandoffSummary.status === "ready"
+                                ? "可用"
+                                : writerDataHandoffSummary.status === "review"
+                                  ? "需复核"
+                                  : "阻断"}
+                            </span>
+                          </div>
+                          <div className="writer-data-handoff-grid">
+                            {writerDataHandoffSummary.cards.map((card) => (
+                              <article className={`writer-data-handoff-card status-${card.status}`} key={card.title}>
+                                <div>
+                                  <strong>{card.title}</strong>
+                                  <span>
+                                    {card.status === "ready"
+                                      ? "可用"
+                                      : card.status === "review"
+                                        ? "需复核"
+                                        : "阻断"}
+                                  </span>
+                                </div>
+                                <small>{card.detail}</small>
+                                <ul>
+                                  {card.items.slice(0, 4).map((item) => (
+                                    <li key={item}>{item}</li>
+                                  ))}
+                                </ul>
+                              </article>
+                            ))}
+                          </div>
+                        </section>
                         {workflowSummary ? (
                           <div className="writer-source-strip">
                             <span>{workflowSummary.fileName}</span>

@@ -55,6 +55,7 @@ Mentor → Vera Protocol → Data Lin → Alex Writer → Reviewer
 - 方案-数据一致性检查。
 - Mentor 推荐卡写入后可检查最小数据字段、伦理/数据许可、数据字典/导出路径和放疗计划系统追踪。
 - 方案-数据一致性检查可显示 Protocol 最小字段写入状态和 Data Lin 从方案读取到的必需字段数量。
+- 真实数据适配清单可显示 5 张测试卡：真实字段字典、伦理与数据许可、计划系统与 DICOM 追踪、CSV 字段落地、统计复核边界。
 - 方案版本快照。
 - 导出：
   - `protocol-quality-check.md`
@@ -69,6 +70,14 @@ Mentor → Vera Protocol → Data Lin → Alex Writer → Reviewer
 - 正式检验人工确认入口。
 - 分析记录保存和恢复。
 - 数据审计日志。
+- 字段需求区分类展示：
+  - 最小字段
+  - 伦理/脱敏
+  - 数据字典
+  - TPS/DICOM
+  - 终点/统计
+  - 其他
+- 每个字段需求卡显示类别标签、必需/建议状态和分类验收提示，便于核对 Mentor → Protocol 写入后的真实数据适配链路。
 - 预备 DATA 选择和一键联调到 Writer：
   - 放疗计划质量脱敏模拟样例
   - MIMIC-IV EHR demo 样例
@@ -107,6 +116,8 @@ Mentor → Vera Protocol → Data Lin → Alex Writer → Reviewer
 
 - 英文 Introduction 草稿、引用映射和引用质控。
 - Methods / Results 草稿。
+  - Writer Methods / Results 区显示“数据与方案交接摘要”，汇总 Protocol 真实数据适配、Data Lin 字段分类、CSV 覆盖与隐私、方案-数据一致性写作边界。
+  - `methods-results-draft.md` 导出包含该交接摘要，便于人工核对字段、伦理、DICOM/TPS 和统计复核风险后再改写英文正文。
   - 可识别放疗计划质量字段，补充 target coverage、OAR dose、patient-specific QA、delivery time、monitor units 和 plan complexity 的英文专科提示。
   - 可读取高级模型拟合结果，显示高级模型来源与人工核验提示。
   - Logistic 输出会标注 OR-based exploratory model，提醒复核事件编码、事件数、收敛、CI、P 值和样本量限制。
@@ -351,6 +362,26 @@ $env:DATABASE_URL='sqlite:///:memory:'
 - Data Lin 后端 `_split_requirement_text` 已支持项目符号字段，忽略“最小数据字段”等纯标题，避免把标题误当字段。
 - 验收结果：`npm.cmd run build` 通过；字段拆分小样本返回 `匿名病例或计划 ID`、`治疗部位`、`TPS/计划系统版本` 和数据字典要求；浏览器中 3 张 Mentor 推荐卡均显示三块落地内容，预览写入中可见最小数据字段、IRB / 脱敏、数据字典、计划系统追踪和 Mentor 来源追踪，未执行确认写入。
 
+2026-06-24 Vera Protocol 真实数据适配清单：
+
+- 前端新增 `buildProtocolRealWorldReadiness`，从 Protocol 文本、Data Lin 字段需求和 CSV 质控状态生成真实数据适配清单。
+- 清单包含 5 张卡：真实字段字典、伦理与数据许可、计划系统与 DICOM 追踪、CSV 字段落地、统计复核边界。
+- “导出一致性”Markdown 已包含真实数据适配清单，便于线下逐项验收。
+- 验收结果：`npm.cmd run build` 通过；浏览器在 `http://127.0.0.1:3000/` 可见 5 张清单卡，当前无横向溢出。
+
+2026-06-24 Data Lin 字段需求分类展示：
+
+- 前端新增 Data Requirement 分类逻辑，按最小字段、伦理/脱敏、数据字典、TPS/DICOM、终点/统计和其他归类。
+- Data Lin 字段需求区顶部显示分类统计条；每张字段卡显示类别标签、必需/建议状态和分类验收提示。
+- 验收结果：`npm.cmd run build` 通过；浏览器 Data Lin 页面可见分类统计，字段卡显示类别标签，当前无横向溢出。
+
+2026-06-24 Writer 数据与方案交接摘要：
+
+- 前端新增 `buildWriterDataHandoffSummary`，从 Protocol 真实数据适配清单、方案-数据一致性检查、Data Lin 字段分类和 CSV 质控状态生成写作前交接摘要。
+- Alex Writer 的 Methods / Results 区显示 4 张交接卡：Protocol 真实数据适配、Data Lin 字段分类、CSV 覆盖与隐私、Methods / Results 写作边界。
+- `methods-results-draft.md` 导出新增 Writer 数据与方案交接摘要；英文正文生成器本身未自动混入未确认风险，仍由摘要层提示人工核对。
+- 验收结果：`npm.cmd run build` 通过；源码位置已确认。浏览器插件本轮拦截 localhost 打开，需在本机浏览器手动刷新 `http://127.0.0.1:3000/` 复核 UI。
+
 ## 手动验收清单
 
 建议在浏览器中按以下顺序手动验收：
@@ -382,9 +413,12 @@ $env:DATABASE_URL='sqlite:///:memory:'
    - 点击“计划草案”后，计划草案列表应出现 7 阶段 / 10 任务结构。
    - 检查方案质量面板包含“最小数据字段是否可追踪”“伦理/数据许可是否标明”“数据字典与导出路径是否明确”“放疗计划系统追踪是否明确”。
    - 检查方案-数据一致性面板包含“Protocol 最小字段写入”。
+   - 检查“真实数据适配清单”显示 5 张卡，并确认状态随 Protocol 和 CSV 质控结果变化。
    - 检查方案质量、方案-数据一致性和版本快照三个面板，并分别导出 Markdown。
    - 检查 Data Lin 数据需求卡片显示“来自研究方案”和当前字段需求数量。
 7. 在 Data Lin 中检查：
+   - 字段需求区顶部显示分类统计条。
+   - 每张字段卡显示“最小字段 / 伦理/脱敏 / 数据字典 / TPS/DICOM / 终点/统计”等类别标签和必需/建议状态。
    - 自主分析计划
    - 质控报告
    - 统计报告
@@ -396,6 +430,9 @@ $env:DATABASE_URL='sqlite:///:memory:'
    - 查看“统计验证计划”并导出 `advanced-model-validation-plan.md`
    - 正式检验确认区
 8. 在 Alex Writer 中检查：
+   - Methods / Results 草稿上方显示“数据与方案交接摘要”。
+   - 交接摘要包含 Protocol 真实数据适配、Data Lin 字段分类、CSV 覆盖与隐私、Methods / Results 写作边界。
+   - 导出 `methods-results-draft.md`，确认 Markdown 中包含 Writer 数据与方案交接摘要。
    - 英文 Methods / Results
    - Discussion
    - Abstract

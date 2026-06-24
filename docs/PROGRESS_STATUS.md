@@ -4,7 +4,7 @@
 
 ## 总体判断
 
-当前项目已经推进到“可带公开医学/放疗样例数据跑通论文写作、后端版本归档、真实审稿意见映射、目标期刊规则校验、Reviewer 收尾验收、第一版高级统计模型拟合、statsmodels Cox/MixedLM 生产化优先路径、外部验证计划导出和 Mentor → Protocol 最小字段写入”的阶段。整体完成度约 **98.9%**；如果只看 5 个核心智能体能力，平均完成度约 **96%**。
+当前项目已经推进到“可带公开医学/放疗样例数据跑通论文写作、后端版本归档、真实审稿意见映射、目标期刊规则校验、Reviewer 收尾验收、第一版高级统计模型拟合、statsmodels Cox/MixedLM 生产化优先路径、外部验证计划导出、Mentor → Protocol 最小字段写入、Vera 真实数据适配清单、Data Lin 字段分类展示和 Writer 数据与方案交接摘要”的阶段。整体完成度约 **99.0%**；如果只看 5 个核心智能体能力，平均完成度约 **96.9%**。
 
 当前主链路已经闭环：
 
@@ -21,9 +21,9 @@ Mentor 选题与引用
 | 智能体 | 完成度 | 当前状态 |
 |---|---:|---|
 | Prof. RadOnc Mentor | 96% | 可生成课题推荐、加载预备真实引用、复核候选引用、导出引用清单，并将推荐写入方案；已内置按主题分布的真实放疗候选文献包，覆盖 MR-guided adaptive RT、FLASH、AI/QA、粒子治疗、影像组学、自动化计划、SRS/SBRT 和运动管理；推荐卡已补最小数据字段、测试落地清单和写入 Protocol 来源追踪，写入预览会把这些内容带入 Protocol 数据需求、实验流程和 Rhea 里程碑 |
-| Dr. Vera Protocol | 87% | 可编辑/保存研究方案，生成方案草案和执行计划草案，完成方案质量检查、方案-数据一致性检查、方案版本快照与导出；质量检查已新增最小数据字段、伦理/数据许可、数据字典/导出路径和放疗计划系统追踪；方案-数据一致性检查已新增 Protocol 最小字段写入核对；下一阶段重点是真实机构字段命名、IRB 附件和正式数据字典适配 |
-| Dr. Data Lin | 99.2% | 可上传 CSV、选择预备 DATA、做质控/隐私检查/统计草案/图表/审计、一键联调 Writer，生成自主分析计划、高级模型计划和高级模型外部验证计划；当前可执行 exploratory linear/logistic，并优先使用 statsmodels PHReg / MixedLM 执行 Cox 与 mixed-effects，失败时回退内部近似路径；Cox / mixed-effects 已补充结构化诊断交接字段和前端外部复核交接展示 |
-| Alex Writer | 99% | 可生成英文 Introduction、Methods / Results、Discussion、Abstract、Cover Letter、投稿包检查清单、目标期刊模板和 Author Guidelines URL 抓取/本地规则校验，并支持放疗计划质量字段解读、高级模型结果来源、pending external validation 英文边界提示、后端版本归档、恢复 Introduction、版本差异查看、历史章节复制、全文恢复逐字段编辑和 Reviewer 修改提醒 |
+| Dr. Vera Protocol | 89% | 可编辑/保存研究方案，生成方案草案和执行计划草案，完成方案质量检查、方案-数据一致性检查、方案版本快照与导出；质量检查已新增最小数据字段、伦理/数据许可、数据字典/导出路径和放疗计划系统追踪；方案-数据一致性检查已新增 Protocol 最小字段写入核对；页面新增真实数据适配清单，覆盖真实字段字典、伦理与数据许可、计划系统与 DICOM 追踪、CSV 字段落地和统计复核边界；下一阶段重点是真实机构字段命名、IRB 附件和正式数据字典适配 |
+| Dr. Data Lin | 99.3% | 可上传 CSV、选择预备 DATA、做质控/隐私检查/统计草案/图表/审计、一键联调 Writer，生成自主分析计划、高级模型计划和高级模型外部验证计划；当前可执行 exploratory linear/logistic，并优先使用 statsmodels PHReg / MixedLM 执行 Cox 与 mixed-effects，失败时回退内部近似路径；Cox / mixed-effects 已补充结构化诊断交接字段和前端外部复核交接展示；字段需求区已按最小字段、伦理/脱敏、数据字典、TPS/DICOM、终点/统计分类展示，便于逐项测试 Protocol 写入结果 |
+| Alex Writer | 99.1% | 可生成英文 Introduction、Methods / Results、Discussion、Abstract、Cover Letter、投稿包检查清单、目标期刊模板和 Author Guidelines URL 抓取/本地规则校验，并支持放疗计划质量字段解读、高级模型结果来源、pending external validation 英文边界提示、Protocol/Data Lin 数据与方案交接摘要、后端版本归档、恢复 Introduction、版本差异查看、历史章节复制、全文恢复逐字段编辑和 Reviewer 修改提醒 |
 | Rev. Dr. Helena Skov | 99% | 可生成投稿前规则清单、深度审稿意见、Response to Reviewers 草稿，并支持放疗专科风险检查、高级模型 OR/HR/Mixed-effects 报告边界检查、高级模型外部验证缺口检查、AI 写作痕迹/模板化风险检查、复杂审稿信规则增强拆分、目标期刊专属审稿维度、真实审稿意见导入、逐条映射、英文回复导出、返修写作清单和章节归属持久化修正；下一阶段以真实 UI 验收和小问题修正为主 |
 
 ## 已完成的关键闭环
@@ -80,9 +80,19 @@ Mentor 当前完成标准：
 - Mentor 推荐卡写入 Protocol 预览时，数据需求会包含最小数据字段、IRB / 脱敏、数据字典、来源系统、导出格式、TPS/计划系统版本、剂量计算算法、结构命名和 QA/gamma criteria。
 - Protocol 方案质量检查新增四个落地项：最小数据字段是否可追踪、伦理/数据许可是否标明、数据字典与导出路径是否明确、放疗计划系统追踪是否明确。
 - 方案-数据一致性检查新增“Protocol 最小字段写入”，用于显示 Data Lin 从 Protocol 读取到的必需字段数量和落地信号命中数。
+- Vera Protocol 页面新增“真实数据适配清单”，把真实字段字典、伦理与数据许可、计划系统与 DICOM 追踪、CSV 字段落地和统计复核边界拆成 5 张可测试卡片；导出一致性报告也包含该清单。
 - `protocol/draft` 已验收：Project A 已有方案内容时返回现有方案，不覆盖当前字段。
 - `plan/drafts/from-protocol` 已验收：可从当前方案生成 7 个阶段和 10 个任务；测试 draft 已清理。
 - `data/requirements` 已验收：当前 Project A 数据需求来自研究方案，可生成 22 个字段需求项。
+
+### 2.2 本轮同步批次
+
+- 已上传 GitHub 的上一批提交：`0f4ee78 Complete Mentor protocol handoff`，覆盖 Mentor 真实证据包、推荐卡三块落地内容、写入 Protocol 和 Protocol 质量检查补强。
+- 本批本地开发新增 Vera Protocol 真实数据适配清单，Data Lin 字段需求分类展示，以及 Writer 数据与方案交接摘要。
+- 本批新增导出覆盖：
+  - `protocol-data-consistency-check.md` 包含真实数据适配清单。
+  - `methods-results-draft.md` 包含 Writer 数据与方案交接摘要。
+- 本批验证：`npm.cmd run build` 通过，`git diff --check` 通过；浏览器插件对 localhost 有拦截，需在本机浏览器手动刷新 `http://127.0.0.1:3000/` 做最终 UI 目视复核。
 
 ### 3. 预备 DATA 联调包
 
@@ -107,6 +117,8 @@ Mentor 当前完成标准：
 - CSV 上传与质控。
 - 脱敏与隐私检查。
 - 数据需求字段覆盖检查。
+  - 字段需求区显示分类统计：最小字段、伦理/脱敏、数据字典、TPS/DICOM、终点/统计和其他。
+  - 每个字段需求卡显示类别标签、必需/建议状态和分类验收提示，便于核对 Protocol 写入后的最小字段链路。
 - 描述性统计草案。
 - 分组比较草案。
 - 图表预览与导出。
@@ -155,6 +167,8 @@ Mentor 当前完成标准：
 - 候选引用可插入背景段、研究空白段和目的段。
 - 字段级引用映射和引用质控。
 - Methods / Results 草稿和导出 `methods-results-draft.md`。
+  - Writer Methods / Results 区新增“数据与方案交接摘要”，读取 Protocol 真实数据适配状态、Data Lin 字段分类、CSV 覆盖与隐私状态、方案-数据一致性动作。
+  - `methods-results-draft.md` 导出新增 Writer 数据与方案交接摘要，避免写作阶段丢失字段字典、伦理/脱敏、TPS/DICOM 或统计复核风险。
   - 可读取高级模型拟合结果，并显示高级模型来源与人工核验提示。
   - Logistic 输出会标注 OR-based exploratory model，提醒复核事件编码、事件数、收敛、CI、P 值和样本量限制。
   - Cox 输出会标注 HR-based exploratory survival model，提醒复核随访起点、事件编码、删失、比例风险假设、CI、P 值和样本量限制。
