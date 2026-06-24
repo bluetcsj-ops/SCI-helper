@@ -305,13 +305,14 @@ const protocolFields: Array<{
   { key: "inclusion_criteria", label: "纳入标准", rows: 4 },
   { key: "exclusion_criteria", label: "排除标准", rows: 4 },
   { key: "data_requirements", label: "数据需求", rows: 5 },
+  { key: "institutional_field_mapping", label: "机构字段适配", rows: 6 },
   { key: "experiment_workflow", label: "实验流程", rows: 5 },
   { key: "statistical_plan", label: "统计路线", rows: 5 },
   { key: "target_journals", label: "目标期刊", rows: 3 },
   { key: "rhea_milestones", label: "Rhea 里程碑", rows: 4 },
 ];
 
-type ProtocolSectionId = "core" | "criteria" | "analysis" | "submission";
+type ProtocolSectionId = "core" | "criteria" | "institutional" | "analysis" | "submission";
 type MentorProgrammingLevel = "none" | "basic" | "intermediate" | "advanced";
 
 const protocolFieldMap = Object.fromEntries(
@@ -338,6 +339,11 @@ const protocolSections: Array<{
     id: "criteria",
     title: "病例与数据",
     fields: ["inclusion_criteria", "exclusion_criteria", "data_requirements"],
+  },
+  {
+    id: "institutional",
+    title: "机构适配",
+    fields: ["institutional_field_mapping"],
   },
   {
     id: "analysis",
@@ -686,6 +692,20 @@ function mentorCardToProtocolUpdate(card: MentorRecommendationCard): ProjectProt
     card.first_milestones.length ? "首轮里程碑：" : null,
     ...card.first_milestones.map((item) => `- ${item}`),
   ].filter(Boolean) as string[];
+  const institutionalFieldMapping = [
+    "机构字段适配清单：",
+    "- IRB 编号/豁免依据：[待填写]",
+    "- 数据使用授权：[待填写]",
+    "- 脱敏规则：[待填写]",
+    "- 原始数据保存边界：[待填写]",
+    "- 字段字典路径：[待填写]",
+    "- CSV 导出路径：[待填写]",
+    "- TPS/计划软件版本：[待填写]",
+    "- 剂量计算算法：[待填写]",
+    "- 机器或 MLC 型号：[待填写]",
+    "- 结构命名规则：[待填写]",
+    "- QA/gamma criteria：[待填写]",
+  ].join("\n");
   const milestoneLines = [
     ...card.first_milestones,
     ...readinessChecklist.slice(0, 3).map((item) => `验收：${item}`),
@@ -700,6 +720,7 @@ function mentorCardToProtocolUpdate(card: MentorRecommendationCard): ProjectProt
     inclusion_criteria: "纳入已完成标准治疗或质控流程、关键计划/剂量/结构数据完整、可追溯计划系统版本、并已完成脱敏的数据记录。",
     exclusion_criteria: "排除关键字段缺失、计划或影像质量不可复核、治疗流程中断、数据来源不一致、以及存在直接身份标识或脱敏不充分风险的记录。",
     data_requirements: dataRequirementLines.join("\n"),
+    institutional_field_mapping: institutionalFieldMapping,
     experiment_workflow: workflowLines.join("\n"),
     statistical_plan: card.statistical_plan,
     target_journals: card.target_journals.join("、"),
@@ -3470,9 +3491,15 @@ function buildProtocolQualitySummary(protocol: ProjectProtocol | null): Protocol
     };
   };
   const dataRequirementsText = valueFor("data_requirements");
+  const institutionalFieldMappingText = valueFor("institutional_field_mapping");
   const workflowText = valueFor("experiment_workflow");
   const milestoneText = valueFor("rhea_milestones");
-  const implementationText = [dataRequirementsText, workflowText, milestoneText].join("\n");
+  const implementationText = [
+    dataRequirementsText,
+    institutionalFieldMappingText,
+    workflowText,
+    milestoneText,
+  ].join("\n");
   const items: ProtocolQualityItem[] = [
     checkText("research_question", "研究问题是否明确", 20, true, "先写清对象、干预/暴露、比较和主要结局。"),
     checkText("hypothesis", "研究假设是否存在", 20, true, "补充方向性假设，并避免写成泛泛目标。"),
@@ -3481,6 +3508,13 @@ function buildProtocolQualitySummary(protocol: ProjectProtocol | null): Protocol
     checkText("inclusion_criteria", "纳入标准是否完整", 20, true, "写清病例来源、时间范围、治疗方式和最低数据要求。"),
     checkText("exclusion_criteria", "排除标准是否完整", 20, false, "列出缺失关键数据、重复病例、质控不可复核等排除条件。"),
     checkText("data_requirements", "数据需求是否可执行", 30, true, "列出必需字段、来源系统、导出格式和脱敏要求。"),
+    checkText(
+      "institutional_field_mapping",
+      "机构字段适配是否可追踪",
+      50,
+      true,
+      "补齐 IRB/授权/脱敏、字段字典、CSV 导出路径、TPS/DICOM/QA 和统计复核边界。",
+    ),
     checkSignals(
       "minimum_data_fields",
       "最小数据字段是否可追踪",
@@ -3552,6 +3586,7 @@ function buildProtocolDataConsistencyCheck(params: {
     protocol?.primary_endpoint,
     protocol?.secondary_endpoints,
     protocol?.data_requirements,
+    protocol?.institutional_field_mapping,
     protocol?.statistical_plan,
   ]
     .filter(Boolean)
@@ -3565,6 +3600,8 @@ function buildProtocolDataConsistencyCheck(params: {
   const privacyRisk = qualityReport?.privacy_report?.risk_level ?? "green";
   const formalTestReport = statisticsReport?.formal_test_report ?? null;
   const protocolDataRequirements = protocol?.data_requirements?.trim() ?? "";
+  const institutionalFieldMapping = protocol?.institutional_field_mapping?.trim() ?? "";
+  const protocolLandingText = [protocolDataRequirements, institutionalFieldMapping].join("\n");
   const protocolDataRequirementSignals = [
     "最小数据字段",
     "IRB",
@@ -3582,7 +3619,7 @@ function buildProtocolDataConsistencyCheck(params: {
     "gamma",
   ];
   const matchedProtocolDataRequirementSignals = protocolDataRequirementSignals.filter((keyword) =>
-    protocolDataRequirements.toLowerCase().includes(keyword.toLowerCase()),
+    protocolLandingText.toLowerCase().includes(keyword.toLowerCase()),
   );
   const items: ProtocolDataConsistencyItem[] = [
     {
@@ -3633,16 +3670,16 @@ function buildProtocolDataConsistencyCheck(params: {
     },
     {
       title: "Protocol 最小字段写入",
-      status: protocolDataRequirements
+      status: protocolLandingText.trim()
         ? requiredItemCount >= 5 && matchedProtocolDataRequirementSignals.length >= 3
           ? "passed"
           : "review"
         : "blocked",
-      detail: protocolDataRequirements
+      detail: protocolLandingText.trim()
         ? `Data Lin 当前可从 Protocol 读取 ${requiredItemCount} 个必需字段；方案命中 ${matchedProtocolDataRequirementSignals.length} 类落地信号。`
         : "Protocol 尚未填写数据需求，无法生成最小字段链路。",
       recommendation:
-        protocolDataRequirements && requiredItemCount >= 5
+        protocolLandingText.trim() && requiredItemCount >= 5
           ? "继续核对字段名、单位、导出来源和真实 CSV 列名是否一致。"
           : "从 Mentor 推荐卡写入最小数据字段、伦理/脱敏、数据字典和计划系统追踪信息。",
     },
@@ -3709,9 +3746,10 @@ function buildProtocolRealWorldReadiness(params: {
 }): ProtocolRealWorldReadiness {
   const { protocol, dataRequirementSpec, qualityReport } = params;
   const dataText = protocol?.data_requirements?.trim() ?? "";
+  const institutionalText = protocol?.institutional_field_mapping?.trim() ?? "";
   const workflowText = protocol?.experiment_workflow?.trim() ?? "";
   const criteriaText = [protocol?.inclusion_criteria, protocol?.exclusion_criteria].filter(Boolean).join("\n");
-  const combinedText = [dataText, workflowText, criteriaText].join("\n").toLowerCase();
+  const combinedText = [dataText, institutionalText, workflowText, criteriaText].join("\n").toLowerCase();
   const requiredFieldCount = dataRequirementSpec?.items.filter((item) => item.required).length ?? 0;
   const csvColumnCount = qualityReport?.columns.length ?? 0;
   const matchedRequiredCount = qualityReport?.matched_required_fields.length ?? 0;
@@ -5055,6 +5093,7 @@ function App() {
   >({
     core: true,
     criteria: false,
+    institutional: false,
     analysis: false,
     submission: false,
   });
@@ -5787,6 +5826,7 @@ function App() {
     setOpenProtocolSections({
       core: true,
       criteria: false,
+      institutional: false,
       analysis: false,
       submission: false,
     });
@@ -7972,6 +8012,7 @@ function App() {
       setOpenProtocolSections({
         core: true,
         criteria: true,
+        institutional: true,
         analysis: true,
         submission: true,
       });
@@ -8055,6 +8096,7 @@ function App() {
         inclusion_criteria: "",
         exclusion_criteria: "",
         data_requirements: "",
+        institutional_field_mapping: "",
         experiment_workflow: "",
         statistical_plan: "",
         target_journals: "",

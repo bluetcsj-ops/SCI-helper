@@ -94,6 +94,7 @@ class ProjectProtocolRecord(Base):
     inclusion_criteria: Mapped[str] = mapped_column(Text, nullable=False, default="")
     exclusion_criteria: Mapped[str] = mapped_column(Text, nullable=False, default="")
     data_requirements: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    institutional_field_mapping: Mapped[str] = mapped_column(Text, nullable=False, default="")
     experiment_workflow: Mapped[str] = mapped_column(Text, nullable=False, default="")
     statistical_plan: Mapped[str] = mapped_column(Text, nullable=False, default="")
     target_journals: Mapped[str] = mapped_column(Text, nullable=False, default="")

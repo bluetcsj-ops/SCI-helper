@@ -1,12 +1,16 @@
-from sqlalchemy import select
+from sqlalchemy import inspect, select, text
 
 from app.db.models import ProjectProtocolRecord
-from app.db.session import SessionLocal
+from app.db.session import Base, SessionLocal, engine
 from app.projects.models import Project, ProjectProtocol, ProjectProtocolUpdate
 
 
 class ProtocolRepository:
+    def __init__(self) -> None:
+        self._schema_checked = False
+
     def get_protocol(self, project_id: str) -> ProjectProtocol:
+        self._ensure_schema()
         with SessionLocal() as session:
             record = session.scalar(
                 select(ProjectProtocolRecord).where(ProjectProtocolRecord.project_id == project_id)
@@ -20,6 +24,7 @@ class ProtocolRepository:
         project_id: str,
         payload: ProjectProtocolUpdate,
     ) -> ProjectProtocol:
+        self._ensure_schema()
         with SessionLocal() as session:
             record = session.scalar(
                 select(ProjectProtocolRecord).where(ProjectProtocolRecord.project_id == project_id)
@@ -54,6 +59,11 @@ class ProtocolRepository:
                 inclusion_criteria="纳入已完成标准治疗流程、数据完整、计划与结构可追溯、具有可导出 DICOM-RT 或结构化计划数据的病例。",
                 exclusion_criteria="排除关键 DICOM/剂量/结构数据缺失、治疗流程中断、计划系统版本不可追溯或图像配准质量不可接受的病例。",
                 data_requirements="至少需要患者匿名 ID、治疗部位、计划系统版本、RTPLAN、RTDOSE、RTSTRUCT、处方剂量、分割次数、靶区和 OAR 剂量指标。",
+                institutional_field_mapping=(
+                    "机构适配字段：IRB 编号/豁免依据、数据使用授权、脱敏规则、原始数据保存边界、"
+                    "字段字典路径、CSV 导出路径、TPS/计划软件版本、剂量计算算法、机器或 MLC 型号、"
+                    "结构命名规则、QA/gamma criteria。"
+                ),
                 experiment_workflow=(
                     "1. 明确病例筛选标准；2. 导出并脱敏数据；3. 完成数据完整性检查；"
                     "4. 提取剂量学或模型输入变量；5. 执行统计分析；6. 生成图表和方法学记录。"
@@ -85,6 +95,7 @@ class ProtocolRepository:
             inclusion_criteria=record.inclusion_criteria,
             exclusion_criteria=record.exclusion_criteria,
             data_requirements=record.data_requirements,
+            institutional_field_mapping=record.institutional_field_mapping,
             experiment_workflow=record.experiment_workflow,
             statistical_plan=record.statistical_plan,
             target_journals=record.target_journals,
@@ -97,6 +108,31 @@ class ProtocolRepository:
             for field_name, value in protocol.model_dump().items()
             if field_name != "project_id"
         )
+
+    def _ensure_schema(self) -> None:
+        if self._schema_checked:
+            return
+        table = Base.metadata.tables[ProjectProtocolRecord.__tablename__]
+        if engine.dialect.name == "sqlite":
+            inspector = inspect(engine)
+            if not inspector.has_table(ProjectProtocolRecord.__tablename__):
+                table.create(bind=engine, checkfirst=True)
+            else:
+                existing_columns = {
+                    column["name"]
+                    for column in inspector.get_columns(ProjectProtocolRecord.__tablename__)
+                }
+                if "institutional_field_mapping" not in existing_columns:
+                    with engine.begin() as connection:
+                        connection.execute(
+                            text(
+                                f"ALTER TABLE {ProjectProtocolRecord.__tablename__} "
+                                "ADD COLUMN institutional_field_mapping TEXT NOT NULL DEFAULT ''"
+                            )
+                        )
+        else:
+            table.create(bind=engine, checkfirst=True)
+        self._schema_checked = True
 
 
 protocol_repository = ProtocolRepository()

@@ -200,7 +200,9 @@ class DataWorkspaceService:
 
         return DataRequirementSpec(
             project_id=project.id,
-            generated_from_protocol=bool(protocol.data_requirements.strip()),
+            generated_from_protocol=bool(
+                protocol.data_requirements.strip() or protocol.institutional_field_mapping.strip()
+            ),
             protocol_data_requirements=protocol.data_requirements,
             items=items,
             next_step=next_step,
@@ -2871,6 +2873,20 @@ class DataWorkspaceService:
                     category="protocol",
                     source="Project Protocol 数据需求",
                     rationale="来自当前项目研究方案的数据需求字段。",
+                )
+            )
+
+        for index, label in enumerate(
+            self._split_requirement_text(protocol.institutional_field_mapping),
+            start=1,
+        ):
+            items.append(
+                DataRequirementItem(
+                    id=f"protocol-institutional-field-{index}",
+                    label=label,
+                    category="institutional_mapping",
+                    source="Project Protocol 机构字段适配",
+                    rationale="来自当前项目的真实机构字段、伦理授权、导出路径或 TPS/DICOM/QA 适配清单。",
                 )
             )
 

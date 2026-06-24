@@ -208,6 +208,7 @@ export interface ProjectProtocol {
   inclusion_criteria: string;
   exclusion_criteria: string;
   data_requirements: string;
+  institutional_field_mapping: string;
   experiment_workflow: string;
   statistical_plan: string;
   target_journals: string;
