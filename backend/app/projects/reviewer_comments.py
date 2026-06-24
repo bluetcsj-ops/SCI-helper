@@ -277,10 +277,31 @@ class ReviewerCommentRepository:
         if re.search(
             r"\b(statistic|statistics|p value|p-value|confidence interval|ci\b|"
             r"odds ratio|or-based|hazard ratio|\bhr\b|regression|model|calibration|"
-            r"roc|auc|validation|separation|convergence|schoenfeld|mixed[- ]effects?)\b",
+            r"roc|auc|validation|separation|convergence|schoenfeld|mixed[- ]effects?|"
+            r"event coding|binary endpoint|endpoint coding|outlier|causal|causality|"
+            r"exploratory|predictive claim|prediction claim)\b",
             text_value,
         ):
             return "statistics_model"
+        if re.search(
+            r"\b(ethic|irb|consent|conflict of interest|funding|data availability|"
+            r"generative ai|ai assistance|cover letter|submission|disclosure)\b",
+            text_value,
+        ):
+            return "ethics_submission"
+        if re.search(
+            r"\b(reference|citation|literature|introduction|background|recent study|"
+            r"prior work|supporting evidence)\b",
+            text_value,
+        ):
+            return "literature_reference"
+        if re.search(
+            r"\b(treatment planning system|planning system|tps|dose calculation|"
+            r"gamma criteria|gamma pass|structure naming|rt dose|rtdose|rtstruct|"
+            r"rtplan|dicom|qa failure|patient-specific qa|plan-quality|plan quality)\b",
+            text_value,
+        ):
+            return "radiotherapy_methods"
         if re.search(
             r"\b(data|dataset|csv|missing|privacy|de-identif|anonym|patient id|"
             r"raw data|dicom|rtdose|rtstruct|rtplan|tps|gamma|qa)\b",
@@ -293,16 +314,11 @@ class ReviewerCommentRepository:
             text_value,
         ):
             return "methods_reporting"
-        if re.search(
-            r"\b(ethic|irb|consent|conflict of interest|funding|data availability|"
-            r"generative ai|ai assistance|cover letter|submission)\b",
-            text_value,
-        ):
-            return "ethics_submission"
         if re.search(r"\b(figure|table|legend|resolution|reference|supplement)\b", text_value):
             return "figures_tables"
         if re.search(
-            r"\b(editorial|typo|grammar|language|wording|format|formatting|proofread)\b",
+            r"\b(editorial|typo|grammar|language|wording|format|formatting|proofread|"
+            r"generic|abstract|tighten)\b",
             text_value,
         ):
             return "language_editorial"
@@ -311,14 +327,18 @@ class ReviewerCommentRepository:
     def _response_opening(self, comment_type: str, theme: str) -> str:
         if comment_type == "editorial" or theme == "language_editorial":
             return "Thank you for identifying this wording and presentation issue."
-        if comment_type == "minor":
-            return "Thank you for this helpful suggestion."
         if theme == "statistics_model":
             return "We appreciate the reviewer highlighting the statistical interpretation of this analysis."
         if theme == "data_privacy":
             return "We appreciate the reviewer drawing attention to the data source and traceability."
+        if theme == "radiotherapy_methods":
+            return "We appreciate the reviewer asking for a clearer account of the radiotherapy planning details."
+        if theme == "literature_reference":
+            return "Thank you for pointing out the need to strengthen the literature support."
         if theme == "ethics_submission":
             return "Thank you for pointing out this submission and disclosure requirement."
+        if comment_type == "minor":
+            return "Thank you for this helpful suggestion."
         return "Thank you for raising this important point."
 
     def _response_action(self, theme: str) -> str:
@@ -335,6 +355,19 @@ class ReviewerCommentRepository:
                 "de-identification safeguards, and whether raw clinical or DICOM data were retained. "
                 "The revision will separate auditable sample-data workflow details from any claims "
                 "that require authorized real-world data."
+            )
+        if theme == "radiotherapy_methods":
+            return (
+                "We will revise the Methods to report the treatment planning system version, dose "
+                "calculation algorithm, QA or gamma criteria, structure-naming rules, and the way "
+                "plan-quality outliers or QA failures were defined. The Results will avoid extending "
+                "these workflow checks beyond the verified dataset."
+            )
+        if theme == "literature_reference":
+            return (
+                "We will add recent and traceable references in the Introduction or Discussion, explain "
+                "how they support the specific workflow claim, and verify the citation metadata and "
+                "journal reference style before resubmission."
             )
         if theme == "methods_reporting":
             return (

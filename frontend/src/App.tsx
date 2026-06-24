@@ -3061,6 +3061,8 @@ function buildReviewerDeepComments(params: {
 
 type ReviewerResponseTheme =
   | "statistics_model"
+  | "radiotherapy_methods"
+  | "literature_reference"
   | "data_privacy"
   | "methods_reporting"
   | "ethics_submission"
@@ -3071,7 +3073,7 @@ type ReviewerResponseTheme =
 function inferReviewerResponseTheme(value: string): ReviewerResponseTheme {
   const text = value.toLowerCase();
   if (
-    /\b(statistic|statistics|p value|p-value|confidence interval|ci\b|odds ratio|or-based|hazard ratio|\bhr\b|regression|model|calibration|roc|auc|validation|separation|convergence|schoenfeld|mixed[- ]effects?)\b|统计|模型|p\s*值|置信区间|显著性|校准|收敛|事件编码|外部验证|预测|因果|探索性/.test(
+    /\b(statistic|statistics|p value|p-value|confidence interval|ci\b|odds ratio|or-based|hazard ratio|\bhr\b|regression|model|calibration|roc|auc|validation|separation|convergence|schoenfeld|mixed[- ]effects?|event coding|binary endpoint|endpoint coding|outlier|causal|causality|exploratory|predictive claim|prediction claim)\b|统计|模型|p\s*值|置信区间|显著性|校准|收敛|事件编码|外部验证|预测|因果|探索性|二分类终点|离群|异常值/.test(
       text,
     )
   ) {
@@ -3084,7 +3086,21 @@ function inferReviewerResponseTheme(value: string): ReviewerResponseTheme {
   ) {
     return "ethics_submission";
   }
-  if (/\b(figure|table|legend|resolution|reference|supplement)\b|图表|图|表|图题|表题|引用|参考文献|补充材料|分辨率/.test(text)) {
+  if (
+    /\b(reference|citation|literature|introduction|background|recent study|prior work|supporting evidence)\b|引用|参考文献|文献|Introduction|引言|背景|近期研究|证据支持/.test(
+      text,
+    )
+  ) {
+    return "literature_reference";
+  }
+  if (
+    /\b(treatment planning system|planning system|tps|dose calculation|gamma criteria|gamma pass|structure naming|rt dose|rtdose|rtstruct|rtplan|dicom|qa failure|patient-specific qa|plan-quality|plan quality)\b|计划系统|剂量计算|gamma|结构命名|放疗计划|计划质量|患者特异性\s*QA/.test(
+      text,
+    )
+  ) {
+    return "radiotherapy_methods";
+  }
+  if (/\b(figure|table|legend|resolution|supplement)\b|图表|图|表|图题|表题|补充材料|分辨率/.test(text)) {
     return "figures_tables";
   }
   if (
@@ -3101,7 +3117,7 @@ function inferReviewerResponseTheme(value: string): ReviewerResponseTheme {
   ) {
     return "methods_reporting";
   }
-  if (/\b(editorial|typo|grammar|language|wording|format|formatting|proofread)\b|语言|措辞|格式|拼写|语法|润色|表达/.test(text)) {
+  if (/\b(editorial|typo|grammar|language|wording|format|formatting|proofread|generic|abstract|tighten)\b|语言|措辞|格式|拼写|语法|润色|表达|泛泛|摘要|收紧/.test(text)) {
     return "language_editorial";
   }
   return "general";
@@ -3116,6 +3132,12 @@ function reviewerResponseOpening(
   }
   if (theme === "data_privacy") {
     return "We appreciate the reviewer drawing attention to the data source, traceability, and privacy safeguards.";
+  }
+  if (theme === "radiotherapy_methods") {
+    return "We appreciate the reviewer asking for a clearer account of the radiotherapy planning details.";
+  }
+  if (theme === "literature_reference") {
+    return "Thank you for pointing out the need to strengthen the literature support.";
   }
   if (theme === "ethics_submission") {
     return "Thank you for pointing out this submission and disclosure requirement.";
@@ -3147,6 +3169,18 @@ function reviewerResponseAction(theme: ReviewerResponseTheme): string {
     return (
       "We will clarify the data source, field definitions, missing-field handling, de-identification safeguards, "
       + "and whether raw clinical or DICOM data were retained."
+    );
+  }
+  if (theme === "radiotherapy_methods") {
+    return (
+      "We will revise the Methods to report the treatment planning system version, dose calculation algorithm, "
+      + "QA or gamma criteria, structure-naming rules, and the way plan-quality outliers or QA failures were defined."
+    );
+  }
+  if (theme === "literature_reference") {
+    return (
+      "We will add recent and traceable references in the Introduction or Discussion, explain how they support "
+      + "the specific workflow claim, and verify the citation metadata and journal reference style."
     );
   }
   if (theme === "methods_reporting") {
