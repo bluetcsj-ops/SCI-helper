@@ -100,6 +100,7 @@ export interface MentorEvidenceItem {
 export interface MentorRecommendationResponse {
   profile_summary: string;
   resource_diagnosis: string[];
+  selection_rationale: string[];
   matched_strengths: string[];
   recommendations: MentorRecommendationCard[];
   next_steps: string[];
@@ -699,6 +700,15 @@ export interface ChatResponse {
   suggested_next_actions: string[];
   response_source: string;
   fallback_reason?: string | null;
+}
+
+export interface ChatHistoryMessage {
+  id: number;
+  project_id: string | null;
+  agent_id: AgentId;
+  speaker: "user" | "agent";
+  content: string;
+  created_at: string;
 }
 
 export interface ChatMessage {

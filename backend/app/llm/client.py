@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Any
 
 from openai import OpenAI
 
@@ -45,6 +46,7 @@ class LLMClient:
         agent: AgentProfile,
         message: str,
         project: Project | None,
+        context: dict[str, Any] | None = None,
     ) -> LLMResult:
         if self._client is None:
             raise RuntimeError(f"{self.provider} is not configured")
@@ -54,7 +56,7 @@ class LLMClient:
             messages=[
                 {
                     "role": "system",
-                    "content": self._build_system_prompt(agent=agent, project=project),
+                    "content": self._build_system_prompt(agent=agent, project=project, context=context),
                 },
                 {
                     "role": "user",
@@ -107,16 +109,62 @@ class LLMClient:
             return settings.deepseek_model
         return settings.openai_model
 
-    def _build_system_prompt(self, agent: AgentProfile, project: Project | None) -> str:
+    def _build_system_prompt(
+        self,
+        agent: AgentProfile,
+        project: Project | None,
+        context: dict[str, Any] | None,
+    ) -> str:
         return "\n\n".join(
             [
                 agent.system_prompt,
                 "你正在本平台中服务一名放射治疗物理师。请始终使用简体中文回答，保持专业、具体、可执行。",
                 "不要编造数据、文献、期刊要求或用户未提供的信息；不确定时请明确说明需要补充什么。",
                 self._format_project_context(project),
+                self._format_shared_context(context),
                 "回答应优先给出当前可执行的下一步，避免空泛鼓励。",
             ]
         )
+
+    def _format_shared_context(self, context: dict[str, Any] | None) -> str:
+        if not context:
+            return "项目共享聊天记录：本次请求未提供额外共享记录。"
+
+        sections = [
+            ("使用边界", context.get("memory_boundary")),
+            ("项目记忆摘要", context.get("project_memory_summary")),
+            ("当前方案摘要", context.get("current_protocol_summary")),
+            ("最近项目对话", context.get("recent_project_messages")),
+            ("Mentor 讨论线索", context.get("mentor_discussion_signals")),
+            ("Vera 方案线索", context.get("vera_protocol_signals")),
+            ("Data Lin 数据限制", context.get("data_limit_signals")),
+            ("Writer 写作边界", context.get("writer_boundary_signals")),
+            ("Reviewer 风险意见", context.get("reviewer_risk_signals")),
+        ]
+        lines = [
+            "项目共享聊天记录与跨智能体上下文：",
+            "这些内容只作为参考记忆，不等于真实数据来源、伦理审批、机构授权或已验证结论。",
+        ]
+
+        for label, value in sections:
+            formatted = self._format_context_value(label, value)
+            if formatted:
+                lines.append(formatted)
+
+        return "\n".join(lines)
+
+    def _format_context_value(self, label: str, value: Any) -> str:
+        if isinstance(value, list):
+            entries = [str(item).strip() for item in value if str(item).strip()]
+            if not entries:
+                return ""
+            bullet_lines = "\n".join(f"- {entry}" for entry in entries[:8])
+            return f"{label}：\n{bullet_lines}"
+
+        if isinstance(value, str) and value.strip():
+            return f"{label}：{value.strip()}"
+
+        return ""
 
     def _format_project_context(self, project: Project | None) -> str:
         if project is None:

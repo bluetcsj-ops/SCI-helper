@@ -18,6 +18,7 @@ PROTOCOL_FIELDS: tuple[str, ...] = (
     "inclusion_criteria",
     "exclusion_criteria",
     "data_requirements",
+    "institutional_field_mapping",
     "experiment_workflow",
     "statistical_plan",
     "target_journals",
@@ -34,6 +35,7 @@ FIELD_LABELS: dict[str, tuple[str, ...]] = {
     "inclusion_criteria": ("纳入标准", "纳入", "inclusion"),
     "exclusion_criteria": ("排除标准", "排除", "exclusion"),
     "data_requirements": ("数据需求", "数据字段", "导出路径", "data requirement"),
+    "institutional_field_mapping": ("正式研究前确认", "人工确认", "机构确认", "institutional", "ethics"),
     "experiment_workflow": ("实验流程", "研究流程", "workflow"),
     "statistical_plan": ("统计路线", "统计分析", "statistical plan"),
     "target_journals": ("目标期刊", "target journal"),
@@ -48,7 +50,7 @@ EXTRACTION_SYSTEM_PROMPT = """
 
 JSON 必须包含以下 key，缺失信息用空字符串：
 research_question, hypothesis, study_type, primary_endpoint, secondary_endpoints,
-inclusion_criteria, exclusion_criteria, data_requirements, experiment_workflow,
+inclusion_criteria, exclusion_criteria, data_requirements, institutional_field_mapping, experiment_workflow,
 statistical_plan, target_journals, rhea_milestones。
 
 抽取要求：
@@ -56,6 +58,7 @@ statistical_plan, target_journals, rhea_milestones。
 - 不要编造源文本中没有的信息。
 - 如果原文把主要终点和次要终点写在同一段，请合理拆分。
 - rhea_milestones 只放时间节点、交付物或下一步行动。
+- institutional_field_mapping 只放正式研究前需要人工确认的伦理、授权、脱敏、字段字典、TPS/DICOM/QA 或统计复核边界；不要编造具体 IRB 编号或机构材料。
 """.strip()
 
 
@@ -164,8 +167,14 @@ class ProtocolExtractor:
         heading_prefix = normalized_line[:80]
 
         for field_name, labels in FIELD_LABELS.items():
-            if any(label.lower() in heading_prefix for label in labels):
-                return field_name
+            for label in labels:
+                normalized_label = label.lower()
+                if heading_prefix == normalized_label:
+                    return field_name
+                if heading_prefix.startswith(normalized_label):
+                    remainder = heading_prefix[len(normalized_label):].strip()
+                    if not remainder or remainder[0] in "：:-—":
+                        return field_name
 
         return None
 

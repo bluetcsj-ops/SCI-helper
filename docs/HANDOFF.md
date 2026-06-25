@@ -1,6 +1,6 @@
 # 项目交接记录
 
-更新时间：2026-06-24
+更新时间：2026-06-25
 
 ## 项目定位
 
@@ -8,7 +8,7 @@
 
 ## 当前状态
 
-当前 `main` 分支已提交 Data Lin 高级模型生产化优先路径、Writer / Reviewer 返修写作清单阶段成果和 mixed-effects model 第一版可执行路径。最新高级模型状态：
+当前 `main` 分支已完成 Data Lin 高级模型生产化优先路径、Writer / Reviewer 返修写作清单阶段成果、mixed-effects model 第一版可执行路径、Mentor → Vera Protocol 草案交接、项目级聊天记忆共享、按项目/智能体隔离聊天历史，以及 Mentor 自定义研究方向优先生成。最新状态：
 
 - Data Lin 高级模型面板可显示“统计验证计划”。
 - 可按 linear/logistic/Cox/mixed-effects 生成模型专属外部验证清单。
@@ -19,8 +19,11 @@
 - 导出后页面显示文件名确认，并提供“复制验证计划”兜底，便于人工验收下载是否成功。
 - Writer Methods / Results 会写入 pending external validation 英文边界提示。
 - Reviewer 检查清单新增“高级模型外部验证缺口”，提示残差、校准、PH assumption、Schoenfeld residuals、random effects、ICC 等模型特异核验项。
+- Project A / B 现在只作为工作区容器和流程演示样例，不代表真实机构 protocol。
+- Mentor 不再直接用固定 topic 模板出题，而是先根据设备、计划系统、可用数据和 Mentor 对话摘要生成自定义研究方向；预设 topic 只作为证据检索、趋势对照和目标期刊入口的辅助标签。
+- 当前项目聊天记录支持项目级共享上下文；历史聊天视图按当前项目 + 当前智能体隔离展示，并支持清空当前智能体记录。
 
-当前整体完成度约 **98.9%**。主链路已经闭环：
+当前整体完成度约 **99.2%**。主链路已经闭环：
 
 ```text
 Mentor → Vera Protocol → Data Lin → Alex Writer → Reviewer
@@ -30,7 +33,7 @@ Mentor → Vera Protocol → Data Lin → Alex Writer → Reviewer
 
 ### Mentor
 
-- 课题推荐。
+- 自定义研究方向候选生成。
 - 预备真实引用加载。
 - 本地真实放疗候选文献包：
   - MR-guided adaptive radiotherapy
@@ -45,7 +48,9 @@ Mentor → Vera Protocol → Data Lin → Alex Writer → Reviewer
 - Mentor 推荐依据卡片显示人工核验缺口，覆盖全文核对、PMID、DOI、Vancouver 候选引用、作者、期刊、年份、卷期页码和 Introduction / Discussion 用途标记。
 - 候选引用复核、用途标记、全文核对。
 - Vancouver 候选引用导出。
-- 推荐卡写入研究方案；写入预览会同步最小数据字段、测试落地清单和 Mentor 来源追踪。
+- 候选方向生成 Vera Protocol 草案；预览方案会同步研究假设、PICO/PECO、主要终点、最小数据字段、实验流程、统计路线、正式研究前确认和 Mentor 来源追踪。
+- Mentor 推荐接口接收 `discussion_summary`，前端会把当前项目 Mentor 对话摘要纳入方向生成。
+- 已通过烟测确认：在 `TOMO / TrueBeam + Eclipse / Accuray + DICOM RTDose / RTStruct / RTPlan` 场景下，系统返回计划剂量学、DICOM 计划复杂度、字段字典验证方向，不再误生成 MR / 在线自适应方向。
 
 ### Vera Protocol
 
@@ -53,9 +58,13 @@ Mentor → Vera Protocol → Data Lin → Alex Writer → Reviewer
 - 方案草案和 Rhea 执行计划草案。
 - 方案质量检查。
 - 方案-数据一致性检查。
-- Mentor 推荐卡写入后可检查最小数据字段、伦理/数据许可、数据字典/导出路径和放疗计划系统追踪。
+- Mentor 推荐卡生成草案后可检查最小数据字段、正式研究前确认项、数据字典/导出路径和放疗计划系统边界。
+- Mentor 推荐卡会合成为完整 Vera 草案，覆盖研究假设、PICO/PECO、主要/次要终点、纳排标准、数据路径、实验流程、统计边界和 Rhea 里程碑。
+- 规则版 Mentor discussion brief 已接入：当前项目的 Mentor 对话、Mentor 表单和推荐报告会提取为用户倾向、限制、资源、数据线索和待确认问题，并进入 Vera 方案草案预览。
+- Mentor 讨论历史可恢复：`GET /api/projects/{project_id}/chat/messages?agent_id=mentor` 返回最近历史消息，前端刷新后仍可把历史 Mentor 讨论合并进 discussion brief。
+- 所有智能体聊天请求可携带项目级共享聊天摘要，Vera 后续回复能看到 Mentor 方向讨论、用户限制和已确认资源。
 - 方案-数据一致性检查可显示 Protocol 最小字段写入状态和 Data Lin 从方案读取到的必需字段数量。
-- 真实数据适配清单可显示 5 张测试卡：真实字段字典、伦理与数据许可、计划系统与 DICOM 追踪、CSV 字段落地、统计复核边界。
+- 正式研究前确认项可显示 5 张卡：候选字段字典、伦理与数据许可确认、计划系统与 DICOM 确认、CSV 字段映射、统计复核边界。
 - 方案版本快照。
 - 导出：
   - `protocol-quality-check.md`
@@ -77,7 +86,7 @@ Mentor → Vera Protocol → Data Lin → Alex Writer → Reviewer
   - TPS/DICOM
   - 终点/统计
   - 其他
-- 每个字段需求卡显示类别标签、必需/建议状态和分类验收提示，便于核对 Mentor → Protocol 写入后的真实数据适配链路。
+- 每个字段需求卡显示类别标签、必需/建议状态和分类验收提示，便于核对 Mentor → Protocol 草案生成后的字段链路。
 - 预备 DATA 选择和一键联调到 Writer：
   - 放疗计划质量脱敏模拟样例
   - MIMIC-IV EHR demo 样例
@@ -116,7 +125,7 @@ Mentor → Vera Protocol → Data Lin → Alex Writer → Reviewer
 
 - 英文 Introduction 草稿、引用映射和引用质控。
 - Methods / Results 草稿。
-  - Writer Methods / Results 区显示“数据与方案交接摘要”，汇总 Protocol 真实数据适配、Data Lin 字段分类、CSV 覆盖与隐私、方案-数据一致性写作边界。
+  - Writer Methods / Results 区显示“数据与方案交接摘要”，汇总 Protocol 正式研究前确认、Data Lin 字段分类、CSV 覆盖与隐私、方案-数据一致性写作边界。
   - `methods-results-draft.md` 导出包含该交接摘要，便于人工核对字段、伦理、DICOM/TPS 和统计复核风险后再改写英文正文。
   - 可识别放疗计划质量字段，补充 target coverage、OAR dose、patient-specific QA、delivery time、monitor units 和 plan complexity 的英文专科提示。
   - 可读取高级模型拟合结果，显示高级模型来源与人工核验提示。
@@ -319,7 +328,7 @@ $env:DATABASE_URL='sqlite:///:memory:'
 - 后端 `mentor_evidence_service` 新增 `curated_reference` 本地真实放疗候选文献，覆盖 MR-guided adaptive RT、FLASH、AI/QA、粒子治疗、影像组学、自动化计划、SRS/SBRT 和运动管理。
 - 本地 provider 保留每条候选文献的 `curated_reference` 状态、PMID、DOI、PubMed 链接和 DOI 链接，不再强行覆盖为 `local_template`。
 - 前端 Mentor 推荐依据卡片新增“人工核验缺口 / 基础元数据完整”提示，便于测试全文核对、用途标记和引用导出前的剩余工作。
-- 前端 Mentor 推荐卡新增“最小数据字段 / 测试落地清单 / 写入追踪”，便于在写入 Protocol 前核对字段、伦理/数据许可、样例数据和统计复核边界。
+- 前端 Mentor 推荐卡新增“最小数据字段 / 测试落地清单 / 写入追踪”，便于在生成 Protocol 草案前核对字段、真实数据边界、样例数据和统计复核边界。
 - 后端函数验收通过：`mr_linac`、`ai_planning_qa`、`sbrt` 推荐卡返回 `curated_reference`，PMID / DOI 正常。
 - 前端 `npm run build` 通过。
 
@@ -327,7 +336,7 @@ $env:DATABASE_URL='sqlite:///:memory:'
 
 - Mentor 推荐接口验收通过：`project-a` 测试载荷返回 3 张推荐卡，首条证据为 `curated_reference`，PMID `35946325`，DOI `10.1093/jrr/rrac048`。
 - Mentor 文献复核保存/读取闭环通过：`reviewed`、全文核对和 Introduction 用途标记可通过项目复核接口读回；测试记录已清理。
-- Mentor 推荐写入 Protocol 验收通过：先备份 Project A protocol，再写入推荐卡字段，确认研究问题、数据路径和统计路线保存成功，随后已恢复测试前方案。
+- Mentor 推荐生成 Protocol 草案验收通过：先备份 Project A protocol，再生成推荐卡字段，确认研究问题、数据路径和统计路线保存成功，随后已恢复测试前方案。
 - Project A protocol 已复核为正常中文 Unicode 状态，避免 PowerShell 控制台编码造成的显示误判。
 - Vera Protocol 计划草案接口验收通过：可从当前方案生成 7 个阶段和 10 个任务；测试 draft 已删除，原 draft 数量恢复。
 - Vera Protocol 方案草案接口验收通过：已有方案内容时返回现有方案，不覆盖 Project A。
@@ -347,26 +356,30 @@ $env:DATABASE_URL='sqlite:///:memory:'
 2026-06-24 Mentor 95% 收口：
 
 - 后端 `MentorRecommendationCard` 新增 `minimum_data_fields`、`readiness_checklist` 和 `protocol_trace`。
-- MentorService 会按主题生成最小数据字段、伦理/数据许可提醒、首轮样例数据建议、统计复核边界和写入 Protocol 来源追踪。
+- MentorService 会按主题生成最小数据字段、真实数据边界提醒、首轮样例数据建议、统计复核边界和 Protocol 来源追踪。
 - 前端推荐卡展示新增三块：最小数据字段、测试落地清单、写入追踪。
 - 前端生成课题推荐或加载预备引用后会自动滚到推荐报告，并在报告顶部提示每张推荐卡内的“Mentor 落地验收”包含上述三块。
-- Mentor brief 导出包含上述三块内容，写入研究方案预览也显示 Mentor 来源追踪。
+- Mentor brief 导出包含上述三块内容，生成方案草案预览也显示 Mentor 来源追踪。
 - 后端函数验收通过：首张推荐卡返回 10 个最小字段、4 条落地清单、5 条写入追踪，首条证据仍为 `curated_reference`。
 
 2026-06-24 Mentor → Protocol 主线补强：
 
-- 前端 `mentorCardToProtocolUpdate` 会把推荐卡的最小数据字段写入 Protocol `data_requirements`，并补充 IRB / 脱敏、数据字典、来源系统、导出格式、TPS/计划系统版本、剂量计算算法、结构命名和 QA/gamma criteria。
+- 前端 `mentorCardToProtocolUpdate` 会把推荐卡的最小数据字段写入 Protocol `data_requirements`，并补充数据字典草案、来源系统、导出格式和真实数据边界；IRB / 脱敏 / TPS / QA 等只进入正式研究前人工确认项，不作为 Project A 预设输入。
+- 前端 synthesis 会把推荐卡合成为完整 Vera Protocol 草案：研究假设、PICO/PECO、主要/次要终点、纳排标准、数据路径、实验流程、统计边界、正式研究前确认和 Rhea 里程碑。
+- 前端新增规则版 `buildMentorDiscussionBrief`，把当前项目 Mentor 自由对话、表单和推荐报告转成讨论依据，写入 Vera 草案的 hypothesis、study_type、data_requirements、experiment_workflow、institutional_field_mapping 和 rhea_milestones。
+- 前端新增 `getProjectChatMessages` 加载 Mentor 历史消息，并与当前页面新消息去重合并，避免刷新后 discussion brief 丢失。
 - 推荐卡的测试落地清单和 Mentor 写入追踪会进入 Protocol `experiment_workflow`，并同步到 `rhea_milestones` 的验收/追踪节点。
-- Protocol 质量检查新增四项：最小数据字段是否可追踪、伦理/数据许可是否标明、数据字典与导出路径是否明确、放疗计划系统追踪是否明确。
+- Protocol 质量检查新增四项：最小数据字段是否可追踪、正式研究前确认项是否说明、数据字典与导出路径是否明确、放疗计划系统追踪边界是否明确。
+- 后端 Vera 回复抽取器已支持 `institutional_field_mapping`，未配置 LLM 的 Vera 模拟回复也会输出可抽取的结构化草案。
 - 方案-数据一致性检查新增“Protocol 最小字段写入”，显示 Data Lin 当前可从 Protocol 读取的必需字段数量和落地信号命中数。
 - Data Lin 后端 `_split_requirement_text` 已支持项目符号字段，忽略“最小数据字段”等纯标题，避免把标题误当字段。
-- 验收结果：`npm.cmd run build` 通过；字段拆分小样本返回 `匿名病例或计划 ID`、`治疗部位`、`TPS/计划系统版本` 和数据字典要求；浏览器中 3 张 Mentor 推荐卡均显示三块落地内容，预览写入中可见最小数据字段、IRB / 脱敏、数据字典、计划系统追踪和 Mentor 来源追踪，未执行确认写入。
+- 验收结果：`npm.cmd run build` 通过；字段拆分小样本返回 `匿名病例或计划 ID`、`治疗部位`、`TPS/计划系统版本` 和数据字典要求；浏览器中 3 张 Mentor 推荐卡均显示三块落地内容，预览方案中可见最小数据字段、数据字典草案、真实数据边界和 Mentor 来源追踪，未执行确认生成。
 
-2026-06-24 Vera Protocol 真实数据适配清单：
+2026-06-24 Vera Protocol 正式研究前确认项：
 
-- 前端新增 `buildProtocolRealWorldReadiness`，从 Protocol 文本、Data Lin 字段需求和 CSV 质控状态生成真实数据适配清单。
-- 清单包含 5 张卡：真实字段字典、伦理与数据许可、计划系统与 DICOM 追踪、CSV 字段落地、统计复核边界。
-- “导出一致性”Markdown 已包含真实数据适配清单，便于线下逐项验收。
+- 前端新增 `buildProtocolRealWorldReadiness`，从 Protocol 文本、Data Lin 字段需求和 CSV 质控状态生成正式研究前确认项。
+- 清单包含 5 张卡：候选字段字典、伦理与数据许可确认、计划系统与 DICOM 确认、CSV 字段映射、统计复核边界。
+- “导出一致性”Markdown 已包含正式研究前确认清单，便于线下逐项验收。
 - 验收结果：`npm.cmd run build` 通过；浏览器在 `http://127.0.0.1:3000/` 可见 5 张清单卡，当前无横向溢出。
 
 2026-06-24 Data Lin 字段需求分类展示：
@@ -377,10 +390,23 @@ $env:DATABASE_URL='sqlite:///:memory:'
 
 2026-06-24 Writer 数据与方案交接摘要：
 
-- 前端新增 `buildWriterDataHandoffSummary`，从 Protocol 真实数据适配清单、方案-数据一致性检查、Data Lin 字段分类和 CSV 质控状态生成写作前交接摘要。
-- Alex Writer 的 Methods / Results 区显示 4 张交接卡：Protocol 真实数据适配、Data Lin 字段分类、CSV 覆盖与隐私、Methods / Results 写作边界。
+- 前端新增 `buildWriterDataHandoffSummary`，从 Protocol 正式研究前确认项、方案-数据一致性检查、Data Lin 字段分类和 CSV 质控状态生成写作前交接摘要。
+- Alex Writer 的 Methods / Results 区显示 4 张交接卡：Protocol 正式研究前确认、Data Lin 字段分类、CSV 覆盖与隐私、Methods / Results 写作边界。
 - `methods-results-draft.md` 导出新增 Writer 数据与方案交接摘要；英文正文生成器本身未自动混入未确认风险，仍由摘要层提示人工核对。
 - 验收结果：`npm.cmd run build` 通过；源码位置已确认。浏览器插件本轮拦截 localhost 打开，需在本机浏览器手动刷新 `http://127.0.0.1:3000/` 复核 UI。
+
+2026-06-25 Mentor 自定义方向与项目聊天记忆：
+
+- 后端 `MentorQuestionnaireRequest` 新增 `discussion_summary`，前端 Mentor 表单提交时会带入当前项目 Mentor discussion brief。
+- `MentorService` 已从固定 topic 卡片生成改为自定义方向生成：
+  - 方向标题、研究问题、数据路径、方法路线、统计路线和最小字段由资源与对话摘要生成。
+  - topic 库只作为辅助参考标签，用于证据、趋势和期刊入口。
+  - MR 自适应方向只有在设备/系统/数据里出现 MR-Linac、Unity、MRIdian、ViewRay 等真实平台信号时才会生成。
+- 针对非 MR 资源的接口烟测通过：`TOMO / TrueBeam + Eclipse / Accuray + DICOM RTDose / RTStruct / RTPlan` 返回计划剂量学质量、RTDose/RTStruct/RTPlan 一致性、Eclipse/Accuray 字段字典验证三类方向，没有返回 MR / 在线自适应方向。
+- 聊天系统支持项目级共享记忆和按项目/智能体过滤历史；前端新增“当前聊天 / 历史聊天 / 清空”，清空范围限定为当前项目 + 当前智能体。
+- Project 卡片展示已改为读取当前保存的 Vera Protocol / 项目状态，避免长期显示 Project A 旧预设。
+- 新增 `docs/project-a-real-data-intake-template.md`，记录真实研究前 IRB、数据授权、脱敏、字段字典、TPS/DICOM/QA 和统计定稿确认项；该模板不是 Project A 预设输入。
+- 验收结果：`npm.cmd run build` 通过，`.venv\Scripts\python.exe -m compileall app` 通过，`git diff --check` 通过，后端 `/health` 正常；最后确认 8000 服务 PID 为 `32324`。
 
 ## 手动验收清单
 
@@ -406,14 +432,14 @@ $env:DATABASE_URL='sqlite:///:memory:'
    - 导出 `references-vancouver.md`，确认包含去重数量、Vancouver 候选引用和人工核验清单。
    - 导出 Mentor brief，确认包含最小数据字段、测试落地清单、写入追踪和候选证据。
    - 点击“交给 Alex Writer”，确认 Writer 侧能看到候选引用并可插入 / 绑定到 Introduction 字段。
-   - 点击“预览写入”并确认写入研究方案，检查 Protocol 研究问题、数据需求、统计路线、Rhea 里程碑和 Mentor 来源追踪。
+   - 点击“预览方案”并确认生成方案草案，检查 Protocol 研究问题、数据需求、统计路线、Rhea 里程碑和 Mentor 来源追踪。
 6. 在 Vera Protocol 中检查：
    - 顶部按钮显示“方案草案”“计划草案”“保存”，用途清晰可区分。
    - 点击“方案草案”时，已有方案不应被空草案覆盖。
    - 点击“计划草案”后，计划草案列表应出现 7 阶段 / 10 任务结构。
-   - 检查方案质量面板包含“最小数据字段是否可追踪”“伦理/数据许可是否标明”“数据字典与导出路径是否明确”“放疗计划系统追踪是否明确”。
+   - 检查方案质量面板包含“最小数据字段是否可追踪”“正式研究前确认项是否说明”“数据字典与导出路径是否明确”“放疗计划系统追踪边界”。
    - 检查方案-数据一致性面板包含“Protocol 最小字段写入”。
-   - 检查“真实数据适配清单”显示 5 张卡，并确认状态随 Protocol 和 CSV 质控结果变化。
+   - 检查“正式研究前确认项”显示 5 张卡，并确认状态随 Protocol 和 CSV 质控结果变化。
    - 检查方案质量、方案-数据一致性和版本快照三个面板，并分别导出 Markdown。
    - 检查 Data Lin 数据需求卡片显示“来自研究方案”和当前字段需求数量。
 7. 在 Data Lin 中检查：
@@ -431,7 +457,7 @@ $env:DATABASE_URL='sqlite:///:memory:'
    - 正式检验确认区
 8. 在 Alex Writer 中检查：
    - Methods / Results 草稿上方显示“数据与方案交接摘要”。
-   - 交接摘要包含 Protocol 真实数据适配、Data Lin 字段分类、CSV 覆盖与隐私、Methods / Results 写作边界。
+   - 交接摘要包含 Protocol 正式研究前确认、Data Lin 字段分类、CSV 覆盖与隐私、Methods / Results 写作边界。
    - 导出 `methods-results-draft.md`，确认 Markdown 中包含 Writer 数据与方案交接摘要。
    - 英文 Methods / Results
    - Discussion
@@ -498,8 +524,9 @@ npm.cmd run dev -- --host 127.0.0.1 --port 3000
    - Writer 英文稿件与版本库
    - Reviewer 样例 decision letter、章节归属、Writer 修改提醒和导出
 2. 下一阶段优先级：
-   - 真实放疗专科数据适配、真实字段字典和数据许可核对
-   - Mentor 确认写入 Protocol 后，逐项测试 Data Lin 是否读取最小字段、伦理/脱敏、数据字典和计划系统追踪
+   - Mentor/Vera 自主方案生成：从研究方向讨论形成 protocol 草案和实验方案草案
+   - Mentor 确认生成 Protocol 草案后，逐项测试 Data Lin 是否读取最小字段、数据字典草案和真实数据边界
+   - 真实数据接入前，再核对真实字段字典、数据许可、伦理/脱敏和计划系统追踪
    - Writer 写作风格学习和目标期刊英文表达偏好
    - Reviewer / Writer 返修链路增强：让英文审稿回复更自然，并自动识别审稿意见对应的章节、段落和内容类型
    - Author Guidelines PDF / 强 JS 页面处理

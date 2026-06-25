@@ -1,10 +1,12 @@
 # 当前模块进度表
 
-更新日期：2026-06-24
+更新日期：2026-06-25
 
 ## 总体判断
 
-当前项目已经推进到“可带公开医学/放疗样例数据跑通论文写作、后端版本归档、真实审稿意见映射、目标期刊规则校验、Reviewer 收尾验收、第一版高级统计模型拟合、statsmodels Cox/MixedLM 生产化优先路径、外部验证计划导出、Mentor → Protocol 最小字段写入、Vera 真实数据适配清单、Data Lin 字段分类展示和 Writer 数据与方案交接摘要”的阶段。整体完成度约 **99.0%**；如果只看 5 个核心智能体能力，平均完成度约 **96.9%**。
+当前项目已经推进到“可带公开医学/放疗样例数据跑通论文写作、后端版本归档、真实审稿意见映射、目标期刊规则校验、Reviewer 收尾验收、第一版高级统计模型拟合、statsmodels Cox/MixedLM 生产化优先路径、外部验证计划导出、Mentor → Vera Protocol 草案生成、Vera 正式研究前确认项、Data Lin 字段分类展示、Writer 数据与方案交接摘要、项目级聊天记忆共享、按项目/智能体隔离聊天历史、Mentor 自定义研究方向优先生成”的阶段。整体完成度约 **99.2%**；如果只看 5 个核心智能体能力，平均完成度约 **97.4%**。
+
+重要边界：Project A / B 是工作区和预设样例，不代表真实机构 protocol；Mentor 现在优先根据设备、计划系统、可用数据和 Mentor 对话摘要生成自定义研究方向，预设 topic 只作为证据检索、趋势对照和目标期刊入口的辅助标签。真实 IRB、数据授权、脱敏、TPS/DICOM/QA 和字段字典只作为真实数据接入或投稿前的人工确认项。
 
 当前主链路已经闭环：
 
@@ -20,9 +22,9 @@ Mentor 选题与引用
 
 | 智能体 | 完成度 | 当前状态 |
 |---|---:|---|
-| Prof. RadOnc Mentor | 96% | 可生成课题推荐、加载预备真实引用、复核候选引用、导出引用清单，并将推荐写入方案；已内置按主题分布的真实放疗候选文献包，覆盖 MR-guided adaptive RT、FLASH、AI/QA、粒子治疗、影像组学、自动化计划、SRS/SBRT 和运动管理；推荐卡已补最小数据字段、测试落地清单和写入 Protocol 来源追踪，写入预览会把这些内容带入 Protocol 数据需求、实验流程和 Rhea 里程碑 |
-| Dr. Vera Protocol | 89% | 可编辑/保存研究方案，生成方案草案和执行计划草案，完成方案质量检查、方案-数据一致性检查、方案版本快照与导出；质量检查已新增最小数据字段、伦理/数据许可、数据字典/导出路径和放疗计划系统追踪；方案-数据一致性检查已新增 Protocol 最小字段写入核对；页面新增真实数据适配清单，覆盖真实字段字典、伦理与数据许可、计划系统与 DICOM 追踪、CSV 字段落地和统计复核边界；下一阶段重点是真实机构字段命名、IRB 附件和正式数据字典适配 |
-| Dr. Data Lin | 99.3% | 可上传 CSV、选择预备 DATA、做质控/隐私检查/统计草案/图表/审计、一键联调 Writer，生成自主分析计划、高级模型计划和高级模型外部验证计划；当前可执行 exploratory linear/logistic，并优先使用 statsmodels PHReg / MixedLM 执行 Cox 与 mixed-effects，失败时回退内部近似路径；Cox / mixed-effects 已补充结构化诊断交接字段和前端外部复核交接展示；字段需求区已按最小字段、伦理/脱敏、数据字典、TPS/DICOM、终点/统计分类展示，便于逐项测试 Protocol 写入结果 |
+| Prof. RadOnc Mentor | 98% | 可生成自定义研究方向候选、加载预备真实引用、复核候选引用、导出引用清单，并将候选方向生成 Vera Protocol 草案；已内置按主题分布的真实放疗候选文献包，覆盖 MR-guided adaptive RT、FLASH、AI/QA、粒子治疗、影像组学、自动化计划、SRS/SBRT 和运动管理；现在先根据用户资源和 Mentor 对话摘要出题，预设 topic 只作为辅助参考标签；推荐卡已补最小数据字段、测试落地清单和 Protocol 来源追踪，预览方案会把这些内容带入 Protocol 数据需求、PICO/PECO、实验流程、统计路线和 Rhea 里程碑 |
+| Dr. Vera Protocol | 92% | 可编辑/保存研究方案，生成方案草案和执行计划草案，完成方案质量检查、方案-数据一致性检查、方案版本快照与导出；Mentor 自定义方向卡现在会合成为完整 Vera 草案，覆盖研究假设、PICO/PECO、主要/次要终点、纳排标准、数据路径、实验流程、统计边界、正式研究前确认项和 Rhea 里程碑；后端 Vera 回复抽取已支持“正式研究前确认”；下一阶段重点是让 Vera 草案生成后进一步驱动 Rhea 计划和 Data Lin 字段预检查 |
+| Dr. Data Lin | 99.3% | 可上传 CSV、选择预备 DATA、做质控/隐私检查/统计草案/图表/审计、一键联调 Writer，生成自主分析计划、高级模型计划和高级模型外部验证计划；当前可执行 exploratory linear/logistic，并优先使用 statsmodels PHReg / MixedLM 执行 Cox 与 mixed-effects，失败时回退内部近似路径；Cox / mixed-effects 已补充结构化诊断交接字段和前端外部复核交接展示；字段需求区已按最小字段、伦理/脱敏、数据字典、TPS/DICOM、终点/统计分类展示，便于逐项测试 Protocol 草案生成结果 |
 | Alex Writer | 99.1% | 可生成英文 Introduction、Methods / Results、Discussion、Abstract、Cover Letter、投稿包检查清单、目标期刊模板和 Author Guidelines URL 抓取/本地规则校验，并支持放疗计划质量字段解读、高级模型结果来源、pending external validation 英文边界提示、Protocol/Data Lin 数据与方案交接摘要、后端版本归档、恢复 Introduction、版本差异查看、历史章节复制、全文恢复逐字段编辑和 Reviewer 修改提醒 |
 | Rev. Dr. Helena Skov | 99% | 可生成投稿前规则清单、深度审稿意见、Response to Reviewers 草稿，并支持放疗专科风险检查、高级模型 OR/HR/Mixed-effects 报告边界检查、高级模型外部验证缺口检查、AI 写作痕迹/模板化风险检查、复杂审稿信规则增强拆分、目标期刊专属审稿维度、真实审稿意见导入、逐条映射、英文回复导出、返修写作清单和章节归属持久化修正；下一阶段以真实 UI 验收和小问题修正为主 |
 
@@ -60,10 +62,10 @@ Mentor 选题与引用
   - Motion management：AAPM TG-76。
 - 每条真实候选文献保留 PMID、DOI、PubMed 链接、DOI 链接、候选 citation 和 Vancouver 候选引用。
 - 前端 Mentor 推荐依据卡片会显示“人工核验缺口”，包括全文核对、PMID、DOI、Vancouver 候选引用、作者、期刊、年份、卷期页码和用途标记。
-- Mentor 推荐卡新增最小数据字段、测试落地清单和写入 Protocol 来源追踪，覆盖数据字段、伦理/数据许可、首轮样例数据和统计复核边界。
+- Mentor 推荐卡新增最小数据字段、测试落地清单和 Protocol 来源追踪，覆盖数据字段、真实数据边界、首轮样例数据和统计复核边界。
 - 生成课题推荐或加载预备引用后，前端会自动滚动到 Mentor 推荐报告，并在报告顶部提示每张推荐卡内的“Mentor 落地验收”位置。
 - 标记“确认可用”后，候选引用清单、Vancouver 导出和 Alex Writer 引用质控可以直接读取这些真实放疗候选文献。
-- 本地接口验收已覆盖推荐生成、文献复核保存/读取、推荐写入 Protocol、Project A protocol 恢复和测试复核记录清理。
+- 本地接口验收已覆盖推荐生成、文献复核保存/读取、推荐生成 Protocol 草案、Project A protocol 恢复和测试复核记录清理。
 - 仍保留原有本地检索式模板，便于后续扩展 PubMed/Crossref 自动检索。
 
 Mentor 当前完成标准：
@@ -72,27 +74,56 @@ Mentor 当前完成标准：
 - 候选证据必须能显示 PMID / DOI / PubMed / DOI 链接、候选 citation、Vancouver 候选引用和人工核验缺口。
 - 用户能将证据标记为确认可用、全文已核对、Introduction / Discussion 用途，并在候选引用清单中看到同步结果。
 - 用户能导出 Mentor brief 与 Vancouver 引用清单，并把确认可用引用交给 Alex Writer。
-- 用户能在写入 Protocol 预览中看到 Mentor 来源追踪，然后确认写入研究方案。
+- 用户能在生成方案草案预览中看到 Mentor 来源追踪，然后确认生成 Vera Protocol 草案。
 
 ### 2.1 Vera Protocol 本地验收补充
 
 - Protocol 顶部按钮已区分为“方案草案”和“计划草案”，便于手动测试时区分生成方案与生成执行计划。
-- Mentor 推荐卡写入 Protocol 预览时，数据需求会包含最小数据字段、IRB / 脱敏、数据字典、来源系统、导出格式、TPS/计划系统版本、剂量计算算法、结构命名和 QA/gamma criteria。
-- Protocol 方案质量检查新增四个落地项：最小数据字段是否可追踪、伦理/数据许可是否标明、数据字典与导出路径是否明确、放疗计划系统追踪是否明确。
+- Mentor 推荐卡生成 Protocol 草案预览时，数据需求会包含最小数据字段、数据字典草案、来源系统、导出格式和真实数据边界；IRB / 脱敏 / TPS / QA 等只作为正式研究前人工确认项。
+- Protocol 方案质量检查新增四个落地项：最小数据字段是否可追踪、正式研究前确认项是否说明、数据字典与导出路径是否明确、放疗计划系统追踪边界是否明确。
 - 方案-数据一致性检查新增“Protocol 最小字段写入”，用于显示 Data Lin 从 Protocol 读取到的必需字段数量和落地信号命中数。
-- Vera Protocol 页面新增“真实数据适配清单”，把真实字段字典、伦理与数据许可、计划系统与 DICOM 追踪、CSV 字段落地和统计复核边界拆成 5 张可测试卡片；导出一致性报告也包含该清单。
+- Vera Protocol 页面新增“正式研究前确认项”，把候选字段字典、伦理与数据许可确认、计划系统与 DICOM 确认、CSV 字段映射和统计复核边界拆成 5 张卡片；导出一致性报告也包含该清单。
 - `protocol/draft` 已验收：Project A 已有方案内容时返回现有方案，不覆盖当前字段。
 - `plan/drafts/from-protocol` 已验收：可从当前方案生成 7 个阶段和 10 个任务；测试 draft 已清理。
 - `data/requirements` 已验收：当前 Project A 数据需求来自研究方案，可生成 22 个字段需求项。
 
 ### 2.2 本轮同步批次
 
-- 已上传 GitHub 的上一批提交：`0f4ee78 Complete Mentor protocol handoff`，覆盖 Mentor 真实证据包、推荐卡三块落地内容、写入 Protocol 和 Protocol 质量检查补强。
-- 本批本地开发新增 Vera Protocol 真实数据适配清单，Data Lin 字段需求分类展示，以及 Writer 数据与方案交接摘要。
+- 已上传 GitHub 的上一批提交：`0f4ee78 Complete Mentor protocol handoff`，覆盖 Mentor 真实证据包、推荐卡三块落地内容、Protocol 草案交接和 Protocol 质量检查补强。
+- 本批本地开发新增 Vera Protocol 正式研究前确认项，Data Lin 字段需求分类展示，以及 Writer 数据与方案交接摘要。
+- 本批继续推进 Mentor/Vera 自主方案生成：前端推荐卡合成为完整 Vera protocol 草案，预览显示研究假设、PICO/PECO、主要终点、实验方案、统计路线、正式研究前确认和 Rhea 里程碑；后端 Vera 抽取器新增正式研究前确认字段。
+- 本批新增规则版 Mentor discussion brief：前端会从当前项目的 Mentor 对话、Mentor 表单和推荐报告中提取用户倾向、限制、资源、数据线索和待确认问题，并写入 Vera 草案预览、实验流程和 Rhea 里程碑。
+- 本批新增 Mentor 讨论历史恢复：后端提供项目级 chat history 读取接口，前端刷新或切换项目后会加载最近 Mentor 历史消息，discussion brief 不再只依赖当前页面内存。
 - 本批新增导出覆盖：
-  - `protocol-data-consistency-check.md` 包含真实数据适配清单。
+  - `protocol-data-consistency-check.md` 包含正式研究前确认清单。
   - `methods-results-draft.md` 包含 Writer 数据与方案交接摘要。
 - 本批验证：`npm.cmd run build` 通过，`git diff --check` 通过；浏览器插件对 localhost 有拦截，需在本机浏览器手动刷新 `http://127.0.0.1:3000/` 做最终 UI 目视复核。
+
+### 2.3 2026-06-25 Mentor 自定义方向与项目级聊天记忆
+
+- Project A / B 明确降级为工作区容器和演示样例，不再被当作真实 protocol 来源。
+- Mentor 推荐接口新增 `discussion_summary` 入参，前端会把当前项目 Mentor 对话摘要带入方向生成。
+- Mentor 生成逻辑从“固定 topic 推荐卡”切换为“自定义研究方向优先”：
+  - 标题、研究问题、数据路径、方法路线和最小字段优先由设备、计划系统、可用数据和对话摘要生成。
+  - 预设 topic 只作为辅助参考标签，用于证据检索、趋势对照和目标期刊入口。
+  - 若资源中没有真实 MR-Linac / Unity / MRIdian / ViewRay 等平台信号，即使对话中提到“不要套用 MR 自适应预设”，也不会误生成 MR 自适应方向。
+- 针对 `TOMO / TrueBeam + Eclipse / Accuray + DICOM RTDose / RTStruct / RTPlan` 的烟测结果，返回 3 个候选方向：
+  - `TOMO / TrueBeam 计划剂量学质量与 OAR 约束达成度评估`
+  - `基于 RTDose / RTStruct / RTPlan 的计划复杂度与剂量指标一致性研究`
+  - `Eclipse / Accuray 计划导出字段完整性与可复现数据字典验证`
+- 聊天系统新增项目级共享记忆：
+  - 后端支持读取项目聊天历史，并可按 `agent_id` 过滤。
+  - 前端会把当前项目全局对话摘要作为上下文传给后续智能体，便于 Mentor、Vera、Data Lin、Writer、Reviewer 共享项目背景。
+  - UI 增加“当前聊天 / 历史聊天 / 清空”视图；历史聊天只显示当前项目 + 当前智能体记录，共享记忆不直接混在历史聊天里展示。
+  - 清空聊天只清除当前项目当前智能体记录，不影响其他项目或其他智能体。
+- Project 卡片展示已改为读取当前保存的 Vera Protocol / 项目计划状态，避免左侧卡片长期停留在 Project A 旧预设标题和阶段。
+- 新增 `docs/project-a-real-data-intake-template.md`，作为真实研究前 IRB、数据授权、脱敏、字段字典、TPS/DICOM/QA 和统计定稿确认模板；该模板只在选定真实研究后使用，不是 Project A 的预设必填项。
+- 本批验证：
+  - `npm.cmd run build` 通过。
+  - `.venv\Scripts\python.exe -m compileall app` 通过。
+  - `git diff --check` 通过。
+  - 后端 `/health` 正常；本地 8000 服务最后确认 PID 为 `32324`。
+  - Mentor 推荐接口烟测确认非 MR 资源不会再返回 MR / 在线自适应候选方向。
 
 ### 3. 预备 DATA 联调包
 
@@ -167,7 +198,7 @@ Mentor 当前完成标准：
 - 候选引用可插入背景段、研究空白段和目的段。
 - 字段级引用映射和引用质控。
 - Methods / Results 草稿和导出 `methods-results-draft.md`。
-  - Writer Methods / Results 区新增“数据与方案交接摘要”，读取 Protocol 真实数据适配状态、Data Lin 字段分类、CSV 覆盖与隐私状态、方案-数据一致性动作。
+  - Writer Methods / Results 区新增“数据与方案交接摘要”，读取 Protocol 正式研究前确认状态、Data Lin 字段分类、CSV 覆盖与隐私状态、方案-数据一致性动作。
   - `methods-results-draft.md` 导出新增 Writer 数据与方案交接摘要，避免写作阶段丢失字段字典、伦理/脱敏、TPS/DICOM 或统计复核风险。
   - 可读取高级模型拟合结果，并显示高级模型来源与人工核验提示。
   - Logistic 输出会标注 OR-based exploratory model，提醒复核事件编码、事件数、收敛、CI、P 值和样本量限制。
@@ -267,17 +298,17 @@ Mentor 当前完成标准：
    - 2026-06-24 已完成导出/复制兜底修复验收：高级模型验证计划在剪贴板不可用时会显示只读文本框，关键 Markdown 导出会显示文件名提示。
 2. Data Lin 下一阶段：
    - 在现有 statsmodels PHReg / MixedLM 优先路径基础上，补充更系统的诊断输出与外部复核交接：PH assumption、Schoenfeld residuals、convergence、singular fit、random-effects 结构、ICC 和样本量限制。
-3. 真实放疗专科数据适配：
-   - 在当前 Protocol 最小字段写入基础上，建立真实机构字段命名、正式数据字典、字段映射和数据许可核对清单。
-   - 用真实 TPS 导出路径核对计划系统版本、剂量计算算法、gamma criteria、结构命名规则和 DICOM RTDose / RTStruct / RTPlan 字段。
+3. Mentor / Vera 下一阶段：
+   - 把用户与 Mentor 的研究方向讨论转成更完整的 Vera Protocol 草案，包括研究问题、假设、PICO/PECO、终点、实验流程、统计路线和首轮验证计划。
+   - 保持 Project A / B 作为工作区样例，不再要求预设项目自带真实 IRB、数据授权、TPS/DICOM/QA 或字段字典。
 4. Writer 下一阶段：
    - 写作风格学习与目标期刊英文表达偏好。
    - Response to Reviewers 语气润色：降低模板感，让回复更像真实作者逐条回应。
    - 更稳定的 PDF / 强 JS Author Guidelines 处理方案。
-5. Mentor / Protocol 下一阶段：
-   - 用真实放疗候选文献包跑 Mentor UI 验收：生成推荐、检查人工核验缺口、标记确认可用、导出 Vancouver 引用、交给 Writer、预览写入 Protocol。
-   - 确认写入 Protocol 后，检查 Data Lin 字段需求是否读取最小数据字段、伦理/脱敏、数据字典和计划系统追踪。
-   - 将研究假设、PECO/PICO、伦理材料和真实字段字典进一步绑定。
+5. 真实数据前确认：
+   - 当某个 Mentor/Vera 方案被用户选定后，再建立真实机构字段命名、正式数据字典、字段映射和数据许可核对清单。
+   - 如研究需要真实计划数据，再用真实 TPS 导出路径核对计划系统版本、剂量计算算法、gamma criteria、结构命名规则和 DICOM RTDose / RTStruct / RTPlan 字段。
+   - 将研究假设、PECO/PICO 与真实数据许可和字段字典在正式研究前绑定。
 
 ## 下一阶段路线图
 
@@ -290,17 +321,22 @@ Mentor 当前完成标准：
 - 确认页面中文、论文正文/投稿材料英文的规则在所有导出中稳定执行。
 - 收集真实审稿意见样例，评估 Response to Reviewers 默认回复的自然度和具体性。
 
-### 阶段 B：真实数据适配
+### 阶段 B：Mentor/Vera 自主方案生成
+
+- 从 Mentor 讨论内容自动形成 protocol 草案和实验方案草案，而不是依赖 Project A 的预设字段。
+- 将研究方向、候选引用、最小字段、统计路线、实验流程和 Rhea 里程碑串成一条可编辑链路。
+
+### 阶段 C：真实数据接入前确认
 
 - 从模拟放疗计划质量 DATA 过渡到可授权的真实脱敏样例。
 - 完成字段字典、缺失值策略、隐私筛查、审计记录和数据许可核对。
 
-### 阶段 C：高级统计扩展
+### 阶段 D：高级统计扩展
 
 - Cox survival analysis 和 mixed-effects model 已完成第一轮诊断交接增强：fit report、验证计划导出和前端结果卡片均显示外部复核材料。
 - 后续继续强化专用统计库验证路径、交叉验证/校准和更细粒度的人工统计复核提示。
 
-### 阶段 D：投稿前生产化
+### 阶段 E：投稿前生产化
 
 - 扩展 Author Guidelines PDF / 强 JS 页面处理。
 - 完成目标期刊风格化英文写作和 Response to Reviewers 定稿辅助。

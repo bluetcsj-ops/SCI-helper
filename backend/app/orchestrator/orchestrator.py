@@ -28,6 +28,7 @@ class Orchestrator:
             agent=agent,
             message=request.message,
             project=project,
+            context=request.context,
         )
 
         chat_repository.save_message(
