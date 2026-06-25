@@ -29,6 +29,7 @@ class MentorQuestionnaireRequest(BaseModel):
     weekly_hours: int = 0
     publication_experience: str = ""
     interest_topics: list[str] = Field(default_factory=list)
+    discussion_summary: list[str] = Field(default_factory=list)
 
 
 class MentorEvidenceItem(BaseModel):
@@ -77,6 +78,7 @@ class MentorRecommendationCard(BaseModel):
 class MentorRecommendationResponse(BaseModel):
     profile_summary: str
     resource_diagnosis: list[str] = Field(default_factory=list)
+    selection_rationale: list[str] = Field(default_factory=list)
     matched_strengths: list[str] = Field(default_factory=list)
     recommendations: list[MentorRecommendationCard] = Field(default_factory=list)
     next_steps: list[str] = Field(default_factory=list)

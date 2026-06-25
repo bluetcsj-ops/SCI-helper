@@ -2885,8 +2885,8 @@ class DataWorkspaceService:
                     id=f"protocol-institutional-field-{index}",
                     label=label,
                     category="institutional_mapping",
-                    source="Project Protocol 机构字段适配",
-                    rationale="来自当前项目的真实机构字段、伦理授权、导出路径或 TPS/DICOM/QA 适配清单。",
+                    source="Project Protocol 正式研究前确认",
+                    rationale="来自当前 protocol 草案的真实数据接入前人工确认项，不代表 Project A / B 已具备真实机构材料。",
                 )
             )
 

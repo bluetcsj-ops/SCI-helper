@@ -2,6 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.agents.mentor_models import MentorEvidenceReview, MentorEvidenceReviewUpdate
 from app.agents.mentor_reviews import mentor_evidence_review_repository
+from app.chat.repository import chat_repository
+from app.orchestrator.schemas import ChatHistoryMessage
 from app.projects.models import (
     Project,
     ProjectPlanDraft,
@@ -49,6 +51,45 @@ def get_project(
         raise HTTPException(status_code=404, detail="Project not found")
     ensure_project_access(project_id, current_user, ProjectAccessLevel.viewer)
     return project
+
+
+@router.get("/{project_id}/chat/messages", response_model=list[ChatHistoryMessage])
+def list_project_chat_messages(
+    project_id: str,
+    agent_id: str | None = None,
+    limit: int = 80,
+    current_user: UserProfile = Depends(get_current_user),
+) -> list[ChatHistoryMessage]:
+    project = project_repository.get_project(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    ensure_project_access(project_id, current_user, ProjectAccessLevel.viewer)
+    records = chat_repository.list_messages(project_id=project_id, agent_id=agent_id, limit=limit)
+    return [
+        ChatHistoryMessage(
+            id=record.id,
+            project_id=record.project_id,
+            agent_id=record.agent_id,
+            speaker=record.speaker,
+            content=record.content,
+            created_at=record.created_at,
+        )
+        for record in records
+    ]
+
+
+@router.delete("/{project_id}/chat/messages", response_model=dict[str, int])
+def clear_project_chat_messages(
+    project_id: str,
+    agent_id: str,
+    current_user: UserProfile = Depends(get_current_user),
+) -> dict[str, int]:
+    project = project_repository.get_project(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    ensure_project_access(project_id, current_user, ProjectAccessLevel.editor)
+    deleted_count = chat_repository.clear_messages(project_id=project_id, agent_id=agent_id)
+    return {"deleted_count": deleted_count}
 
 
 @router.get("/{project_id}/access", response_model=ProjectAccessPolicy)

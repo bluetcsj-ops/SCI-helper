@@ -23,6 +23,7 @@ import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "re
 
 import {
   applyProjectPlanDraft,
+  clearProjectChatMessages,
   clearReviewerCommentThreads,
   createWriterDraftVersion,
   dismissProjectReminder,
@@ -40,6 +41,7 @@ import {
   getMentorRecommendations,
   getMentorTrendSnapshot,
   getProjectAccess,
+  getProjectChatMessages,
   getProjectPlanDrafts,
   getProjectProtocol,
   getProjectReminders,
@@ -71,6 +73,7 @@ import type {
   AdvancedModelPlan,
   ChartSpec,
   ChatMessage,
+  ChatHistoryMessage,
   DataAuditLog,
   DataAnalysisRecord,
   DataQualityReport,
@@ -305,7 +308,7 @@ const protocolFields: Array<{
   { key: "inclusion_criteria", label: "纳入标准", rows: 4 },
   { key: "exclusion_criteria", label: "排除标准", rows: 4 },
   { key: "data_requirements", label: "数据需求", rows: 5 },
-  { key: "institutional_field_mapping", label: "机构字段适配", rows: 6 },
+  { key: "institutional_field_mapping", label: "正式研究前确认", rows: 6 },
   { key: "experiment_workflow", label: "实验流程", rows: 5 },
   { key: "statistical_plan", label: "统计路线", rows: 5 },
   { key: "target_journals", label: "目标期刊", rows: 3 },
@@ -342,7 +345,7 @@ const protocolSections: Array<{
   },
   {
     id: "institutional",
-    title: "机构适配",
+    title: "人工确认",
     fields: ["institutional_field_mapping"],
   },
   {
@@ -610,6 +613,94 @@ function hasProtocolContent(protocol: ProjectProtocol | null): boolean {
   return protocolFields.some(({ key }) => protocol[key].trim().length > 0);
 }
 
+interface ProjectCardDisplay {
+  title: string;
+  topic: string;
+  currentPhase: string;
+  nextMilestone: string;
+}
+
+function cleanProjectCardLine(value: string): string {
+  return value
+    .replace(/^#+\s*/, "")
+    .replace(/^[-*]\s*/, "")
+    .replace(/^\d+[.)、]\s*/, "")
+    .trim();
+}
+
+function firstProtocolLine(value: string | null | undefined): string {
+  return (
+    value
+      ?.split(/\r?\n/)
+      .map(cleanProjectCardLine)
+      .find((line) => line.length > 0) ?? ""
+  );
+}
+
+function shortenProjectCardText(value: string, maxLength: number): string {
+  const trimmed = value.trim();
+  if (trimmed.length <= maxLength) {
+    return trimmed;
+  }
+  return `${trimmed.slice(0, maxLength - 1)}…`;
+}
+
+function protocolPlanTitle(protocol: ProjectProtocol): string {
+  const hypothesisLine = firstProtocolLine(protocol.hypothesis);
+  const quotedTitle = hypothesisLine.match(/围绕[“"]([^”"]+)[”"]/);
+  if (quotedTitle?.[1]) {
+    return quotedTitle[1].trim();
+  }
+  return firstProtocolLine(protocol.research_question);
+}
+
+function firstProtocolMilestone(protocol: ProjectProtocol): string {
+  const lines = protocol.rhea_milestones
+    .split(/\r?\n/)
+    .map(cleanProjectCardLine)
+    .filter((line) => line.length > 0);
+  return (
+    lines.find((line) => !/^(Rhea\s*)?可监控里程碑[:：]?$/.test(line)) ??
+    firstProtocolLine(protocol.experiment_workflow)
+  );
+}
+
+function buildProjectCardDisplay(
+  project: Project,
+  protocol: ProjectProtocol | null,
+  selectedProjectId: string,
+): ProjectCardDisplay {
+  const protocolMatchesProject =
+    project.id === selectedProjectId &&
+    protocol?.project_id === project.id &&
+    hasProtocolContent(protocol);
+
+  if (!protocolMatchesProject || !protocol) {
+    return {
+      title: project.title,
+      topic: project.topic,
+      currentPhase: project.current_phase,
+      nextMilestone: project.next_milestone,
+    };
+  }
+
+  const title = protocolPlanTitle(protocol) || firstProtocolLine(protocol.primary_endpoint) || project.title;
+  const topic =
+    firstProtocolLine(protocol.research_question) ||
+    firstProtocolLine(protocol.primary_endpoint) ||
+    project.topic;
+  const nextMilestone =
+    firstProtocolMilestone(protocol) ||
+    "生成 Rhea 执行计划并确认首轮数据预检";
+
+  return {
+    title: shortenProjectCardText(title, 34),
+    topic: shortenProjectCardText(topic, 86),
+    currentPhase: "Vera 方案草案已生成，等待 Rhea 执行计划",
+    nextMilestone: shortenProjectCardText(nextMilestone, 90),
+  };
+}
+
 function containsCjkText(value: string | null | undefined): boolean {
   return /[\u3400-\u9fff]/.test(value ?? "");
 }
@@ -671,60 +762,594 @@ function manuscriptChartLine(title: string, narrative: string): string {
   )}`;
 }
 
-function mentorCardToProtocolUpdate(card: MentorRecommendationCard): ProjectProtocolUpdate {
+interface VeraProtocolSynthesis {
+  hypothesis: string;
+  studyType: string;
+  primaryEndpoint: string;
+  secondaryEndpoints: string;
+  inclusionCriteria: string;
+  exclusionCriteria: string;
+  dataRequirements: string;
+  institutionalFieldMapping: string;
+  experimentWorkflow: string;
+  statisticalPlan: string;
+  targetJournals: string;
+  rheaMilestones: string;
+}
+
+interface MentorDiscussionBrief {
+  hasDiscussion: boolean;
+  summaryLines: string[];
+  sourceLines: string[];
+  confirmedDirections: string[];
+  rejectedDirections: string[];
+  availableResources: string[];
+  dataSignals: string[];
+  openQuestions: string[];
+}
+
+interface ProjectConversationBrief {
+  hasHistory: boolean;
+  summaryLines: string[];
+  recentMessages: string[];
+  mentorSignals: string[];
+  protocolSignals: string[];
+  dataSignals: string[];
+  writerSignals: string[];
+  reviewerSignals: string[];
+}
+
+function compactProtocolLines(lines: Array<string | null | undefined>): string[] {
+  return lines
+    .map((line) => line?.trim() ?? "")
+    .filter((line) => line.length > 0);
+}
+
+function compactBriefLine(value: string): string {
+  return value
+    .replace(/\s+/g, " ")
+    .replace(/^[-*]\s*/, "")
+    .replace(/^\d+[.)、]\s*/, "")
+    .trim();
+}
+
+function shortenBriefLine(value: string, maxLength = 150): string {
+  const trimmed = compactBriefLine(value);
+  if (trimmed.length <= maxLength) {
+    return trimmed;
+  }
+  return `${trimmed.slice(0, maxLength - 1)}…`;
+}
+
+function addUniqueBriefLine(target: string[], value: string, maxLength = 150): void {
+  const line = shortenBriefLine(value, maxLength);
+  if (line && !target.includes(line)) {
+    target.push(line);
+  }
+}
+
+function splitBriefCandidates(value: string): string[] {
+  return value
+    .split(/[\r\n。！？!?；;]/)
+    .map((line) => compactBriefLine(line))
+    .filter((line) => line.length >= 6);
+}
+
+function pickBriefLines(lines: string[], pattern: RegExp, limit = 4): string[] {
+  const picked: string[] = [];
+  lines.forEach((line) => {
+    if (picked.length < limit && pattern.test(line)) {
+      addUniqueBriefLine(picked, line);
+    }
+  });
+  return picked;
+}
+
+function formatBriefSection(title: string, lines: string[]): string | null {
+  return lines.length ? `${title}：${lines.join("；")}` : null;
+}
+
+function buildMentorDiscussionBrief(params: {
+  messages: ChatMessage[];
+  projectId: string;
+  mentorForm: ReturnType<typeof createMentorFormState>;
+  mentorRecommendationReport: MentorRecommendationResponse | null;
+}): MentorDiscussionBrief {
+  const { messages, projectId, mentorForm, mentorRecommendationReport } = params;
+  const mentorMessages = messages
+    .filter((message) => message.projectId === projectId && message.agentId === "mentor")
+    .slice(-16);
+  const userLines = mentorMessages
+    .filter((message) => message.speaker === "user")
+    .flatMap((message) => splitBriefCandidates(message.content));
+  const mentorLines = mentorMessages
+    .filter((message) => message.speaker === "agent")
+    .flatMap((message) => splitBriefCandidates(message.content));
+  const formLines: string[] = [];
+
+  if (mentorForm.equipmentSummary.trim()) {
+    formLines.push(`设备条件：${mentorForm.equipmentSummary.trim()}`);
+  }
+  if (mentorForm.planningSystems.trim()) {
+    formLines.push(`计划系统：${mentorForm.planningSystems.trim()}`);
+  }
+  if (mentorForm.dataTypesText.trim()) {
+    formLines.push(`候选数据类型：${mentorForm.dataTypesText.trim()}`);
+  }
+  if (mentorForm.weeklyHours > 0) {
+    formLines.push(`每周科研时间：${mentorForm.weeklyHours} 小时`);
+  }
+  if (mentorForm.publicationExperience.trim()) {
+    formLines.push(`发表经验：${mentorForm.publicationExperience.trim()}`);
+  }
+  if (mentorForm.interestTopics.length) {
+    formLines.push(`辅助参考标签：${mentorForm.interestTopics.join("、")}`);
+  }
+
+  const reportLines = [
+    mentorRecommendationReport?.profile_summary,
+    ...(mentorRecommendationReport?.resource_diagnosis ?? []),
+    ...(mentorRecommendationReport?.matched_strengths ?? []),
+  ]
+    .filter((line): line is string => Boolean(line?.trim()))
+    .map((line) => compactBriefLine(line));
+  const allLines = [...userLines, ...mentorLines, ...formLines, ...reportLines];
+  const confirmedDirections = pickBriefLines(
+    userLines,
+    /确认|确定|选择|倾向|优先|感兴趣|想做|可以|同意|就这个|prefer|focus|interested/i,
+  );
+  const rejectedDirections = pickBriefLines(
+    userLines,
+    /不要|不想|排除|暂不|不考虑|没有|不能|不可|缺少|不具备|avoid|exclude/i,
+  );
+  const availableResources = pickBriefLines(
+    allLines,
+    /设备|软件|TPS|计划系统|MR|linac|加速器|QA|DICOM|RTDose|RTStruct|RTPlan|CBCT|log|CSV|病例|样本|数据|Python|R|编程|每周|时间|hours/i,
+    5,
+  );
+  const dataSignals = pickBriefLines(
+    allLines,
+    /数据|字段|CSV|DICOM|RTDose|RTStruct|RTPlan|QA|gamma|log|病例|样本|导出|字段字典/i,
+    5,
+  );
+  const openQuestions = pickBriefLines(
+    allLines,
+    /待|尚未|需要|是否|确认|补充|不明确|\?|？|unclear|pending/i,
+    5,
+  );
+  const sourceLines: string[] = [];
+  mentorMessages.slice(-8).forEach((message) => {
+    const speaker = message.speaker === "user" ? "用户" : "Mentor";
+    addUniqueBriefLine(sourceLines, `${speaker}：${message.content}`, 180);
+  });
+  formLines.forEach((line) => addUniqueBriefLine(sourceLines, `Mentor 表单：${line}`, 180));
+  const summaryLines = compactProtocolLines([
+    formatBriefSection("用户已确认/倾向", confirmedDirections),
+    formatBriefSection("用户排除/限制", rejectedDirections),
+    formatBriefSection("资源与能力", availableResources),
+    formatBriefSection("数据线索", dataSignals),
+    formatBriefSection("尚待确认", openQuestions),
+  ]);
+
+  if (!summaryLines.length) {
+    summaryLines.push("当前尚未捕获到可归入 Mentor 的自由对话；本草案主要依据候选方向和表单候选信息。");
+  }
+
+  return {
+    hasDiscussion: mentorMessages.length > 0 || formLines.length > 0 || reportLines.length > 0,
+    summaryLines,
+    sourceLines,
+    confirmedDirections,
+    rejectedDirections,
+    availableResources,
+    dataSignals,
+    openQuestions,
+  };
+}
+
+function chatHistoryToMessage(record: ChatHistoryMessage): ChatMessage {
+  return {
+    id: `history-${record.id}`,
+    speaker: record.speaker,
+    agentId: record.agent_id,
+    projectId: record.project_id,
+    agentName: agentMemoryLabel(record.agent_id),
+    content: record.content,
+  };
+}
+
+function mergeChatMessagesForBrief(
+  historyMessages: ChatMessage[],
+  currentMessages: ChatMessage[],
+  projectId: string,
+): ChatMessage[] {
+  const seen = new Set<string>();
+  const merged: ChatMessage[] = [];
+  [...historyMessages, ...currentMessages]
+    .filter((message) => message.projectId === projectId)
+    .forEach((message) => {
+      const key = [
+        message.speaker,
+        message.agentId ?? "",
+        message.projectId ?? "",
+        compactBriefLine(message.content),
+      ].join("|");
+      if (!seen.has(key)) {
+        seen.add(key);
+        merged.push(message);
+      }
+    });
+  return merged;
+}
+
+function isProjectAgentMessage(message: ChatMessage, projectId: string, agentId: AgentId): boolean {
+  return message.projectId === projectId && message.agentId === agentId;
+}
+
+function agentMemoryLabel(agentId: AgentId | undefined): string {
+  const labels: Partial<Record<AgentId, string>> = {
+    mentor: "Mentor",
+    study_planner: "Vera",
+    data_analyst: "Data Lin",
+    writer: "Writer",
+    reviewer: "Reviewer",
+    project_manager: "Rhea",
+  };
+  return agentId ? labels[agentId] ?? agentId : "未指定智能体";
+}
+
+function briefLinesForAgent(messages: ChatMessage[], agentId: AgentId, limit = 5): string[] {
+  const lines: string[] = [];
+  messages
+    .filter((message) => message.agentId === agentId)
+    .slice(-12)
+    .flatMap((message) => splitBriefCandidates(message.content))
+    .forEach((line) => {
+      if (lines.length < limit) {
+        addUniqueBriefLine(lines, line, 160);
+      }
+    });
+  return lines;
+}
+
+function buildProjectConversationBrief(params: {
+  messages: ChatMessage[];
+  selectedProject: Project | null | undefined;
+  protocol: ProjectProtocol | null;
+}): ProjectConversationBrief {
+  const { messages, selectedProject, protocol } = params;
+  const projectMessages = messages.filter((message) => message.projectId === selectedProject?.id);
+  const recentMessages = projectMessages.slice(-18).map((message) => {
+    const speaker = message.speaker === "user" ? "用户" : agentMemoryLabel(message.agentId);
+    return shortenBriefLine(`${speaker}：${message.content}`, 180);
+  });
+  const mentorSignals = briefLinesForAgent(projectMessages, "mentor");
+  const protocolSignals = briefLinesForAgent(projectMessages, "study_planner");
+  const dataSignals = briefLinesForAgent(projectMessages, "data_analyst");
+  const writerSignals = briefLinesForAgent(projectMessages, "writer");
+  const reviewerSignals = briefLinesForAgent(projectMessages, "reviewer");
+  const protocolSummary = compactProtocolLines([
+    protocol?.research_question ? `当前研究问题：${firstProtocolLine(protocol.research_question)}` : null,
+    protocol?.primary_endpoint ? `主要终点：${firstProtocolLine(protocol.primary_endpoint)}` : null,
+    protocol?.statistical_plan ? `统计路线：${firstProtocolLine(protocol.statistical_plan)}` : null,
+    protocol?.institutional_field_mapping
+      ? `研究前确认：${firstProtocolLine(protocol.institutional_field_mapping)}`
+      : null,
+  ]);
+  const summaryLines = compactProtocolLines([
+    selectedProject ? `工作区：${selectedProject.name} / ${selectedProject.title}` : null,
+    selectedProject ? `预设主题：${selectedProject.topic}` : null,
+    ...protocolSummary,
+    mentorSignals.length ? `Mentor 讨论重点：${mentorSignals.slice(0, 3).join("；")}` : null,
+    protocolSignals.length ? `Vera 方案线索：${protocolSignals.slice(0, 3).join("；")}` : null,
+    dataSignals.length ? `Data Lin 数据限制：${dataSignals.slice(0, 3).join("；")}` : null,
+    writerSignals.length ? `Writer 写作边界：${writerSignals.slice(0, 2).join("；")}` : null,
+    reviewerSignals.length ? `Reviewer 风险意见：${reviewerSignals.slice(0, 2).join("；")}` : null,
+  ]);
+
+  return {
+    hasHistory: projectMessages.length > 0,
+    summaryLines,
+    recentMessages,
+    mentorSignals,
+    protocolSignals,
+    dataSignals,
+    writerSignals,
+    reviewerSignals,
+  };
+}
+
+function buildSharedProjectMemoryContext(
+  brief: ProjectConversationBrief,
+  protocol: ProjectProtocol | null,
+): Record<string, unknown> {
+  return {
+    memory_boundary:
+      "项目聊天记录是跨智能体参考记忆，不等于真实数据来源、伦理审批、机构授权或已验证结论；使用时需要按角色复核。",
+    project_memory_summary: brief.summaryLines.slice(0, 10),
+    recent_project_messages: brief.recentMessages.slice(-12),
+    mentor_discussion_signals: brief.mentorSignals.slice(0, 6),
+    vera_protocol_signals: brief.protocolSignals.slice(0, 6),
+    data_limit_signals: brief.dataSignals.slice(0, 6),
+    writer_boundary_signals: brief.writerSignals.slice(0, 4),
+    reviewer_risk_signals: brief.reviewerSignals.slice(0, 4),
+    current_protocol_summary: compactProtocolLines([
+      protocol?.research_question ? `研究问题：${firstProtocolLine(protocol.research_question)}` : null,
+      protocol?.primary_endpoint ? `主要终点：${firstProtocolLine(protocol.primary_endpoint)}` : null,
+      protocol?.data_requirements ? `数据需求：${firstProtocolLine(protocol.data_requirements)}` : null,
+      protocol?.statistical_plan ? `统计路线：${firstProtocolLine(protocol.statistical_plan)}` : null,
+      protocol?.institutional_field_mapping
+        ? `正式研究前确认：${firstProtocolLine(protocol.institutional_field_mapping)}`
+        : null,
+    ]),
+  };
+}
+
+function cardSearchText(card: MentorRecommendationCard): string {
+  return [
+    card.title,
+    card.research_question,
+    card.data_pathway,
+    card.methods_route,
+    card.statistical_plan,
+    card.innovation_point,
+    card.feasibility_note,
+    ...(card.minimum_data_fields ?? []),
+  ]
+    .join(" ")
+    .toLowerCase();
+}
+
+function inferVeraPrimaryEndpoint(card: MentorRecommendationCard): string {
+  const text = cardSearchText(card);
+  if (/qa|gamma|质控|quality assurance/.test(text)) {
+    return "计划级 QA 结果、gamma pass rate 或异常质控标签，作为能直接回答质量预测/质控风险问题的主要终点。";
+  }
+  if (/workflow|time|耗时|效率|返工|自动化|automation/.test(text)) {
+    return "计划生成或治疗执行效率指标，例如计划时间、治疗执行时间、返工率或人工计划与自动化流程的效率差异。";
+  }
+  if (/model|predict|prediction|ai|机器学习|模型|预测|auc|calibration/.test(text)) {
+    return "模型性能或风险分层指标，例如 AUC、校准、敏感性/特异性、预测误差或高风险计划识别能力。";
+  }
+  if (/adaptive|自适应|mr-linac|mr guided|累积剂量|online/.test(text)) {
+    return "自适应前后计划质量或累积剂量获益，例如靶区覆盖、OAR 剂量下降、在线调整幅度或流程耗时。";
+  }
+  if (/sbrt|srs|ptv|oar|d95|v95|dmax|dmean|剂量|梯度|适形|靶区/.test(text)) {
+    return "最能回答研究问题的剂量学计划质量指标，例如 PTV D95% / V95%、OAR Dmax/Dmean、剂量梯度或适形指数。";
+  }
+  const firstField = card.minimum_data_fields?.find((field) => field.trim());
+  return firstField
+    ? `围绕 ${firstField} 锁定一个主要可量化终点，并在 Vera 草案确认后交给 Data Lin 映射到实际列名。`
+    : "由 Mentor 与用户确认一个主要可量化终点，再交给 Data Lin 生成字段需求和统计草案。";
+}
+
+function inferVeraPopulation(card: MentorRecommendationCard): string {
+  const text = cardSearchText(card);
+  if (/sbrt|srs/.test(text)) {
+    return "接受 SRS/SBRT 或相近高剂量分割流程的病例、靶区或计划记录。";
+  }
+  if (/adaptive|自适应|mr-linac|mr guided|online/.test(text)) {
+    return "接受在线自适应放疗或 MR-guided adaptive RT 流程的病例、分次或计划记录。";
+  }
+  if (/qa|gamma|质控/.test(text)) {
+    return "完成患者特异性 QA 或计划审批流程的计划级记录。";
+  }
+  if (/motion|运动|4dct|tracking|cbct/.test(text)) {
+    return "涉及 4DCT、CBCT、门控、tracking 或运动管理流程的病例或治疗分次记录。";
+  }
+  return "与 Mentor 推荐研究问题匹配、可获得关键计划/剂量/结构或流程字段的放疗病例、计划或 QA 记录。";
+}
+
+function inferVeraExposure(card: MentorRecommendationCard): string {
+  const text = cardSearchText(card);
+  if (/adaptive|自适应|mr-linac|mr guided|online/.test(text)) {
+    return "在线自适应计划、分次调整幅度、累积剂量或 adaptive workflow 暴露。";
+  }
+  if (/automation|自动化|knowledge/.test(text)) {
+    return "自动化计划、知识库优化或流程优化策略。";
+  }
+  if (/qa|gamma|质控|log/.test(text)) {
+    return "计划参数、QA 指标、log files 或规则型风险特征。";
+  }
+  if (/motion|运动|tracking|门控/.test(text)) {
+    return "不同运动管理策略、边界设置或治疗执行记录。";
+  }
+  return card.methods_route || "由 Mentor 候选方向定义的候选干预、暴露或计划策略。";
+}
+
+function inferVeraComparator(card: MentorRecommendationCard): string {
+  const text = cardSearchText(card);
+  if (/配对|前后|adaptive|自适应|automation|自动化/.test(text)) {
+    return "同一病例或计划的常规流程、原计划、人工计划或策略前后对照。";
+  }
+  if (/分层|subgroup|组间|策略/.test(text)) {
+    return "按部位、技术、设备、计划策略或风险层级形成的预定义分组。";
+  }
+  return "与研究问题匹配的参考流程、常规计划、低风险计划或预定义亚组。";
+}
+
+function buildVeraSecondaryEndpoints(card: MentorRecommendationCard, primaryEndpoint: string): string {
+  const text = cardSearchText(card);
+  const endpoints = new Set<string>();
+  endpoints.add("靶区覆盖、OAR 保护、剂量梯度、适形指数、均匀性指数或计划复杂度。");
+  endpoints.add("流程耗时、返工率、人工复核结论、亚组稳定性和敏感性分析。");
+  if (/qa|gamma|质控/.test(text)) {
+    endpoints.add("QA failure pattern、gamma criteria 分层、设备/部位分层和异常计划复核结果。");
+  }
+  if (/model|predict|ai|模型|预测/.test(text)) {
+    endpoints.add("交叉验证、校准、决策阈值稳定性、误分类案例复核和外部验证可行性。");
+  }
+  if (/adaptive|自适应|mr-linac|online/.test(text)) {
+    endpoints.add("在线调整幅度、分次间剂量变化、治疗时长和 adaptive workflow 可执行性。");
+  }
+  if (primaryEndpoint) {
+    endpoints.add(`围绕主要终点“${primaryEndpoint}”设置可解释的辅助指标，避免把探索性发现写成已验证结论。`);
+  }
+  return [...endpoints].map((endpoint) => `- ${endpoint}`).join("\n");
+}
+
+function buildVeraProtocolSynthesis(
+  card: MentorRecommendationCard,
+  discussionBrief?: MentorDiscussionBrief,
+): VeraProtocolSynthesis {
   const minimumDataFields = (card.minimum_data_fields ?? []).filter((field) => field.trim());
   const readinessChecklist = (card.readiness_checklist ?? []).filter((item) => item.trim());
   const protocolTrace = (card.protocol_trace ?? []).filter((item) => item.trim());
+  const firstMilestones = (card.first_milestones ?? []).filter((item) => item.trim());
+  const riskFlags = (card.risk_flags ?? []).filter((item) => item.trim());
+  const evidenceSignals = (card.evidence_items ?? [])
+    .slice(0, 3)
+    .map((item) => item.vancouver_citation || item.citation_text || item.title || item.evidence_summary)
+    .filter((item): item is string => Boolean(item?.trim()));
+  const primaryEndpoint = inferVeraPrimaryEndpoint(card);
+  const population = inferVeraPopulation(card);
+  const exposure = inferVeraExposure(card);
+  const comparator = inferVeraComparator(card);
+  const discussionSummaryLines = discussionBrief?.summaryLines ?? [];
+  const discussionSourceLines = discussionBrief?.sourceLines ?? [];
+  const confirmedDirections = discussionBrief?.confirmedDirections ?? [];
+  const rejectedDirections = discussionBrief?.rejectedDirections ?? [];
+  const availableResources = discussionBrief?.availableResources ?? [];
+  const dataSignals = discussionBrief?.dataSignals ?? [];
+  const openQuestions = discussionBrief?.openQuestions ?? [];
+  const studyDesign = card.methods_route.includes("配对")
+    ? "配对或前后对照的放疗物理研究草案"
+    : card.methods_route.includes("模型") || card.statistical_plan.includes("预测")
+      ? "回顾性建模与验证研究草案"
+      : "单中心回顾性放疗物理研究草案";
   const dataRequirementLines = [
+    "Vera 生成的数据路径草案：",
     card.data_pathway,
     minimumDataFields.length ? "最小数据字段：" : null,
     ...minimumDataFields.map((field) => `- ${field}`),
-    "- 伦理与脱敏：确认 IRB、数据使用授权、脱敏规则和原始数据保存边界。",
-    "- 数据字典：记录字段中文名、英文列名、单位、来源系统、导出格式、缺失值编码和派生规则。",
-    "- 计划系统追踪：记录 TPS/计划系统版本、剂量计算算法、机器或设备型号、结构命名规则和 QA/gamma criteria。",
-  ].filter(Boolean) as string[];
+    availableResources.length ? "Mentor 讨论中的资源约束：" : null,
+    ...availableResources.map((item) => `- ${item}`),
+    dataSignals.length ? "Mentor 讨论中的数据线索：" : null,
+    ...dataSignals.map((item) => `- ${item}`),
+    "- 数据字典草案：记录候选字段中文名、英文列名、单位、来源系统、导出格式、缺失值编码和派生规则；实际列名以真实导出为准。",
+    "- 首轮验证：先用预备 CSV 或小样本脱敏 CSV 让 Data Lin 检查字段覆盖、缺失率、隐私风险和候选统计路线。",
+    "- 真实数据边界：伦理、授权、脱敏、TPS/DICOM/QA 追踪作为正式研究前人工确认项，不作为 Project A 预设输入。",
+  ];
   const workflowLines = [
+    "Vera 生成的实验方案草案：",
+    "1. 与 Mentor 确认研究问题、PICO/PECO、主要终点和可行数据路径。",
+    `2. 研究设计：${studyDesign}；方法路线来自 Mentor 推荐：${card.methods_route}`,
+    "3. 由 Data Lin 根据最小字段生成字段需求、CSV 质控、统计草案和模型可行性提示。",
+    "4. 根据首轮质控结果收窄终点、纳排标准、分组规则和统计模型。",
+    "5. 将可执行版本交给 Rhea 拆解里程碑，再交给 Writer / Reviewer 做写作和投稿前风险核对。",
+    discussionSummaryLines.length ? "Mentor 讨论依据：" : null,
+    ...discussionSummaryLines.map((item) => `- ${item}`),
+    discussionSourceLines.length ? "Mentor 讨论摘录：" : null,
+    ...discussionSourceLines.slice(0, 5).map((item) => `- ${item}`),
     card.methods_route,
     readinessChecklist.length ? "测试落地清单：" : null,
     ...readinessChecklist.map((item) => `- ${item}`),
-    protocolTrace.length ? "Mentor 写入追踪：" : null,
+    riskFlags.length ? "Vera 需要跟踪的风险：" : null,
+    ...riskFlags.map((item) => `- ${item}`),
+    protocolTrace.length ? "Mentor 来源追踪：" : null,
     ...protocolTrace.map((item) => `- ${item}`),
-    card.first_milestones.length ? "首轮里程碑：" : null,
-    ...card.first_milestones.map((item) => `- ${item}`),
-  ].filter(Boolean) as string[];
+    firstMilestones.length ? "首轮里程碑：" : null,
+    ...firstMilestones.map((item) => `- ${item}`),
+  ];
   const institutionalFieldMapping = [
-    "机构字段适配清单：",
-    "- IRB 编号/豁免依据：[待填写]",
-    "- 数据使用授权：[待填写]",
-    "- 脱敏规则：[待填写]",
-    "- 原始数据保存边界：[待填写]",
-    "- 字段字典路径：[待填写]",
-    "- CSV 导出路径：[待填写]",
-    "- TPS/计划软件版本：[待填写]",
-    "- 剂量计算算法：[待填写]",
-    "- 机器或 MLC 型号：[待填写]",
-    "- 结构命名规则：[待填写]",
-    "- QA/gamma criteria：[待填写]",
+    "正式研究前人工确认：",
+    "- 当前内容是 Vera 根据 Mentor 讨论生成的 protocol 草案，不代表已有真实机构 protocol。",
+    "- 进入真实数据接入或投稿前，再由研究者确认伦理/豁免、数据使用授权、脱敏规则、字段字典、CSV 导出路径、计划系统/DICOM/QA 追踪和统计复核责任人。",
+    "- 无法获得的材料应记录原因、替代字段和分析边界。",
+    openQuestions.length ? "- Mentor 讨论中尚待确认的问题：" : null,
+    ...openQuestions.map((item) => `  - ${item}`),
+    evidenceSignals.length ? "- 候选引用边界：以下证据仅作为 Mentor 推荐依据，正式写作前必须完成全文与引用格式核验。" : null,
+    ...evidenceSignals.map((item) => `  - ${item}`),
   ].join("\n");
   const milestoneLines = [
-    ...card.first_milestones,
+    "Rhea 可监控里程碑：",
+    "1. 方案确认：锁定研究问题、PICO/PECO、主要终点和核心数据路径。",
+    "2. 数据预检：让 Data Lin 生成字段需求并完成预备或小样本 CSV 质控。",
+    "3. 统计预案：确认描述统计、组间/配对比较、模型诊断和外部复核边界。",
+    "4. 写作边界：由 Writer 只生成 draft material，不输出最终 SCI 结论。",
+    "5. 投稿前复核：由 Reviewer 检查伦理、数据可用性、方法可复现性和过度结论风险。",
+    ...confirmedDirections.map((item) => `用户倾向：${item}`),
+    ...rejectedDirections.map((item) => `用户限制：${item}`),
+    ...openQuestions.slice(0, 3).map((item) => `待确认：${item}`),
+    ...firstMilestones.map((item) => `Mentor 首轮：${item}`),
     ...readinessChecklist.slice(0, 3).map((item) => `验收：${item}`),
     ...protocolTrace.slice(0, 2).map((item) => `追踪：${item}`),
   ];
+  const statisticalPlanLines = [
+    "Mentor 建议统计路线：",
+    card.statistical_plan,
+    "Vera 补充：先把主要终点、分组/配对关系、缺失值策略和多重比较边界写成 analysis plan；Data Lin 只能输出 exploratory draft，正式 P 值、CI、模型诊断和样本量解释需要人工统计复核。",
+    riskFlags.length ? "统计风险提示：" : null,
+    ...riskFlags.map((item) => `- ${item}`),
+  ];
+
+  return {
+    hypothesis: [
+      `围绕“${card.title}”，Vera 将 Mentor 的推荐转化为可检验假设：${card.innovation_point}`,
+      `若 ${exposure} 与 ${comparator} 相比能够在 ${primaryEndpoint} 上显示稳定、可解释且可复核的差异，则该方向可进入样例数据验证。`,
+      confirmedDirections.length ? `用户讨论倾向：${confirmedDirections.join("；")}` : null,
+      rejectedDirections.length ? `用户已提出的限制：${rejectedDirections.join("；")}` : null,
+      "该假设仅是 protocol 草案，不代表已有真实机构数据或伦理批准。",
+    ]
+      .filter(Boolean)
+      .join("\n"),
+    studyType: [
+      `研究设计草案：${studyDesign}`,
+      "Vera 生成的 PICO/PECO 框架：",
+      `- Population/对象：${population}`,
+      `- Intervention/Exposure/暴露：${exposure}`,
+      `- Comparator/比较：${comparator}`,
+      `- Outcome/结局：${primaryEndpoint}`,
+      discussionSummaryLines.length ? "Mentor 讨论依据：" : null,
+      ...discussionSummaryLines.map((item) => `- ${item}`),
+      "- 研究边界：当前为可讨论 protocol 草案；真实数据、伦理材料和字段字典在正式研究前确认。",
+    ]
+      .filter(Boolean)
+      .join("\n"),
+    primaryEndpoint,
+    secondaryEndpoints: buildVeraSecondaryEndpoints(card, primaryEndpoint),
+    inclusionCriteria: [
+      `拟纳入：${population}`,
+      "- 记录必须能支持主要终点和最小数据字段映射。",
+      "- 真实数据阶段需完成脱敏、来源追踪和字段字典确认。",
+      "- 若使用预备 CSV，仅用于流程验证，不作为正式研究证据。",
+    ].join("\n"),
+    exclusionCriteria: [
+      "- 排除无法映射主要终点或关键候选字段的记录。",
+      "- 排除计划、影像、QA 或流程信息无法复核的记录。",
+      "- 排除数据来源不一致、重复记录无法消解、存在直接身份标识或脱敏不充分风险的记录。",
+      "- 若真实机构材料未确认，只能停留在方案草案和样例验证阶段。",
+    ].join("\n"),
+    dataRequirements: compactProtocolLines(dataRequirementLines).join("\n"),
+    institutionalFieldMapping: institutionalFieldMapping,
+    experimentWorkflow: compactProtocolLines(workflowLines).join("\n"),
+    statisticalPlan: compactProtocolLines(statisticalPlanLines).join("\n"),
+    targetJournals: card.target_journals.length
+      ? card.target_journals.join("、")
+      : "待 Mentor/Vera 根据研究方向、数据可得性和期刊范围共同确认。",
+    rheaMilestones: compactProtocolLines(milestoneLines).join("\n"),
+  };
+}
+
+function mentorCardToProtocolUpdate(
+  card: MentorRecommendationCard,
+  discussionBrief?: MentorDiscussionBrief,
+): ProjectProtocolUpdate {
+  const synthesis = buildVeraProtocolSynthesis(card, discussionBrief);
   return {
     research_question: card.research_question,
-    hypothesis: `围绕“${card.title}”，假设该研究路线能够识别有临床或流程意义的放疗物理差异，并形成可复核的剂量学、效率或质量控制证据。`,
-    study_type: "单中心回顾性放疗物理研究；首轮以脱敏结构化数据和可复现分析流程为主，后续可扩展为多中心或前瞻性验证。",
-    primary_endpoint: "主要终点应从推荐卡的数据路径中选择一个最能回答研究问题的指标，例如计划质量、OAR 保护、QA 结果、流程耗时或模型性能。",
-    secondary_endpoints: "次要终点可包括靶区覆盖、剂量梯度、适形指数、均匀性指数、计划复杂度、处理时间、返工率、亚组稳定性和敏感性分析。",
-    inclusion_criteria: "纳入已完成标准治疗或质控流程、关键计划/剂量/结构数据完整、可追溯计划系统版本、并已完成脱敏的数据记录。",
-    exclusion_criteria: "排除关键字段缺失、计划或影像质量不可复核、治疗流程中断、数据来源不一致、以及存在直接身份标识或脱敏不充分风险的记录。",
-    data_requirements: dataRequirementLines.join("\n"),
-    institutional_field_mapping: institutionalFieldMapping,
-    experiment_workflow: workflowLines.join("\n"),
-    statistical_plan: card.statistical_plan,
-    target_journals: card.target_journals.join("、"),
-    rhea_milestones: milestoneLines.join("\n"),
+    hypothesis: synthesis.hypothesis,
+    study_type: synthesis.studyType,
+    primary_endpoint: synthesis.primaryEndpoint,
+    secondary_endpoints: synthesis.secondaryEndpoints,
+    inclusion_criteria: synthesis.inclusionCriteria,
+    exclusion_criteria: synthesis.exclusionCriteria,
+    data_requirements: synthesis.dataRequirements,
+    institutional_field_mapping: synthesis.institutionalFieldMapping,
+    experiment_workflow: synthesis.experimentWorkflow,
+    statistical_plan: synthesis.statisticalPlan,
+    target_journals: synthesis.targetJournals,
+    rhea_milestones: synthesis.rheaMilestones,
   };
 }
 
@@ -829,6 +1454,10 @@ function buildPreparedReferenceReport(): MentorRecommendationResponse {
       "当前引用来自公开医学数据源和数据集主论文，适合先验证引用标记、字段绑定和导出流程。",
       "这些引用用于产品联调，不代表当前放疗课题的最终核心文献清单。",
     ],
+    selection_rationale: [
+      "这是预备引用联调用的固定数据包，不是 Mentor 根据当前研究资源生成的方向候选。",
+      "正式选题时应返回 Mentor 表单，基于设备、数据和兴趣重新生成研究方向候选。",
+    ],
     matched_strengths: [
       "引用包含 DOI、期刊、年份和候选 Vancouver 格式，Alex Writer 可以直接进行字段级引用质控。",
       "CSV 样本与引用来源一致，便于同时测试数据和写作链路。",
@@ -862,7 +1491,7 @@ function buildPreparedReferenceReport(): MentorRecommendationResponse {
         protocol_trace: [
           "来源：预备 DATA 引用包。",
           "用途：验证 Mentor 候选引用、Writer 引用绑定和导出链路。",
-          "写入 Protocol 前需确认该卡仅为联调样例，不代表正式研究问题。",
+          "生成 Protocol 草案前需确认该卡仅为联调样例，不代表正式研究问题。",
         ],
         first_milestones: [
           "加载预备 CSV 并生成质控报告",
@@ -3487,7 +4116,7 @@ function buildProtocolQualitySummary(protocol: ProjectProtocol | null): Protocol
       title,
       status: "passed",
       detail: `已覆盖 ${matchedKeywords.slice(0, 5).join("、")} 等落地信号。`,
-      recommendation: "进入正式方案前仍需人工核对字段定义、伦理文件和真实系统导出路径。",
+      recommendation: "进入真实数据接入或投稿前仍需人工核对字段定义、伦理文件和真实系统导出路径。",
     };
   };
   const dataRequirementsText = valueFor("data_requirements");
@@ -3507,13 +4136,13 @@ function buildProtocolQualitySummary(protocol: ProjectProtocol | null): Protocol
     checkText("primary_endpoint", "主要终点是否明确", 10, true, "指定一个最能回答研究问题的主要终点。"),
     checkText("inclusion_criteria", "纳入标准是否完整", 20, true, "写清病例来源、时间范围、治疗方式和最低数据要求。"),
     checkText("exclusion_criteria", "排除标准是否完整", 20, false, "列出缺失关键数据、重复病例、质控不可复核等排除条件。"),
-    checkText("data_requirements", "数据需求是否可执行", 30, true, "列出必需字段、来源系统、导出格式和脱敏要求。"),
+    checkText("data_requirements", "数据需求是否可执行", 30, true, "列出候选必需字段、来源系统、导出格式和后续真实数据边界。"),
     checkText(
       "institutional_field_mapping",
-      "机构字段适配是否可追踪",
-      50,
-      true,
-      "补齐 IRB/授权/脱敏、字段字典、CSV 导出路径、TPS/DICOM/QA 和统计复核边界。",
+      "正式研究前确认项是否说明",
+      30,
+      false,
+      "说明该 protocol 是 Mentor/Vera 生成的研究草案；真实数据接入或投稿前再确认 IRB/授权/脱敏、字段字典、TPS/DICOM/QA 和统计复核边界。",
     ),
     checkSignals(
       "minimum_data_fields",
@@ -3521,15 +4150,15 @@ function buildProtocolQualitySummary(protocol: ProjectProtocol | null): Protocol
       dataRequirementsText,
       ["最小数据字段", "字段", "计划", "剂量", "QA", "RTDose", "RTStruct", "RTPlan"],
       true,
-      "把 Mentor 推荐卡中的最小数据字段写入数据需求，避免只写研究方向而没有可落地字段。",
+      "把 Mentor 候选方向中的最小数据字段写入数据需求，避免只写研究方向而没有可落地字段。",
     ),
     checkSignals(
       "ethics_data_permission",
-      "伦理/数据许可是否标明",
+      "伦理/数据许可确认边界",
       implementationText,
       ["IRB", "伦理", "数据使用授权", "脱敏", "隐私"],
-      true,
-      "补充 IRB、数据使用授权、脱敏规则和原始数据保存边界。",
+      false,
+      "这不是 Project A 预设项；进入真实数据接入或投稿前由研究者补充 IRB、数据使用授权、脱敏规则和原始数据保存边界。",
     ),
     checkSignals(
       "data_dictionary_export",
@@ -3541,11 +4170,11 @@ function buildProtocolQualitySummary(protocol: ProjectProtocol | null): Protocol
     ),
     checkSignals(
       "rt_plan_traceability",
-      "放疗计划系统追踪是否明确",
+      "放疗计划系统追踪边界",
       implementationText,
       ["TPS", "计划系统", "版本", "剂量计算", "结构命名", "QA", "gamma", "RTDose", "RTStruct", "RTPlan"],
       false,
-      "补充 TPS/计划系统版本、剂量计算算法、结构命名规则和 QA/gamma criteria。",
+      "如果研究方向需要真实计划数据，正式接入前再确认 TPS/计划系统版本、剂量计算算法、结构命名规则和 QA/gamma criteria。",
     ),
     checkText("statistical_plan", "统计路线是否存在", 30, true, "说明描述性统计、组间比较、配对/多重比较和显著性边界。"),
     checkText("experiment_workflow", "实验流程是否可复现", 30, false, "补充数据导出、清洗、质控、统计、图表和审稿复核顺序。"),
@@ -3600,23 +4229,22 @@ function buildProtocolDataConsistencyCheck(params: {
   const privacyRisk = qualityReport?.privacy_report?.risk_level ?? "green";
   const formalTestReport = statisticsReport?.formal_test_report ?? null;
   const protocolDataRequirements = protocol?.data_requirements?.trim() ?? "";
-  const institutionalFieldMapping = protocol?.institutional_field_mapping?.trim() ?? "";
-  const protocolLandingText = [protocolDataRequirements, institutionalFieldMapping].join("\n");
+  const protocolLandingText = protocolDataRequirements;
   const protocolDataRequirementSignals = [
     "最小数据字段",
-    "IRB",
-    "伦理",
-    "数据使用授权",
-    "脱敏",
+    "候选字段",
     "数据字典",
     "来源系统",
     "导出格式",
+    "计划",
+    "剂量",
+    "QA",
     "计划系统",
-    "TPS",
     "RTDose",
     "RTStruct",
     "RTPlan",
-    "gamma",
+    "终点",
+    "分组",
   ];
   const matchedProtocolDataRequirementSignals = protocolDataRequirementSignals.filter((keyword) =>
     protocolLandingText.toLowerCase().includes(keyword.toLowerCase()),
@@ -3681,7 +4309,7 @@ function buildProtocolDataConsistencyCheck(params: {
       recommendation:
         protocolLandingText.trim() && requiredItemCount >= 5
           ? "继续核对字段名、单位、导出来源和真实 CSV 列名是否一致。"
-          : "从 Mentor 推荐卡写入最小数据字段、伦理/脱敏、数据字典和计划系统追踪信息。",
+          : "从 Mentor 候选方向生成方案草案，先写入最小数据字段、数据路径和候选字段字典；正式真实数据前再做人工确认。",
     },
     {
       title: "统计路线与 Data Lin 建议",
@@ -3757,7 +4385,7 @@ function buildProtocolRealWorldReadiness(params: {
   const hasAny = (keywords: string[]) => keywords.some((keyword) => combinedText.includes(keyword.toLowerCase()));
   const checklist: ProtocolRealWorldReadinessItem[] = [
     {
-      title: "真实字段字典",
+      title: "候选字段字典",
       status: hasAny(["数据字典", "字段中文名", "英文列名", "单位", "缺失值", "派生规则"])
         ? "ready"
         : dataText
@@ -3766,10 +4394,10 @@ function buildProtocolRealWorldReadiness(params: {
       detail: dataText
         ? `Protocol 已写入数据需求；Data Lin 当前读取 ${requiredFieldCount} 个必需字段。`
         : "Protocol 尚未写入数据需求。",
-      action: "逐项确认字段中文名、英文列名、单位、来源系统、导出格式、缺失值编码和派生规则。",
+      action: "先让 Vera 生成候选字段字典；真实数据接入时再核对中文名、英文列名、单位、来源系统和缺失值编码。",
     },
     {
-      title: "伦理与数据许可",
+      title: "伦理与数据许可确认",
       status: hasAny(["IRB", "伦理", "数据使用授权", "脱敏", "隐私"])
         ? "ready"
         : criteriaText || workflowText
@@ -3777,11 +4405,11 @@ function buildProtocolRealWorldReadiness(params: {
           : "blocked",
       detail: hasAny(["IRB", "伦理", "数据使用授权", "脱敏", "隐私"])
         ? "Protocol 已出现伦理、授权或脱敏信号。"
-        : "Protocol 中尚未明确 IRB、数据使用授权或脱敏边界。",
-      action: "正式测试前确认 IRB 编号或豁免依据、数据使用授权、脱敏规则和原始数据保存边界。",
+        : "该项留到真实数据接入或投稿前人工确认，不阻止 Vera 生成研究方案草案。",
+      action: "进入真实数据接入或投稿前，确认 IRB/豁免、数据使用授权、脱敏规则和原始数据保存边界。",
     },
     {
-      title: "计划系统与 DICOM 追踪",
+      title: "计划系统与 DICOM 确认",
       status: hasAny(["TPS", "计划系统", "RTDose", "RTStruct", "RTPlan", "剂量计算", "结构命名", "gamma"])
         ? "ready"
         : dataText
@@ -3789,11 +4417,11 @@ function buildProtocolRealWorldReadiness(params: {
           : "blocked",
       detail: hasAny(["TPS", "计划系统", "RTDose", "RTStruct", "RTPlan", "剂量计算", "结构命名", "gamma"])
         ? "Protocol 已包含放疗计划系统或 DICOM/QA 追踪信号。"
-        : "尚未看到 TPS、DICOM RT 或 QA/gamma 追踪信号。",
-      action: "核对 TPS/计划软件版本、剂量计算算法、机器/MLC 型号、结构命名规则和 QA/gamma criteria。",
+        : "若最终方案需要真实计划数据，该项将在真实数据接入前人工确认。",
+      action: "进入真实数据接入前，核对 TPS/计划软件版本、剂量计算算法、机器/MLC 型号、结构命名规则和 QA/gamma criteria。",
     },
     {
-      title: "CSV 字段落地",
+      title: "CSV 字段映射",
       status: qualityReport
         ? missingRequiredCount
           ? "needs_review"
@@ -3802,7 +4430,7 @@ function buildProtocolRealWorldReadiness(params: {
       detail: qualityReport
         ? `当前 CSV 有 ${csvColumnCount} 列；匹配 ${matchedRequiredCount} 个必需字段，缺少 ${missingRequiredCount} 个。`
         : "尚未生成 CSV 质控报告，无法核对真实列名。",
-      action: "加载真实或预备 CSV 后，确认必需字段、派生字段和替代字段能映射到实际列名。",
+      action: "加载真实或预备 CSV 后，确认候选必需字段、派生字段和替代字段能映射到实际列名。",
     },
     {
       title: "统计复核边界",
@@ -3825,10 +4453,10 @@ function buildProtocolRealWorldReadiness(params: {
     reviewCount,
     blockedCount,
     overallStatus: blockedCount
-      ? "真实数据适配未就绪"
+      ? "正式研究前确认存在待补项"
       : reviewCount
-        ? "真实数据适配需复核"
-        : "真实数据适配可测试",
+        ? "正式研究前确认需复核"
+        : "正式研究前确认已就绪",
     checklist,
   };
 }
@@ -3986,14 +4614,14 @@ function buildWriterDataHandoffSummary(params: {
           : "暂不建议进入正文写作",
     cards: [
       {
-        title: "Protocol 真实数据适配",
+        title: "Protocol 正式研究前确认",
         status: protocolRealWorldReadiness.blockedCount
           ? "blocked"
           : protocolRealWorldReadiness.reviewCount
             ? "review"
             : "ready",
         detail: protocolRealWorldReadiness.overallStatus,
-        items: adaptationActions.length ? adaptationActions : ["真实数据适配清单当前均为可测试状态。"],
+        items: adaptationActions.length ? adaptationActions : ["正式研究前确认项当前没有阻断提示。"],
       },
       {
         title: "Data Lin 字段分类",
@@ -5040,6 +5668,8 @@ function App() {
     createFormalTestConfirmation(),
   );
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [projectHistoryMessages, setProjectHistoryMessages] = useState<ChatMessage[]>([]);
+  const [chatViewMode, setChatViewMode] = useState<"current" | "history">("current");
   const [input, setInput] = useState("请帮我制定实验方案");
   const [isLoading, setIsLoading] = useState(true);
   const [isProtocolLoading, setIsProtocolLoading] = useState(false);
@@ -5099,6 +5729,7 @@ function App() {
   });
   const [extractingMessageId, setExtractingMessageId] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
+  const [isClearingChat, setIsClearingChat] = useState(false);
   const [updatingTaskId, setUpdatingTaskId] = useState<string | null>(null);
   const [dismissingReminderId, setDismissingReminderId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -5124,12 +5755,60 @@ function App() {
     () => buildProtocolQualitySummary(protocol),
     [protocol],
   );
+  const projectConversationMessages = useMemo(
+    () => mergeChatMessagesForBrief(projectHistoryMessages, messages, selectedProjectId),
+    [projectHistoryMessages, messages, selectedProjectId],
+  );
+  const currentAgentSessionMessages = useMemo(
+    () =>
+      messages.filter((message) => isProjectAgentMessage(message, selectedProjectId, selectedAgentId)),
+    [messages, selectedProjectId, selectedAgentId],
+  );
+  const selectedAgentHistoryMessages = useMemo(
+    () =>
+      projectConversationMessages.filter((message) =>
+        isProjectAgentMessage(message, selectedProjectId, selectedAgentId),
+      ),
+    [projectConversationMessages, selectedProjectId, selectedAgentId],
+  );
+  const visibleChatMessages =
+    chatViewMode === "current" ? currentAgentSessionMessages : selectedAgentHistoryMessages;
+  const projectConversationBrief = useMemo(
+    () =>
+      buildProjectConversationBrief({
+        messages: projectConversationMessages,
+        selectedProject,
+        protocol,
+      }),
+    [projectConversationMessages, selectedProject, protocol],
+  );
+  const sharedProjectMemoryContext = useMemo(
+    () => buildSharedProjectMemoryContext(projectConversationBrief, protocol),
+    [projectConversationBrief, protocol],
+  );
+  const mentorDiscussionMessages = useMemo(
+    () =>
+      projectConversationMessages.filter(
+        (message) => message.agentId === "mentor" || message.agentName === "Prof. RadOnc Mentor",
+      ),
+    [projectConversationMessages],
+  );
+  const mentorDiscussionBrief = useMemo(
+    () =>
+      buildMentorDiscussionBrief({
+        messages: mentorDiscussionMessages,
+        projectId: selectedProjectId,
+        mentorForm,
+        mentorRecommendationReport,
+      }),
+    [mentorDiscussionMessages, selectedProjectId, mentorForm, mentorRecommendationReport],
+  );
   const pendingMentorProtocolUpdate = useMemo(
     () =>
       pendingMentorProtocolCard
-        ? mentorCardToProtocolUpdate(pendingMentorProtocolCard)
+        ? mentorCardToProtocolUpdate(pendingMentorProtocolCard, mentorDiscussionBrief)
         : null,
-    [pendingMentorProtocolCard],
+    [pendingMentorProtocolCard, mentorDiscussionBrief],
   );
 
   const selectedPlanDraft = useMemo(
@@ -5844,6 +6523,36 @@ function App() {
   useEffect(() => {
     let isCurrent = true;
 
+    async function loadProjectHistoryMessages() {
+      if (!selectedProjectId) {
+        setProjectHistoryMessages([]);
+        return;
+      }
+
+      try {
+        const records = await getProjectChatMessages(selectedProjectId, undefined, 120);
+        if (isCurrent) {
+          const historyMessages = records.map(chatHistoryToMessage);
+          setProjectHistoryMessages(historyMessages);
+        }
+      } catch (caughtError) {
+        if (isCurrent) {
+          setProjectHistoryMessages([]);
+          setError(caughtError instanceof Error ? caughtError.message : "项目共享聊天记录读取失败。");
+        }
+      }
+    }
+
+    loadProjectHistoryMessages();
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [selectedProjectId]);
+
+  useEffect(() => {
+    let isCurrent = true;
+
     async function loadProjectAccess() {
       if (!selectedProjectId) {
         setProjectAccess(null);
@@ -6307,6 +7016,7 @@ function App() {
         weekly_hours: mentorForm.weeklyHours,
         publication_experience: mentorForm.publicationExperience,
         interest_topics: mentorForm.interestTopics,
+        discussion_summary: mentorDiscussionBrief.summaryLines.slice(0, 8),
       });
       setMentorRecommendationReport(applyMentorEvidenceReviews(report, mentorEvidenceReviews));
       scrollMentorReportIntoView();
@@ -6432,13 +7142,18 @@ function App() {
       "## 资源诊断",
       ...mentorRecommendationReport.resource_diagnosis.map((item) => `- ${item}`),
       "",
+      "## 方向筛选依据",
+      ...(mentorRecommendationReport.selection_rationale.length
+        ? mentorRecommendationReport.selection_rationale.map((item) => `- ${item}`)
+        : ["- 当前报告未包含筛选依据，请重新生成研究方向候选。"]),
+      "",
       "## 匹配优势",
       ...mentorRecommendationReport.matched_strengths.map((item) => `- ${item}`),
       "",
       "## 趋势摘要",
       ...(trendLines.length ? trendLines.slice(0, 6) : ["- 当前建议结合虚拟导师面板中的趋势卡片一并查看。"]),
       "",
-      "## 课题推荐卡",
+      "## 研究方向候选",
       ...mentorRecommendationReport.recommendations.flatMap((item) => [
         `### ${item.title}`,
         `- 研究问题：${item.research_question}`,
@@ -7737,19 +8452,19 @@ function App() {
         `- 建议：${item.recommendation}`,
         "",
       ]),
-      "## 真实数据适配清单",
+      "## 正式研究前确认清单",
       `- 总体状态：${protocolRealWorldReadiness.overallStatus}`,
-      `- 可测试：${protocolRealWorldReadiness.readyCount}`,
-      `- 需复核：${protocolRealWorldReadiness.reviewCount}`,
-      `- 阻断项：${protocolRealWorldReadiness.blockedCount}`,
+      `- 已具备：${protocolRealWorldReadiness.readyCount}`,
+      `- 待确认：${protocolRealWorldReadiness.reviewCount}`,
+      `- 待补项：${protocolRealWorldReadiness.blockedCount}`,
       "",
       ...protocolRealWorldReadiness.checklist.flatMap((item, index) => [
         `### ${index + 1}. ${item.title}`,
         `- 状态：${
-          item.status === "ready" ? "可测试" : item.status === "needs_review" ? "需复核" : "阻断"
+          item.status === "ready" ? "已具备" : item.status === "needs_review" ? "待确认" : "待补"
         }`,
         `- 详情：${item.detail}`,
-        `- 测试动作：${item.action}`,
+        `- 确认动作：${item.action}`,
         "",
       ]),
       "## 使用边界",
@@ -7828,6 +8543,7 @@ function App() {
     const userMessage: ChatMessage = {
       id: crypto.randomUUID(),
       speaker: "user",
+      agentId: selectedAgentId,
       projectId: selectedProjectId || null,
       content: trimmedInput,
     };
@@ -7842,6 +8558,7 @@ function App() {
         agent_id: selectedAgentId,
         project_id: selectedProjectId || null,
         message: trimmedInput,
+        context: sharedProjectMemoryContext,
       });
 
       const agentMessage: ChatMessage = {
@@ -7859,6 +8576,38 @@ function App() {
       setError(caughtError instanceof Error ? caughtError.message : "消息发送失败。");
     } finally {
       setIsSending(false);
+    }
+  }
+
+  async function handleClearSelectedAgentChat() {
+    if (!selectedProjectId || isClearingChat || !canEditSelectedProject) {
+      return;
+    }
+
+    const agentName = selectedAgent?.name ?? agentMemoryLabel(selectedAgentId);
+    const projectName = selectedProject?.name ?? selectedProjectId;
+    const confirmed = window.confirm(
+      `确定清空 ${projectName} / ${agentName} 的聊天记录吗？这只会删除当前项目下该智能体的历史聊天，不会删除其他项目或其他智能体。`,
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setIsClearingChat(true);
+    setError(null);
+
+    try {
+      await clearProjectChatMessages(selectedProjectId, selectedAgentId);
+      setProjectHistoryMessages((current) =>
+        current.filter((message) => !isProjectAgentMessage(message, selectedProjectId, selectedAgentId)),
+      );
+      setMessages((current) =>
+        current.filter((message) => !isProjectAgentMessage(message, selectedProjectId, selectedAgentId)),
+      );
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "聊天记录清空失败。");
+    } finally {
+      setIsClearingChat(false);
     }
   }
 
@@ -7982,7 +8731,7 @@ function App() {
       setProtocol(extractedProtocol);
       await refreshDataRequirements(targetProjectId);
     } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : "研究方案写入失败。");
+      setError(caughtError instanceof Error ? caughtError.message : "研究方案草案生成失败。");
     } finally {
       setExtractingMessageId(null);
     }
@@ -8005,7 +8754,7 @@ function App() {
     try {
       const savedProtocol = await saveProjectProtocol(
         selectedProjectId,
-        mentorCardToProtocolUpdate(card),
+        mentorCardToProtocolUpdate(card, mentorDiscussionBrief),
       );
       setProtocol(savedProtocol);
       setSelectedAgentId("study_planner");
@@ -8019,7 +8768,7 @@ function App() {
       setPendingMentorProtocolCard(null);
       await refreshDataRequirements(selectedProjectId);
     } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : "推荐课题写入研究方案失败。");
+      setError(caughtError instanceof Error ? caughtError.message : "推荐课题生成方案草案失败。");
     } finally {
       setApplyingMentorCardTitle(null);
     }
@@ -9210,6 +9959,7 @@ function App() {
         agent_id: "writer",
         project_id: selectedProjectId,
         message: handoffMessage,
+        context: sharedProjectMemoryContext,
       });
 
       const agentMessage: ChatMessage = {
@@ -9257,6 +10007,7 @@ function App() {
         agent_id: "writer",
         project_id: selectedProjectId,
         message: handoffMessage,
+        context: sharedProjectMemoryContext,
       });
 
       const agentMessage: ChatMessage = {
@@ -9618,42 +10369,45 @@ function App() {
             </div>
 
             <div className="project-list">
-              {projects.map((project) => (
-                <button
-                  className={`project-card ${selectedProjectId === project.id ? "selected" : ""}`}
-                  key={project.id}
-                  type="button"
-                  onClick={() => setSelectedProjectId(project.id)}
-                >
-                  <div className="project-card-head">
-                    <span>{project.name}</span>
-                    <span className={`risk-dot risk-${project.risk_level}`}>{riskLabels[project.risk_level]}</span>
-                  </div>
-                  <h3>{project.title}</h3>
-                  <p>{project.topic}</p>
-                  <div className="progress-row">
-                    <div className="progress-track">
-                      <span
-                        className={`progress-fill risk-${project.risk_level}`}
-                        style={{ width: `${project.progress_percent}%` }}
-                      />
+              {projects.map((project) => {
+                const projectCardDisplay = buildProjectCardDisplay(project, protocol, selectedProjectId);
+                return (
+                  <button
+                    className={`project-card ${selectedProjectId === project.id ? "selected" : ""}`}
+                    key={project.id}
+                    type="button"
+                    onClick={() => setSelectedProjectId(project.id)}
+                  >
+                    <div className="project-card-head">
+                      <span>{project.name}</span>
+                      <span className={`risk-dot risk-${project.risk_level}`}>{riskLabels[project.risk_level]}</span>
                     </div>
-                    <strong>{project.progress_percent}%</strong>
-                  </div>
-                  <dl className="project-facts">
-                    <div>
-                      <dt>当前阶段</dt>
-                      <dd>{project.current_phase}</dd>
+                    <h3>{projectCardDisplay.title}</h3>
+                    <p>{projectCardDisplay.topic}</p>
+                    <div className="progress-row">
+                      <div className="progress-track">
+                        <span
+                          className={`progress-fill risk-${project.risk_level}`}
+                          style={{ width: `${project.progress_percent}%` }}
+                        />
+                      </div>
+                      <strong>{project.progress_percent}%</strong>
                     </div>
-                    <div>
-                      <dt>下一节点</dt>
-                      <dd>
-                        {formatDate(project.next_due_date)} · {project.next_milestone}
-                      </dd>
-                    </div>
-                  </dl>
-                </button>
-              ))}
+                    <dl className="project-facts">
+                      <div>
+                        <dt>当前阶段</dt>
+                        <dd>{projectCardDisplay.currentPhase}</dd>
+                      </div>
+                      <div>
+                        <dt>下一节点</dt>
+                        <dd>
+                          {formatDate(project.next_due_date)} · {projectCardDisplay.nextMilestone}
+                        </dd>
+                      </div>
+                    </dl>
+                  </button>
+                );
+              })}
             </div>
 
             {selectedProject ? (
@@ -9820,14 +10574,55 @@ function App() {
                         </div>
                       ) : null}
 
+                      <div className="chat-view-toolbar">
+                        <div className="chat-view-tabs" role="tablist" aria-label="聊天记录视图">
+                          <button
+                            className={chatViewMode === "current" ? "selected" : ""}
+                            type="button"
+                            role="tab"
+                            aria-selected={chatViewMode === "current"}
+                            onClick={() => setChatViewMode("current")}
+                          >
+                            当前聊天 {currentAgentSessionMessages.length}
+                          </button>
+                          <button
+                            className={chatViewMode === "history" ? "selected" : ""}
+                            type="button"
+                            role="tab"
+                            aria-selected={chatViewMode === "history"}
+                            onClick={() => setChatViewMode("history")}
+                          >
+                            历史聊天 {selectedAgentHistoryMessages.length}
+                          </button>
+                        </div>
+                        <button
+                          className="chat-clear-button"
+                          type="button"
+                          onClick={handleClearSelectedAgentChat}
+                          disabled={
+                            isClearingChat ||
+                            !canEditSelectedProject ||
+                            selectedAgentHistoryMessages.length === 0
+                          }
+                          title="清空当前项目下当前智能体的聊天记录"
+                        >
+                          {isClearingChat ? (
+                            <Loader2 aria-hidden="true" className="spin" size={15} />
+                          ) : (
+                            <Trash2 aria-hidden="true" size={15} />
+                          )}
+                          <span>清空</span>
+                        </button>
+                      </div>
+
                       <div className="message-list">
-                        {messages.length === 0 ? (
+                        {visibleChatMessages.length === 0 ? (
                           <div className="empty-chat">
                             <MessageSquareText aria-hidden="true" size={28} />
                             <p>{selectedAgent?.tagline}</p>
                           </div>
                         ) : (
-                          messages.map((message) => (
+                          visibleChatMessages.map((message) => (
                             <article className={`message ${message.speaker}`} key={message.id}>
                               <span>{message.speaker === "user" ? "你" : message.agentName}</span>
                               <p>{message.content}</p>
@@ -9844,14 +10639,14 @@ function App() {
                                     type="button"
                                     onClick={() => handleExtractProtocolFromMessage(message)}
                                     disabled={extractingMessageId !== null || !canEditSelectedProject}
-                                    title="写入研究方案"
+                                    title="生成方案草案"
                                   >
                                     {extractingMessageId === message.id ? (
                                       <Loader2 aria-hidden="true" className="spin" size={15} />
                                     ) : (
                                       <ClipboardCheck aria-hidden="true" size={15} />
                                     )}
-                                    <span>写入研究方案</span>
+                                    <span>生成方案草案</span>
                                   </button>
                                 </div>
                               ) : null}
@@ -10145,15 +10940,15 @@ function App() {
                     <section className="protocol-realworld-panel">
                       <div className="protocol-quality-head">
                         <div>
-                          <p className="eyebrow">真实数据适配清单</p>
+                          <p className="eyebrow">正式研究前确认项</p>
                           <h4>{protocolRealWorldReadiness.overallStatus}</h4>
-                          <small>面向真实字段字典、伦理许可、TPS/DICOM 追踪和统计复核边界。</small>
+                          <small>不阻止 Mentor/Vera 生成 protocol；用于真实数据接入和投稿前复核。</small>
                         </div>
                       </div>
                       <div className="protocol-quality-metrics">
-                        <span>可测试 {protocolRealWorldReadiness.readyCount}</span>
-                        <span>需复核 {protocolRealWorldReadiness.reviewCount}</span>
-                        <span>阻断项 {protocolRealWorldReadiness.blockedCount}</span>
+                        <span>已具备 {protocolRealWorldReadiness.readyCount}</span>
+                        <span>待确认 {protocolRealWorldReadiness.reviewCount}</span>
+                        <span>待补项 {protocolRealWorldReadiness.blockedCount}</span>
                       </div>
                       <div className="protocol-realworld-grid">
                         {protocolRealWorldReadiness.checklist.map((item) => (
@@ -10164,10 +10959,10 @@ function App() {
                             </div>
                             <span>
                               {item.status === "ready"
-                                ? "可测试"
+                                ? "已具备"
                                 : item.status === "needs_review"
-                                  ? "需复核"
-                                  : "阻断"}
+                                  ? "待确认"
+                                  : "待补"}
                             </span>
                             <p>{item.action}</p>
                           </article>
@@ -11780,7 +12575,7 @@ function App() {
                     <div className="mentor-head">
                       <div>
                         <p className="eyebrow">Prof. RadOnc Mentor</p>
-                        <h3>趋势判断与课题推荐</h3>
+                        <h3>趋势判断与研究方向候选</h3>
                         <small>
                           {mentorTrendSnapshot?.recommended_focus ?? "正在读取趋势快照。"}
                         </small>
@@ -11950,7 +12745,8 @@ function App() {
                       </div>
 
                       <div className="mentor-interest-block">
-                        <strong>感兴趣的方向</strong>
+                        <strong>辅助参考标签（可选）</strong>
+                        <small>只用于证据和趋势入口，不直接决定题目。</small>
                         <div className="mentor-interest-list">
                           {mentorTrendSnapshot?.trends.map((trend) => (
                             <label className="mentor-interest-item" key={trend.topic_id}>
@@ -11971,7 +12767,7 @@ function App() {
                         ) : (
                           <Sparkles aria-hidden="true" size={16} />
                         )}
-                        <span>生成课题推荐</span>
+                        <span>生成研究方向候选</span>
                       </button>
                     </form>
 
@@ -11984,8 +12780,8 @@ function App() {
                           </button>
                         </div>
                         <div className="mentor-report-guide" role="status">
-                          <strong>已生成 {mentorRecommendationReport.recommendations.length} 张推荐卡</strong>
-                          <span>每张推荐卡内的 Mentor 落地验收均包含：最小数据字段 / 测试落地清单 / 写入追踪。</span>
+                          <strong>已生成 {mentorRecommendationReport.recommendations.length} 个研究方向候选</strong>
+                          <span>候选方向基于资源匹配生成；确认 1 个方向后再交给 Vera 生成 protocol 与实验方案。</span>
                         </div>
                         <div className="mentor-report-summary">
                           <div className="mentor-section-head">
@@ -12007,6 +12803,21 @@ function App() {
                           ))}
                         </div>
                         </section>
+                        {mentorRecommendationReport.selection_rationale.length ? (
+                          <section className="mentor-brief-section">
+                            <div className="mentor-section-head">
+                              <strong>方向筛选依据</strong>
+                              <span>不依赖 Project A/B 预设 protocol</span>
+                            </div>
+                          <div className="mentor-strength-list">
+                            {mentorRecommendationReport.selection_rationale.map((item) => (
+                              <article className="mentor-strength-item" key={item}>
+                                <p>{item}</p>
+                              </article>
+                            ))}
+                          </div>
+                          </section>
+                        ) : null}
                         <section className="mentor-brief-section">
                           <div className="mentor-section-head">
                             <strong>匹配优势</strong>
@@ -12022,8 +12833,8 @@ function App() {
                         </section>
                         <section className="mentor-brief-section">
                           <div className="mentor-section-head">
-                            <strong>课题推荐卡</strong>
-                            <span>优先考虑 2-3 个最可落地题目</span>
+                            <strong>研究方向候选</strong>
+                            <span>优先考虑 2-3 个最可落地方向</span>
                           </div>
                         <div className="mentor-recommendation-list">
                           {mentorRecommendationReport.recommendations.map((item) => (
@@ -12287,29 +13098,29 @@ function App() {
                                   isProtocolSaving ||
                                   !canEditSelectedProject
                                 }
-                                title="写入研究方案"
+                                title="生成方案草案"
                               >
                                 {applyingMentorCardTitle === item.title ? (
                                   <Loader2 aria-hidden="true" className="spin" size={15} />
                                 ) : (
                                   <ClipboardCheck aria-hidden="true" size={15} />
                                 )}
-                                <span>预览写入</span>
+                                <span>预览方案</span>
                               </button>
                             </article>
                           ))}
                         </div>
                         </section>
                         {pendingMentorProtocolCard && pendingMentorProtocolUpdate ? (
-                          <section className="mentor-protocol-preview" aria-label="写入研究方案预览">
+                          <section className="mentor-protocol-preview" aria-label="生成方案草案预览">
                             <div className="mentor-section-head">
-                              <strong>写入研究方案预览</strong>
-                              <span>{protocolHasContent ? "将覆盖当前方案" : "当前方案为空"}</span>
+                              <strong>生成方案草案预览</strong>
+                              <span>{protocolHasContent ? "将更新当前草案" : "当前草案为空"}</span>
                             </div>
                             <div className="mentor-preview-warning">
                               {protocolHasContent
-                                ? "确认后会用该推荐卡生成的新方案覆盖当前 Project Protocol。"
-                                : "确认后会把该推荐卡写入当前项目的 Project Protocol。"}
+                                ? "确认后会用 Mentor 推荐生成新的 Vera Protocol 草案；Project A/B 只是工作区，生成后仍可继续编辑确认。"
+                                : "确认后会把 Mentor 推荐转成 Vera Protocol 草案；Project A/B 只是工作区，生成后仍可继续编辑确认。"}
                             </div>
                             <div className="mentor-preview-grid">
                               <article>
@@ -12317,12 +13128,43 @@ function App() {
                                 <p>{pendingMentorProtocolUpdate.research_question}</p>
                               </article>
                               <article>
+                                <strong>讨论依据</strong>
+                                <p>
+                                  {[
+                                    ...mentorDiscussionBrief.summaryLines,
+                                    ...(mentorDiscussionBrief.sourceLines.length
+                                      ? [`来源摘录：${mentorDiscussionBrief.sourceLines.slice(0, 3).join(" / ")}`]
+                                      : []),
+                                  ].join("\n")}
+                                </p>
+                              </article>
+                              <article>
+                                <strong>研究假设</strong>
+                                <p>{pendingMentorProtocolUpdate.hypothesis}</p>
+                              </article>
+                              <article>
+                                <strong>PICO / PECO</strong>
+                                <p>{pendingMentorProtocolUpdate.study_type}</p>
+                              </article>
+                              <article>
+                                <strong>主要终点</strong>
+                                <p>{pendingMentorProtocolUpdate.primary_endpoint}</p>
+                              </article>
+                              <article>
                                 <strong>数据需求</strong>
                                 <p>{pendingMentorProtocolUpdate.data_requirements}</p>
                               </article>
                               <article>
+                                <strong>实验方案</strong>
+                                <p>{pendingMentorProtocolUpdate.experiment_workflow}</p>
+                              </article>
+                              <article>
                                 <strong>统计路线</strong>
                                 <p>{pendingMentorProtocolUpdate.statistical_plan}</p>
+                              </article>
+                              <article>
+                                <strong>正式研究前确认</strong>
+                                <p>{pendingMentorProtocolUpdate.institutional_field_mapping}</p>
                               </article>
                               <article>
                                 <strong>Rhea 里程碑</strong>
@@ -12330,7 +13172,7 @@ function App() {
                               </article>
                               <article>
                                 <strong>Mentor 来源追踪</strong>
-                                <p>{(pendingMentorProtocolCard.protocol_trace ?? []).join(" ") || "旧推荐卡未包含来源追踪，请重新生成课题推荐后再写入。"}</p>
+                                <p>{(pendingMentorProtocolCard.protocol_trace ?? []).join(" ") || "旧候选卡未包含来源追踪，请重新生成研究方向候选后再写入。"}</p>
                               </article>
                             </div>
                             <div className="mentor-preview-actions">
@@ -12351,7 +13193,7 @@ function App() {
                                 ) : (
                                   <ClipboardCheck aria-hidden="true" size={15} />
                                 )}
-                                <span>确认写入</span>
+                                <span>确认生成</span>
                               </button>
                             </div>
                           </section>

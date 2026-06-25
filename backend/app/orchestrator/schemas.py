@@ -1,4 +1,5 @@
 from typing import Any
+from datetime import datetime
 
 from pydantic import BaseModel, Field
 
@@ -20,3 +21,12 @@ class ChatResponse(BaseModel):
     suggested_next_actions: list[str]
     response_source: str
     fallback_reason: str | None = None
+
+
+class ChatHistoryMessage(BaseModel):
+    id: int
+    project_id: str | None
+    agent_id: AgentId
+    speaker: str
+    content: str
+    created_at: datetime

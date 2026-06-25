@@ -1,7 +1,9 @@
 import type {
+  AgentId,
   AgentProfile,
   AdvancedModelFitReport,
   AdvancedModelPlan,
+  ChatHistoryMessage,
   ChatRequest,
   ChatResponse,
   DataAuditLog,
@@ -82,6 +84,7 @@ export function getMentorRecommendations(payload: {
   weekly_hours: number;
   publication_experience: string;
   interest_topics: string[];
+  discussion_summary?: string[];
 }): Promise<MentorRecommendationResponse> {
   return request<MentorRecommendationResponse>("/api/mentor/recommendations", {
     method: "POST",
@@ -497,6 +500,28 @@ export function sendChat(requestBody: ChatRequest): Promise<ChatResponse> {
   return request<ChatResponse>("/api/chat/", {
     method: "POST",
     body: JSON.stringify(requestBody),
+  });
+}
+
+export function getProjectChatMessages(
+  projectId: string,
+  agentId?: AgentId,
+  limit = 80,
+): Promise<ChatHistoryMessage[]> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (agentId) {
+    params.set("agent_id", agentId);
+  }
+  return request<ChatHistoryMessage[]>(`/api/projects/${projectId}/chat/messages?${params.toString()}`);
+}
+
+export function clearProjectChatMessages(
+  projectId: string,
+  agentId: AgentId,
+): Promise<{ deleted_count: number }> {
+  const params = new URLSearchParams({ agent_id: agentId });
+  return request<{ deleted_count: number }>(`/api/projects/${projectId}/chat/messages?${params.toString()}`, {
+    method: "DELETE",
   });
 }
 

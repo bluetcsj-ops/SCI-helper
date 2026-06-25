@@ -56,13 +56,17 @@ class ProtocolRepository:
                 study_type="回顾性放疗物理剂量学研究；如涉及模型预测，可扩展为回顾性建模与验证研究。",
                 primary_endpoint="主要终点建议设为与课题最直接相关的剂量学或模型性能指标，例如 PTV/CTV D95%、OAR Dmax、Gamma 通过率或预测剂量误差。",
                 secondary_endpoints="次要终点包括 HI、CI、D2%、D98%、OAR Vx/Dx、计划失败率、处理时间、不同亚组的稳定性分析。",
-                inclusion_criteria="纳入已完成标准治疗流程、数据完整、计划与结构可追溯、具有可导出 DICOM-RT 或结构化计划数据的病例。",
-                exclusion_criteria="排除关键 DICOM/剂量/结构数据缺失、治疗流程中断、计划系统版本不可追溯或图像配准质量不可接受的病例。",
-                data_requirements="至少需要患者匿名 ID、治疗部位、计划系统版本、RTPLAN、RTDOSE、RTSTRUCT、处方剂量、分割次数、靶区和 OAR 剂量指标。",
+                inclusion_criteria="拟纳入与研究问题匹配、关键计划/剂量/结构或流程字段可获得、并可在真实数据阶段完成脱敏和来源追踪的数据记录。",
+                exclusion_criteria="后续真实数据接入时，排除关键字段缺失、计划或影像质量不可复核、治疗流程中断、数据来源不一致、以及存在直接身份标识或脱敏不充分风险的记录。",
+                data_requirements=(
+                    "候选数据字段包括匿名病例或计划 ID、治疗部位、技术、RTDose/RTStruct/RTPlan "
+                    "或结构化计划指标、PTV/OAR 剂量指标、QA 结果、复杂度或流程时间；"
+                    "实际字段取决于 Mentor 讨论后的研究方向和可用导出。"
+                ),
                 institutional_field_mapping=(
-                    "机构适配字段：IRB 编号/豁免依据、数据使用授权、脱敏规则、原始数据保存边界、"
-                    "字段字典路径、CSV 导出路径、TPS/计划软件版本、剂量计算算法、机器或 MLC 型号、"
-                    "结构命名规则、QA/gamma criteria。"
+                    "正式研究前人工确认：该草案来自当前研究方向讨论，不代表已有真实机构 protocol。"
+                    "真实数据接入或投稿前，再由研究者确认伦理审批/豁免、数据使用许可、脱敏规则、"
+                    "字段字典、CSV 导出路径、TPS/DICOM/QA 追踪和统计复核责任人。"
                 ),
                 experiment_workflow=(
                     "1. 明确病例筛选标准；2. 导出并脱敏数据；3. 完成数据完整性检查；"
