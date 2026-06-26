@@ -1,6 +1,6 @@
 # 项目交接记录
 
-更新时间：2026-06-25
+更新时间：2026-06-26
 
 ## 项目定位
 
@@ -283,6 +283,26 @@ $env:DATABASE_URL='sqlite:///:memory:'
 .\.venv\Scripts\python.exe -c "from app.main import app; print('backend app memory db ok')"
 ```
 
+2026-06-26 Stage A 完整 UI / 导出 / 构建验收补充：
+
+- UI smoke 通过：前端和后端均可加载，本地 app 控制台未见应用错误，核心工作区可见。
+- 主流程通过：预备引用 + 预备 DATA → Data Lin 质控/统计草案/模型计划/模型拟合 → Writer handoff → Reviewer 映射。
+- 导出来源通过：验证计划复制兜底可显示完整内容，Writer Methods / Results、Reviewer mapped response 和 checklist 均能保留对应来源内容。
+- 高级模型分支通过：Cox 样例显示 `Cox proportional hazards model`、HR、PH assumption、Schoenfeld、statsmodels/PHReg 和外部验证提示；mixed-effects 样例显示 `Linear mixed-effects model`、cluster、random intercept、ICC、convergence、residual diagnostics 和外部验证提示。
+- Writer / Reviewer 边界通过：Cox 与 mixed-effects 输出仍保留 exploratory / pending external validation 边界，没有写成已验证 SCI 结论。
+- 构建和 smoke 通过：`npm.cmd run build`、`backend/.venv/Scripts/python.exe -m compileall app`、后端 app 内存 SQLite import smoke 均通过。
+- 本轮未发现阻塞性问题；Codex in-app browser 不支持 download event，因此导出按钮以页面文件名提示、来源内容和复制兜底进行校验。
+
+2026-06-26 Reviewer / Writer 返修链路增强与 UI 目视复核补充：
+
+- 后端增强通过：Reviewer 导入生成的英文回复草稿会抽取具体 reviewer concern，并按统计/模型、数据隐私、放疗方法、引用、投稿声明、图表和语言主题生成更具体的 `manuscript_change`。
+- 前端增强通过：`inferReviewerRevisionSections` 已补充 endpoint coding、QA failure、gamma、TPS、causal wording、exploratory、page/line/manuscript location 等关键词。
+- Project B 临时 UI 复核通过：导入 1 条包含 QA failure、gamma pass rate、binary endpoint、causal wording 和 page/line/location 的样例后，Reviewer 卡片显示具体英文 concern、Page / Lines / Manuscript location 占位和主题化修改建议。
+- Writer 联动通过：同一条样例按自动识别显示在 Methods / Results、Discussion 和 Cover Letter / Submission 的 Reviewer 修改提醒中，并保留类型/状态统计。
+- 导出来源复核通过：`导出映射回复` 和 `导出写作清单` 按钮可点击，页面来源内容包含 Reviewer 1、具体 concern 和 Page 占位；当前浏览器仍不支持直接捕获 download event。
+- 清理通过：Project B 临时 Reviewer 记录已删除，复查为空；本地 app 控制台无 error / warning。
+- 验证命令通过：`PYTHONPATH=. .\.venv\Scripts\python.exe tests\test_reviewer_comment_responses.py`、`.\.venv\Scripts\python.exe -m compileall app`、`npm.cmd run build`、`git diff --check`。
+
 服务级闭环曾验证：
 
 - Writer version create/list/restore。
@@ -517,18 +537,16 @@ npm.cmd run dev -- --host 127.0.0.1 --port 3000
 
 ## 下一步建议
 
-1. 先跑完整 UI 验收：
-   - 预备引用
-   - 预备 DATA
-   - Data Lin 高级模型
-   - Writer 英文稿件与版本库
-   - Reviewer 样例 decision letter、章节归属、Writer 修改提醒和导出
+1. Stage A 验收后收口：
+   - 2026-06-26 已完成预备引用、预备 DATA、Data Lin 高级模型、Writer handoff、Reviewer 映射和关键导出来源的一轮完整验收。
+   - Reviewer / Writer 返修链路增强和 UI 目视复核已完成；下一步优先做提交/同步前 diff 复核。
+   - 保留高级模型外部验证、人工作业边界和真实数据接入前确认清单。
 2. 下一阶段优先级：
    - Mentor/Vera 自主方案生成：从研究方向讨论形成 protocol 草案和实验方案草案
    - Mentor 确认生成 Protocol 草案后，逐项测试 Data Lin 是否读取最小字段、数据字典草案和真实数据边界
    - 真实数据接入前，再核对真实字段字典、数据许可、伦理/脱敏和计划系统追踪
    - Writer 写作风格学习和目标期刊英文表达偏好
-   - Reviewer / Writer 返修链路增强：让英文审稿回复更自然，并自动识别审稿意见对应的章节、段落和内容类型
+   - Reviewer / Writer 返修链路后续增强：继续用更多真实 decision letter 评估语气自然度、段落级定位和内容类型识别
    - Author Guidelines PDF / 强 JS 页面处理
 3. 稳定化原则：
    - 页面和交互继续保持中文

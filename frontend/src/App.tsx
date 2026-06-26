@@ -3250,22 +3250,32 @@ function inferReviewerRevisionSections(thread: ReviewerCommentThread): RevisionS
     thread.manuscript_change,
   ].join(" ").toLowerCase();
   const sections: RevisionSectionId[] = [];
-  if (/\b(introduction|background|rationale|study aim|objective|hypothesis)\b/.test(text)) {
+  if (
+    /\b(introduction|background|rationale|study aim|objective|hypothesis|reference|citation|literature|recent study|prior work|supporting evidence)\b/.test(
+      text,
+    )
+  ) {
     sections.push("Introduction");
   }
   if (
-    /\b(method|methods|materials|statistical analysis|data|dataset|cohort|eligibility|inclusion|exclusion|result|results|table|figure|endpoint|model|regression|p value|confidence interval|ci\b)\b/.test(text)
+    /\b(method|methods|materials|statistical analysis|data|dataset|cohort|eligibility|inclusion|exclusion|result|results|table|figure|endpoint|endpoint coding|binary endpoint|event coding|model|regression|p value|confidence interval|ci\b|odds ratio|hazard ratio|hr\b|cox|mixed-effects|mixed effects|validation|calibration|auc|roc|separation|convergence|schoenfeld|random intercept|random slope|icc|outlier|qa failure|gamma|tps|treatment planning system|dose calculation|plan quality|plan-quality|patient-specific qa|structure naming)\b/.test(
+      text,
+    )
   ) {
     sections.push("Methods / Results");
   }
-  if (/\b(discussion|interpretation|limitation|clinical implication|future work|compare|literature)\b/.test(text)) {
+  if (
+    /\b(discussion|interpretation|limitation|limitations|clinical implication|future work|compare|literature|causal|causality|overstate|overstated|claim|claims|exploratory|generalize|generalisability|generalizability)\b/.test(
+      text,
+    )
+  ) {
     sections.push("Discussion");
   }
-  if (/\b(abstract|summary|keyword|structured abstract)\b/.test(text)) {
+  if (/\b(abstract|summary|keyword|keywords|structured abstract|generic|tighten)\b/.test(text)) {
     sections.push("Abstract");
   }
   if (
-    /\b(cover letter|submission|journal|editor|response to reviewers|ethics|conflict of interest|funding|data availability|author contribution|supplementary)\b/.test(text)
+    /\b(cover letter|submission|journal|editor|response to reviewers|response letter|point-by-point|resubmission|ethics|conflict of interest|funding|data availability|author contribution|supplementary|page|pages|line|lines|manuscript location)\b/.test(text)
   ) {
     sections.push("Cover Letter / Submission");
   }

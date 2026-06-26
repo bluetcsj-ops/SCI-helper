@@ -1,12 +1,16 @@
 # 当前模块进度表
 
-更新日期：2026-06-25
+更新日期：2026-06-26
 
 ## 总体判断
 
 当前项目已经推进到“可带公开医学/放疗样例数据跑通论文写作、后端版本归档、真实审稿意见映射、目标期刊规则校验、Reviewer 收尾验收、第一版高级统计模型拟合、statsmodels Cox/MixedLM 生产化优先路径、外部验证计划导出、Mentor → Vera Protocol 草案生成、Vera 正式研究前确认项、Data Lin 字段分类展示、Writer 数据与方案交接摘要、项目级聊天记忆共享、按项目/智能体隔离聊天历史、Mentor 自定义研究方向优先生成”的阶段。整体完成度约 **99.2%**；如果只看 5 个核心智能体能力，平均完成度约 **97.4%**。
 
 重要边界：Project A / B 是工作区和预设样例，不代表真实机构 protocol；Mentor 现在优先根据设备、计划系统、可用数据和 Mentor 对话摘要生成自定义研究方向，预设 topic 只作为证据检索、趋势对照和目标期刊入口的辅助标签。真实 IRB、数据授权、脱敏、TPS/DICOM/QA 和字段字典只作为真实数据接入或投稿前的人工确认项。
+
+2026-06-26 Stage A 验收补充：已用预备引用、预备 DATA、Data Lin 高级模型、Writer 交接、Reviewer 映射和关键导出路径跑完一轮真实样例 UI 验收；`npm.cmd run build`、后端 `compileall app` 和内存 SQLite import smoke 均通过，当前未发现阻塞性问题。
+
+2026-06-26 Reviewer / Writer 返修链路增强补充：已完成英文回复草稿 concern 抽取、主题化 manuscript change、章节自动识别关键词扩展和 Project B 临时 UI 目视复核；临时 Reviewer 记录已清理，未留下测试数据。
 
 当前主链路已经闭环：
 
@@ -285,19 +289,20 @@ Mentor 当前完成标准：
 
 当前仍未完成：
 
-- Reviewer 进入收尾验收阶段，后续以真实样例 UI 验收和小问题修正为主。
-- Response to Reviewers 的默认英文回复仍偏模板化、生硬；后续需要改为更自然的 point-by-point 回复语气，并根据审稿意见内容生成更具体的回应。
-- 真实审稿意见目前主要按规则拆分和章节映射；后续需要增强自动识别段落、具体内容类型和对应稿件位置的能力，减少人工分配章节和定位的负担。
+- Reviewer 已完成一轮真实样例 UI 验收和 Reviewer / Writer 返修链路增强，后续以更多真实 decision letter 样例复核和小问题修正为主。
+- Response to Reviewers 默认回复已完成第一轮主题化和具体 concern 抽取增强；后续继续用更多真实审稿信评估语气自然度和逐条回应细节。
+- 真实审稿意见仍是规则型拆分和章节映射；本轮已增强统计、放疗方法、因果化、page/line/location 等关键词，后续继续增强段落级定位和内容类型识别。
 
 ## 当前优先级建议
 
-1. 真实样例 UI 验收：
-   - 使用预备 DATA、预备引用、模拟 decision letter 和目标期刊 Author Guidelines 跑完整链路。
-   - 重点确认 Reviewer 导入、章节归属、Writer 修改提醒、导出文件和 Page / Lines / Manuscript location 占位。
-   - 重点观察英文审稿回复是否过于生硬，以及系统是否能把意见映射到合适章节和具体内容。
+1. Stage A 验收后收口：
+   - 2026-06-26 已使用预备引用、预备 DATA、模拟 decision letter 和 Reviewer 映射路径跑完整链路。
+   - 已确认 Data Lin 高级模型、Writer Methods / Results 交接、Reviewer mapped response / checklist 和关键 Markdown 导出来源可用。
+   - 2026-06-26 Reviewer / Writer 返修链路增强已完成：后端单测 7 项通过，`compileall app`、`npm.cmd run build` 和 UI 目视复核通过。
+   - 下一步重点是提交/同步前复核 diff，并继续保留更多真实审稿信样例下的语气自然度和段落级定位观察。
    - 2026-06-24 已完成导出/复制兜底修复验收：高级模型验证计划在剪贴板不可用时会显示只读文本框，关键 Markdown 导出会显示文件名提示。
 2. Data Lin 下一阶段：
-   - 在现有 statsmodels PHReg / MixedLM 优先路径基础上，补充更系统的诊断输出与外部复核交接：PH assumption、Schoenfeld residuals、convergence、singular fit、random-effects 结构、ICC 和样本量限制。
+   - 在已完成 statsmodels PHReg / MixedLM 诊断交接基础上，下一步优先考虑独立统计环境复核、校准/交叉验证和真实数据前统计定稿清单。
 3. Mentor / Vera 下一阶段：
    - 把用户与 Mentor 的研究方向讨论转成更完整的 Vera Protocol 草案，包括研究问题、假设、PICO/PECO、终点、实验流程、统计路线和首轮验证计划。
    - 保持 Project A / B 作为工作区样例，不再要求预设项目自带真实 IRB、数据授权、TPS/DICOM/QA 或字段字典。
@@ -314,10 +319,11 @@ Mentor 当前完成标准：
 
 ### 阶段 A：验收与稳定化
 
-- 跑完整 UI 验收清单。
-- 修复真实样例中暴露的小问题。
+- 2026-06-26 已完成一轮完整 UI 验收清单：预备引用、预备 DATA、Data Lin 高级模型、Writer 交接、Reviewer 映射和关键导出来源均已覆盖。
+- 2026-06-26 已完成 Reviewer / Writer 返修链路增强与 UI 目视复核：Project B 临时导入样例可生成具体英文 concern、主题化修改建议、自动章节归属和 Writer 修改提醒；临时记录已清理。
+- 本轮未发现阻塞性问题；后续只修复真实样例中暴露的小问题。
 - 已完成导出/复制兜底小修复：验证计划复制失败时提供页面内手动复制文本框，Data Lin / Writer / Reviewer 关键导出路径统一下载 helper。
-- 当前本地开发节奏调整为先完成一个完整功能模块再考虑上传；正在收口 Reviewer / Writer 返修链路增强模块，包括更具体的英文回复骨架、章节归属、Writer 返修聚合提醒和导出验收。
+- 当前本地开发节奏保持为先完成一个完整功能模块再考虑上传；Reviewer / Writer 返修链路增强模块已完成第一轮实现、自动化验证和 UI 目视复核。
 - 确认页面中文、论文正文/投稿材料英文的规则在所有导出中稳定执行。
 - 收集真实审稿意见样例，评估 Response to Reviewers 默认回复的自然度和具体性。
 
