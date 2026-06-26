@@ -81,5 +81,42 @@ class ReviewerCommentResponseTests(unittest.TestCase):
         )
 
 
+    def test_response_draft_includes_specific_reviewer_concern(self) -> None:
+        comment = (
+            "Major Comment 2: The manuscript should define QA failure and explain "
+            "whether gamma pass rate was treated as a binary endpoint."
+        )
+
+        draft = self.repository._build_response_draft(comment, "major")
+
+        self.assertIn(
+            "We understand the concern to be that the manuscript should define QA failure",
+            draft,
+        )
+        self.assertIn("gamma pass rate", draft)
+        self.assertIn("binary endpoint", draft)
+
+    def test_statistics_manuscript_change_is_theme_specific(self) -> None:
+        comment = "The Results section should avoid causal wording because the model is exploratory."
+
+        change = self.repository._build_manuscript_change(comment, "minor")
+
+        self.assertIn("统计模型目的", change)
+        self.assertIn("外部统计复核边界", change)
+        self.assertIn("避免因果化", change)
+
+    def test_split_warning_is_preserved_with_theme_specific_change(self) -> None:
+        comment = "Please add page and line references for each revised manuscript location."
+
+        change = self.repository._build_manuscript_change(
+            comment,
+            "minor",
+            ["该条意见过短，可能只是标题片段。"],
+        )
+
+        self.assertIn("投稿声明", change)
+        self.assertIn("拆分提醒", change)
+        self.assertIn("该条意见过短", change)
+
 if __name__ == "__main__":
     unittest.main()

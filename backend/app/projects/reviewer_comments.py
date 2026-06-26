@@ -57,7 +57,7 @@ class ReviewerCommentRepository:
                     status="draft",
                     comment_text=comment,
                     response_draft=self._build_response_draft(comment, comment_type),
-                    manuscript_change=self._build_manuscript_change(comment_type, split_warnings),
+                    manuscript_change=self._build_manuscript_change(comment, comment_type, split_warnings),
                     manual_revision_sections_json="[]",
                 )
                 session.add(record)
@@ -263,13 +263,43 @@ class ReviewerCommentRepository:
     def _build_response_draft(self, comment: str, comment_type: str) -> str:
         theme = self._infer_response_theme(comment)
         opening = self._response_opening(comment_type, theme)
+        concern = self._response_concern(comment, theme)
         action = self._response_action(theme)
         return (
-            f"{opening} {action} "
+            f"{opening} {concern} {action} "
             "After revision, we will add the exact page and line references below. "
             "Page: [to be completed manually]. "
             "Lines: [to be completed manually]. "
             "Manuscript location: [to be completed manually]."
+        )
+
+    def _response_concern(self, comment: str, theme: str) -> str:
+        normalized = re.sub(r"\s+", " ", comment).strip()
+        normalized = re.sub(r"(?i)^(reviewer|referee)\s*#?\s*\d+\s*:?\s*", "", normalized)
+        normalized = re.sub(
+            r"(?i)^(major|minor|editorial)\s+(comment|point|concern|issue)s?\s*(#?\s*\d+)?\s*[:.)-]?\s*",
+            "",
+            normalized,
+        )
+        if normalized:
+            first_sentence = re.split(r"(?<=[.!?])\s+", normalized, maxsplit=1)[0].strip()
+            if 18 <= len(first_sentence) <= 220:
+                if not re.search(r"[.!?]$", first_sentence):
+                    first_sentence = f"{first_sentence}."
+                return f"We understand the concern to be that {first_sentence[0].lower()}{first_sentence[1:]}"
+        concern_by_theme = {
+            "statistics_model": "We understand that the main concern is the statistical boundary of the current analysis.",
+            "data_privacy": "We understand that the main concern is the transparency and traceability of the data source.",
+            "radiotherapy_methods": "We understand that the main concern is whether the radiotherapy planning workflow is sufficiently reproducible.",
+            "literature_reference": "We understand that the main concern is whether the manuscript is anchored in recent and traceable literature.",
+            "methods_reporting": "We understand that the main concern is whether the study methods and reporting pathway are specific enough.",
+            "ethics_submission": "We understand that the main concern is whether the submission statements are complete.",
+            "figures_tables": "We understand that the main concern is whether the figures, tables, or supplements are traceable.",
+            "language_editorial": "We understand that the main concern is clarity and presentation.",
+        }
+        return concern_by_theme.get(
+            theme,
+            "We understand that the main concern is whether the revised manuscript addresses this point specifically.",
         )
 
     def _infer_response_theme(self, comment: str) -> str:
@@ -285,7 +315,8 @@ class ReviewerCommentRepository:
             return "statistics_model"
         if re.search(
             r"\b(ethic|irb|consent|conflict of interest|funding|data availability|"
-            r"generative ai|ai assistance|cover letter|submission|disclosure)\b",
+            r"generative ai|ai assistance|cover letter|submission|disclosure|"
+            r"response letter|point-by-point|manuscript location|page and line|page/line)\b",
             text_value,
         ):
             return "ethics_submission"
@@ -398,8 +429,30 @@ class ReviewerCommentRepository:
             "Methods, Results, and submission materials."
         )
 
-    def _build_manuscript_change(self, comment_type: str, split_warnings: list[str] | None = None) -> str:
-        if comment_type == "editorial":
+    def _build_manuscript_change(
+        self,
+        comment: str,
+        comment_type: str,
+        split_warnings: list[str] | None = None,
+    ) -> str:
+        theme = self._infer_response_theme(comment)
+        if theme == "statistics_model":
+            change = "补充统计模型目的、事件/终点编码、样本量限制和外部统计复核边界，避免因果化或已验证预测表述。"
+        elif theme == "data_privacy":
+            change = "补充数据来源、字段定义、缺失值处理、脱敏边界和原始数据保留状态。"
+        elif theme == "radiotherapy_methods":
+            change = "补充 TPS/计划系统版本、剂量计算算法、QA/gamma criteria、结构命名和计划质量异常定义。"
+        elif theme == "literature_reference":
+            change = "补充近期且可追溯的引用，并核对 citation metadata、引用位置和期刊格式。"
+        elif theme == "methods_reporting":
+            change = "补充研究对象、纳排标准、终点定义、分析流程和可复现性说明。"
+        elif theme == "ethics_submission":
+            change = "补充伦理、知情同意、利益冲突、资助、数据可用性或 AI 使用披露等投稿声明。"
+        elif theme == "figures_tables":
+            change = "核对相关图表、图注、补充材料和数据来源，确保展示内容可追溯。"
+        elif theme == "language_editorial":
+            change = "润色相关句子或段落，降低模板化表达并保持科学含义不变。"
+        elif comment_type == "editorial":
             change = "修改相关章节的措辞、术语或格式。"
         elif comment_type == "minor":
             change = "澄清相关句子或段落，并核对其与最终稿件一致。"
