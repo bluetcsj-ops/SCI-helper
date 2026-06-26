@@ -269,6 +269,19 @@ Reviewer / Writer 返修链路增强模块完成标准：
 
 最近验证通过：
 
+2026-06-27 GitHub 同步与 Mentor/Vera 样例边界收尾：
+
+- 最新提交：`ad57058 Isolate mentor sample history from recommendations`，已推送到 `origin/main`。
+- 当前进度快照：总体 `15%`，Project A `5%`，Project B `25%`。
+- Project A / B 均已确认只作为预设样例工作区和流程演示容器，不代表真实机构 protocol，不得作为真实研究方案来源。
+- Mentor 推荐生成已隔离历史样例对话：`discussion_summary` 不再参与资源匹配和 topic 排序，只作为追踪记录；当前候选方向依据 Mentor 表单资源、可用数据和辅助参考标签生成。
+- Vera 方案预览已隔离历史 Mentor 来源摘录：主方案依据只来自当前候选方向、Mentor 表单和推荐报告；历史 Mentor 对话只保留为追踪/边界提示，不作为新 protocol 的研究依据、资源证据或真实机构材料。
+- 回归测试新增 `backend/tests/test_mentor_sample_boundaries.py`，覆盖 Project A / MR 历史样例不能覆盖当前 `TOMO / TrueBeam + Eclipse / Accuray + DICOM RTDose / RTStruct / RTPlan + QA summary` 输入。
+- 验证通过：`backend/.venv/Scripts/python.exe -m unittest tests.test_mentor_sample_boundaries tests.test_reviewer_comment_responses`、`backend/.venv/Scripts/python.exe -m compileall app tests`、`frontend/npm.cmd run build`、`git diff --check`。
+- 最终 UI 验收通过：重启后端加载最新逻辑后，同一组非 MR + QA 样例输入的第一候选为“基于计划参数与 QA 结果的患者特异性质控风险分层研究”，MR 在线自适应候选未优先出现；Vera 预览无“来源摘录 / Mentor 讨论摘录”，无 Project A / MR 历史泄漏，仍保留 Project A/B 样例工作区边界提示；刷新后的新 console error/warn 为 0。
+- 本轮没有确认生成或覆盖真实 protocol；真实 IRB、数据授权、脱敏、字段字典、TPS/DICOM/QA、统计复核仍必须由研究者人工确认。
+- 下一轮建议：优先进入 Data Lin / Rhea 流程验收，确认 Vera 草案中的最小字段、数据字典、正式研究前确认项能稳定传递到字段需求、Rhea 里程碑和 Writer handoff；或继续细化 Mentor/Vera 预览文案，把“讨论依据”标签改为更准确的“当前候选依据”。
+
 ```powershell
 cd "J:\Radiation Therapy SCI assitant\frontend"
 .\node_modules\.bin\tsc.cmd --noEmit
