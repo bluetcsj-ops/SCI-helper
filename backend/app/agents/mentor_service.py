@@ -485,7 +485,7 @@ class MentorService:
             why_fit=(
                 f"该候选方向根据当前设备/平台“{payload.equipment_summary.strip() or '待补充'}”、"
                 f"计划系统“{payload.planning_systems.strip() or '待补充'}”、可用数据"
-                f"“{self._data_types_label(payload)}”和 Mentor 对话摘要生成；"
+                f"“{self._data_types_label(payload)}”和辅助参考标签生成；"
                 "Project A/B 只作为样例工作区，不作为真实 protocol 来源。"
             ),
             data_pathway=data_pathway,
@@ -531,7 +531,6 @@ class MentorService:
                 " ".join(payload.data_types),
                 payload.publication_experience,
                 " ".join(payload.interest_topics),
-                " ".join(payload.discussion_summary),
             ]
         ).lower()
 
@@ -635,12 +634,12 @@ class MentorService:
         payload: MentorQuestionnaireRequest,
     ) -> list[str]:
         discussion_line = (
-            f"纳入 Mentor 对话摘要 {len(payload.discussion_summary)} 条。"
+            f"收到 Mentor 历史对话摘要 {len(payload.discussion_summary)} 条，仅作追踪记录，不参与资源匹配。"
             if payload.discussion_summary
             else "本次未收到 Mentor 对话摘要，仅依据表单资源生成。"
         )
         return [
-            "生成方式：根据 Mentor 表单和当前 Mentor 对话摘要生成自定义候选方向。",
+            "生成方式：根据 Mentor 表单资源和辅助参考标签生成自定义候选方向；历史对话只作追踪记录，不作为资源证据。",
             f"辅助参考标签：{topic.title}（{topic.topic_id}），只用于证据检索、趋势对照和期刊入口，不决定题目本身。",
             f"生成时设备/计划系统：{payload.equipment_summary.strip() or '设备待补充'} / {payload.planning_systems.strip() or '计划系统待补充'}。",
             f"生成时数据来源：{self._data_types_label(payload)}。",
@@ -652,8 +651,7 @@ class MentorService:
         equipment_text = payload.equipment_summary.lower()
         system_text = payload.planning_systems.lower()
         data_text = " ".join(payload.data_types).lower()
-        discussion_text = " ".join(payload.discussion_summary).lower()
-        full_text = f"{equipment_text} {system_text} {data_text} {discussion_text}"
+        full_text = f"{equipment_text} {system_text} {data_text}"
         score = 0
 
         if topic_id in payload.interest_topics:
@@ -804,7 +802,7 @@ class MentorService:
         selected_titles = " / ".join(topic.title for topic in selected_topics)
         return [
             interest_scope,
-            "本轮先根据设备、计划系统、可用数据和 Mentor 对话摘要生成自定义研究方向；Project A/B 预设样例不参与出题。",
+            "本轮先根据设备、计划系统、可用数据和辅助参考标签生成自定义研究方向；Project A/B 预设样例不参与出题。",
             "预设 topic 只作为辅助参考标签，用于补充证据检索、趋势对照和目标期刊入口，不再直接决定题目。",
             f"当前可用数据线索：{data_types}。",
             f"本轮辅助参考标签：{selected_titles}。",

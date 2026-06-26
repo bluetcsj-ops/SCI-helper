@@ -893,27 +893,27 @@ function buildMentorDiscussionBrief(params: {
   ]
     .filter((line): line is string => Boolean(line?.trim()))
     .map((line) => compactBriefLine(line));
-  const allLines = [...userLines, ...mentorLines, ...formLines, ...reportLines];
+  const scopedBasisLines = [...formLines, ...reportLines];
   const confirmedDirections = pickBriefLines(
-    userLines,
+    scopedBasisLines,
     /确认|确定|选择|倾向|优先|感兴趣|想做|可以|同意|就这个|prefer|focus|interested/i,
   );
   const rejectedDirections = pickBriefLines(
-    userLines,
+    scopedBasisLines,
     /不要|不想|排除|暂不|不考虑|没有|不能|不可|缺少|不具备|avoid|exclude/i,
   );
   const availableResources = pickBriefLines(
-    allLines,
+    scopedBasisLines,
     /设备|软件|TPS|计划系统|MR|linac|加速器|QA|DICOM|RTDose|RTStruct|RTPlan|CBCT|log|CSV|病例|样本|数据|Python|R|编程|每周|时间|hours/i,
     5,
   );
   const dataSignals = pickBriefLines(
-    allLines,
+    scopedBasisLines,
     /数据|字段|CSV|DICOM|RTDose|RTStruct|RTPlan|QA|gamma|log|病例|样本|导出|字段字典/i,
     5,
   );
   const openQuestions = pickBriefLines(
-    allLines,
+    scopedBasisLines,
     /待|尚未|需要|是否|确认|补充|不明确|\?|？|unclear|pending/i,
     5,
   );
@@ -1206,7 +1206,6 @@ function buildVeraProtocolSynthesis(
   const exposure = inferVeraExposure(card);
   const comparator = inferVeraComparator(card);
   const discussionSummaryLines = discussionBrief?.summaryLines ?? [];
-  const discussionSourceLines = discussionBrief?.sourceLines ?? [];
   const confirmedDirections = discussionBrief?.confirmedDirections ?? [];
   const rejectedDirections = discussionBrief?.rejectedDirections ?? [];
   const availableResources = discussionBrief?.availableResources ?? [];
@@ -1239,8 +1238,6 @@ function buildVeraProtocolSynthesis(
     "5. 将可执行版本交给 Rhea 拆解里程碑，再交给 Writer / Reviewer 做写作和投稿前风险核对。",
     discussionSummaryLines.length ? "Mentor 讨论依据：" : null,
     ...discussionSummaryLines.map((item) => `- ${item}`),
-    discussionSourceLines.length ? "Mentor 讨论摘录：" : null,
-    ...discussionSourceLines.slice(0, 5).map((item) => `- ${item}`),
     card.methods_route,
     readinessChecklist.length ? "测试落地清单：" : null,
     ...readinessChecklist.map((item) => `- ${item}`),
@@ -1253,7 +1250,8 @@ function buildVeraProtocolSynthesis(
   ];
   const institutionalFieldMapping = [
     "正式研究前人工确认：",
-    "- 当前内容是 Vera 根据 Mentor 讨论生成的 protocol 草案；Project A / B 仍只是样例工作区，不代表已有真实机构 protocol。",
+    "- 当前内容是 Vera 根据当前候选方向、Mentor 表单和推荐报告生成的 protocol 草案；Project A / B 仍只是样例工作区，不代表已有真实机构 protocol。",
+    "- 历史 Mentor 对话只作为追踪记录，不作为新 protocol 的研究依据、资源证据或真实机构材料。",
     "- 进入真实数据接入或投稿前，再由研究者确认伦理/豁免、数据使用授权、脱敏规则、字段字典、CSV 导出路径、计划系统/DICOM/QA 追踪和统计复核责任人。",
     "- 无法获得的材料应记录原因、替代字段和分析边界。",
     openQuestions.length ? "- Mentor 讨论中尚待确认的问题：" : null,
@@ -13140,12 +13138,7 @@ function App() {
                               <article>
                                 <strong>讨论依据</strong>
                                 <p>
-                                  {[
-                                    ...mentorDiscussionBrief.summaryLines,
-                                    ...(mentorDiscussionBrief.sourceLines.length
-                                      ? [`来源摘录：${mentorDiscussionBrief.sourceLines.slice(0, 3).join(" / ")}`]
-                                      : []),
-                                  ].join("\n")}
+                                  {mentorDiscussionBrief.summaryLines.join("\n")}
                                 </p>
                               </article>
                               <article>
