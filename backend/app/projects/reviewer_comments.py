@@ -224,6 +224,12 @@ class ReviewerCommentRepository:
 
     def _infer_comment_type(self, comment: str) -> str:
         head = comment[:260].lower()
+        explicit_type_match = re.search(
+            r"\b(major|minor|editorial)\s+(?:comment|point|concern|issue)s?\b",
+            head,
+        )
+        if explicit_type_match:
+            return explicit_type_match.group(1)
         if re.search(r"\b(editorial|typo|typographical|grammar|formatting|proofread|language)\b", head):
             return "editorial"
         if re.search(
@@ -305,14 +311,11 @@ class ReviewerCommentRepository:
     def _infer_response_theme(self, comment: str) -> str:
         text_value = comment.lower()
         if re.search(
-            r"\b(statistic|statistics|p value|p-value|confidence interval|ci\b|"
-            r"odds ratio|or-based|hazard ratio|\bhr\b|regression|model|calibration|"
-            r"roc|auc|validation|separation|convergence|schoenfeld|mixed[- ]effects?|"
-            r"event coding|binary endpoint|endpoint coding|outlier|causal|causality|"
-            r"exploratory|predictive claim|prediction claim)\b",
+            r"\b(reference|citation|literature|introduction|background|recent study|"
+            r"prior work|supporting evidence)\b",
             text_value,
         ):
-            return "statistics_model"
+            return "literature_reference"
         if re.search(
             r"\b(ethic|irb|consent|conflict of interest|funding|data availability|"
             r"generative ai|ai assistance|cover letter|submission|disclosure|"
@@ -321,18 +324,23 @@ class ReviewerCommentRepository:
         ):
             return "ethics_submission"
         if re.search(
-            r"\b(reference|citation|literature|introduction|background|recent study|"
-            r"prior work|supporting evidence)\b",
-            text_value,
-        ):
-            return "literature_reference"
-        if re.search(
             r"\b(treatment planning system|planning system|tps|dose calculation|"
             r"gamma criteria|gamma pass|structure naming|rt dose|rtdose|rtstruct|"
             r"rtplan|dicom|qa failure|patient-specific qa|plan-quality|plan quality)\b",
             text_value,
         ):
             return "radiotherapy_methods"
+        if re.search(r"\b(figure|table|caption|legend|resolution|supplement)\b", text_value):
+            return "figures_tables"
+        if re.search(
+            r"\b(statistic|statistics|p value|p-value|confidence interval|ci\b|"
+            r"odds ratio|or-based|hazard ratio|\bhr\b|regression|model|calibration|"
+            r"roc|auc|validation|separation|convergence|schoenfeld|mixed[- ]effects?|"
+            r"event coding|binary endpoint|endpoint coding|outlier|causal|causality|"
+            r"exploratory|predictive claim|prediction claim)\b",
+            text_value,
+        ):
+            return "statistics_model"
         if re.search(
             r"\b(data|dataset|csv|missing|privacy|de-identif|anonym|patient id|"
             r"raw data|dicom|rtdose|rtstruct|rtplan|tps|gamma|qa)\b",
@@ -345,8 +353,6 @@ class ReviewerCommentRepository:
             text_value,
         ):
             return "methods_reporting"
-        if re.search(r"\b(figure|table|legend|resolution|reference|supplement)\b", text_value):
-            return "figures_tables"
         if re.search(
             r"\b(editorial|typo|grammar|language|wording|format|formatting|proofread|"
             r"generic|abstract|tighten)\b",

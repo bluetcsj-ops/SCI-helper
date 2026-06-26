@@ -81,6 +81,42 @@ class ReviewerCommentResponseTests(unittest.TestCase):
         )
 
 
+    def test_explicit_major_comment_takes_precedence_over_clarify_keyword(self) -> None:
+        comment = (
+            "Reviewer 1\nMajor Comment 2: The Results appear to imply that the exploratory "
+            "model predicts clinical outcome. Please clarify endpoint coding."
+        )
+
+        self.assertEqual(self.repository._infer_comment_type(comment), "major")
+
+    def test_radiotherapy_method_theme_takes_precedence_over_binary_endpoint(self) -> None:
+        comment = (
+            "Major Comment 1: The Methods do not define QA failure. Please specify gamma "
+            "pass rate criteria, TPS version, dose calculation algorithm, and whether "
+            "gamma pass rate was treated as a binary endpoint."
+        )
+
+        self.assertEqual(self.repository._infer_response_theme(comment), "radiotherapy_methods")
+
+    def test_figure_table_theme_takes_precedence_over_source_dataset(self) -> None:
+        comment = (
+            "Figure 2 and Table 1 need clearer captions and should state the source "
+            "dataset and the number of complete cases."
+        )
+
+        self.assertEqual(self.repository._infer_response_theme(comment), "figures_tables")
+
+
+    def test_ethics_submission_takes_precedence_over_raw_dicom_details(self) -> None:
+        comment = (
+            "The data availability statement is incomplete. Please clarify de-identification, "
+            "IRB approval, whether raw DICOM RTDose/RTStruct/RTPlan files were retained, "
+            "and how missing fields were handled."
+        )
+
+        self.assertEqual(self.repository._infer_response_theme(comment), "ethics_submission")
+
+
     def test_response_draft_includes_specific_reviewer_concern(self) -> None:
         comment = (
             "Major Comment 2: The manuscript should define QA failure and explain "
