@@ -64,7 +64,7 @@ class ProtocolRepository:
                     "实际字段取决于 Mentor 讨论后的研究方向和可用导出。"
                 ),
                 institutional_field_mapping=(
-                    "正式研究前人工确认：该草案来自当前研究方向讨论，不代表已有真实机构 protocol。"
+                    "正式研究前人工确认：该草案来自当前研究方向讨论；Project A / B 只是样例工作区，不代表已有真实机构 protocol。"
                     "真实数据接入或投稿前，再由研究者确认伦理审批/豁免、数据使用许可、脱敏规则、"
                     "字段字典、CSV 导出路径、TPS/DICOM/QA 追踪和统计复核责任人。"
                 ),

@@ -1228,7 +1228,7 @@ function buildVeraProtocolSynthesis(
     ...dataSignals.map((item) => `- ${item}`),
     "- 数据字典草案：记录候选字段中文名、英文列名、单位、来源系统、导出格式、缺失值编码和派生规则；实际列名以真实导出为准。",
     "- 首轮验证：先用预备 CSV 或小样本脱敏 CSV 让 Data Lin 检查字段覆盖、缺失率、隐私风险和候选统计路线。",
-    "- 真实数据边界：伦理、授权、脱敏、TPS/DICOM/QA 追踪作为正式研究前人工确认项，不作为 Project A 预设输入。",
+    "- 真实数据边界：伦理、授权、脱敏、TPS/DICOM/QA 追踪作为正式研究前人工确认项，不作为 Project A / B 预设样例输入。",
   ];
   const workflowLines = [
     "Vera 生成的实验方案草案：",
@@ -1253,7 +1253,7 @@ function buildVeraProtocolSynthesis(
   ];
   const institutionalFieldMapping = [
     "正式研究前人工确认：",
-    "- 当前内容是 Vera 根据 Mentor 讨论生成的 protocol 草案，不代表已有真实机构 protocol。",
+    "- 当前内容是 Vera 根据 Mentor 讨论生成的 protocol 草案；Project A / B 仍只是样例工作区，不代表已有真实机构 protocol。",
     "- 进入真实数据接入或投稿前，再由研究者确认伦理/豁免、数据使用授权、脱敏规则、字段字典、CSV 导出路径、计划系统/DICOM/QA 追踪和统计复核责任人。",
     "- 无法获得的材料应记录原因、替代字段和分析边界。",
     openQuestions.length ? "- Mentor 讨论中尚待确认的问题：" : null,
@@ -1289,7 +1289,7 @@ function buildVeraProtocolSynthesis(
       `若 ${exposure} 与 ${comparator} 相比能够在 ${primaryEndpoint} 上显示稳定、可解释且可复核的差异，则该方向可进入样例数据验证。`,
       confirmedDirections.length ? `用户讨论倾向：${confirmedDirections.join("；")}` : null,
       rejectedDirections.length ? `用户已提出的限制：${rejectedDirections.join("；")}` : null,
-      "该假设仅是 protocol 草案，不代表已有真实机构数据或伦理批准。",
+      "该假设仅是 protocol 草案；Project A / B 预设内容不能替代真实机构数据或伦理批准。",
     ]
       .filter(Boolean)
       .join("\n"),
@@ -1318,7 +1318,7 @@ function buildVeraProtocolSynthesis(
       "- 排除无法映射主要终点或关键候选字段的记录。",
       "- 排除计划、影像、QA 或流程信息无法复核的记录。",
       "- 排除数据来源不一致、重复记录无法消解、存在直接身份标识或脱敏不充分风险的记录。",
-      "- 若真实机构材料未确认，只能停留在方案草案和样例验证阶段。",
+      "- 若真实机构材料未确认，只能停留在方案草案和 Project A / B 样例流程验证阶段。",
     ].join("\n"),
     dataRequirements: compactProtocolLines(dataRequirementLines).join("\n"),
     institutionalFieldMapping: institutionalFieldMapping,
@@ -4168,7 +4168,7 @@ function buildProtocolQualitySummary(protocol: ProjectProtocol | null): Protocol
       implementationText,
       ["IRB", "伦理", "数据使用授权", "脱敏", "隐私"],
       false,
-      "这不是 Project A 预设项；进入真实数据接入或投稿前由研究者补充 IRB、数据使用授权、脱敏规则和原始数据保存边界。",
+      "这不是 Project A / B 预设样例项；进入真实数据接入或投稿前由研究者补充 IRB、数据使用授权、脱敏规则和原始数据保存边界。",
     ),
     checkSignals(
       "data_dictionary_export",
@@ -13129,8 +13129,8 @@ function App() {
                             </div>
                             <div className="mentor-preview-warning">
                               {protocolHasContent
-                                ? "确认后会用 Mentor 推荐生成新的 Vera Protocol 草案；Project A/B 只是工作区，生成后仍可继续编辑确认。"
-                                : "确认后会把 Mentor 推荐转成 Vera Protocol 草案；Project A/B 只是工作区，生成后仍可继续编辑确认。"}
+                                ? "确认后会用 Mentor 推荐生成新的 Vera Protocol 草案；Project A/B 只是样例工作区，生成后仍需按真实材料继续编辑确认。"
+                                : "确认后会把 Mentor 推荐转成 Vera Protocol 草案；Project A/B 只是样例工作区，生成后仍需按真实材料继续编辑确认。"}
                             </div>
                             <div className="mentor-preview-grid">
                               <article>

@@ -384,7 +384,7 @@ $env:DATABASE_URL='sqlite:///:memory:'
 
 2026-06-24 Mentor → Protocol 主线补强：
 
-- 前端 `mentorCardToProtocolUpdate` 会把推荐卡的最小数据字段写入 Protocol `data_requirements`，并补充数据字典草案、来源系统、导出格式和真实数据边界；IRB / 脱敏 / TPS / QA 等只进入正式研究前人工确认项，不作为 Project A 预设输入。
+- 前端 `mentorCardToProtocolUpdate` 会把推荐卡的最小数据字段写入 Protocol `data_requirements`，并补充数据字典草案、来源系统、导出格式和真实数据边界；IRB / 脱敏 / TPS / QA 等只进入正式研究前人工确认项，不作为 Project A / B 预设样例输入。
 - 前端 synthesis 会把推荐卡合成为完整 Vera Protocol 草案：研究假设、PICO/PECO、主要/次要终点、纳排标准、数据路径、实验流程、统计边界、正式研究前确认和 Rhea 里程碑。
 - 前端新增规则版 `buildMentorDiscussionBrief`，把当前项目 Mentor 自由对话、表单和推荐报告转成讨论依据，写入 Vera 草案的 hypothesis、study_type、data_requirements、experiment_workflow、institutional_field_mapping 和 rhea_milestones。
 - 前端新增 `getProjectChatMessages` 加载 Mentor 历史消息，并与当前页面新消息去重合并，避免刷新后 discussion brief 丢失。
@@ -425,7 +425,7 @@ $env:DATABASE_URL='sqlite:///:memory:'
 - 针对非 MR 资源的接口烟测通过：`TOMO / TrueBeam + Eclipse / Accuray + DICOM RTDose / RTStruct / RTPlan` 返回计划剂量学质量、RTDose/RTStruct/RTPlan 一致性、Eclipse/Accuray 字段字典验证三类方向，没有返回 MR / 在线自适应方向。
 - 聊天系统支持项目级共享记忆和按项目/智能体过滤历史；前端新增“当前聊天 / 历史聊天 / 清空”，清空范围限定为当前项目 + 当前智能体。
 - Project 卡片展示已改为读取当前保存的 Vera Protocol / 项目状态，避免长期显示 Project A 旧预设。
-- 新增 `docs/project-a-real-data-intake-template.md`，记录真实研究前 IRB、数据授权、脱敏、字段字典、TPS/DICOM/QA 和统计定稿确认项；该模板不是 Project A 预设输入。
+- 新增 `docs/project-a-real-data-intake-template.md`，记录真实研究前 IRB、数据授权、脱敏、字段字典、TPS/DICOM/QA 和统计定稿确认项；该模板不是 Project A / B 预设样例输入。
 - 验收结果：`npm.cmd run build` 通过，`.venv\Scripts\python.exe -m compileall app` 通过，`git diff --check` 通过，后端 `/health` 正常；最后确认 8000 服务 PID 为 `32324`。
 
 ## 手动验收清单

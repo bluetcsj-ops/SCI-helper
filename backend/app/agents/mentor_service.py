@@ -244,7 +244,7 @@ class MentorService:
                     ),
                     methods_route="建立单中心回顾性配对队列，比较原计划、在线计划和必要时的累积剂量指标，并记录在线审核耗时。",
                     statistical_plan="优先使用配对设计的描述统计和配对检验；若同一患者包含多分次记录，先标记为重复测量设计，正式模型需统计复核。",
-                    innovation_point="创新点不来自 Project A 预设，而是来自本中心真实在线自适应流程、剂量指标和流程耗时的联合评估。",
+                    innovation_point="创新点不来自 Project A / B 预设样例，而是来自本中心真实在线自适应流程、剂量指标和流程耗时的联合评估。",
                     minimum_data_fields=[
                         "原计划与在线计划 ID",
                         "分次序号或治疗日期",
@@ -486,7 +486,7 @@ class MentorService:
                 f"该候选方向根据当前设备/平台“{payload.equipment_summary.strip() or '待补充'}”、"
                 f"计划系统“{payload.planning_systems.strip() or '待补充'}”、可用数据"
                 f"“{self._data_types_label(payload)}”和 Mentor 对话摘要生成；"
-                "Project A/B 只作为工作区，不作为 protocol 来源。"
+                "Project A/B 只作为样例工作区，不作为真实 protocol 来源。"
             ),
             data_pathway=data_pathway,
             methods_route=methods_route,
@@ -804,7 +804,7 @@ class MentorService:
         selected_titles = " / ".join(topic.title for topic in selected_topics)
         return [
             interest_scope,
-            "本轮先根据设备、计划系统、可用数据和 Mentor 对话摘要生成自定义研究方向；Project A/B 不参与出题。",
+            "本轮先根据设备、计划系统、可用数据和 Mentor 对话摘要生成自定义研究方向；Project A/B 预设样例不参与出题。",
             "预设 topic 只作为辅助参考标签，用于补充证据检索、趋势对照和目标期刊入口，不再直接决定题目。",
             f"当前可用数据线索：{data_types}。",
             f"本轮辅助参考标签：{selected_titles}。",
