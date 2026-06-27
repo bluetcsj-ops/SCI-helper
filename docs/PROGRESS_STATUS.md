@@ -1,6 +1,6 @@
 # 当前模块进度表
 
-更新日期：2026-06-26
+更新日期：2026-06-27
 
 ## 总体判断
 
@@ -11,6 +11,8 @@
 2026-06-26 Stage A 验收补充：已用预备引用、预备 DATA、Data Lin 高级模型、Writer 交接、Reviewer 映射和关键导出路径跑完一轮真实样例 UI 验收；`npm.cmd run build`、后端 `compileall app` 和内存 SQLite import smoke 均通过，当前未发现阻塞性问题。
 
 2026-06-26 Reviewer / Writer 返修链路增强补充：已完成英文回复草稿 concern 抽取、主题化 manuscript change、章节自动识别关键词扩展和 Project B 临时 UI 目视复核；临时 Reviewer 记录已清理，未留下测试数据。
+
+2026-06-27 同步前本地收口补充：当前 `main` 分支相对 `origin/main` 本地领先 5 个提交，尚未推送 GitHub；已完成 Vera 剂量学方向 synthesis 边界修复、Rhea Plan v2 应用记录、Project A/B 卡片双监控、Project B 样例计划重排和 Project B 卡片 Protocol 覆盖边界修复。验证通过：`npm run build`、浏览器 Project B 选中态 UI 复核、控制台 error/warn 复核、`git diff --check origin/main..HEAD`。本轮仍不改变总体完成度百分比，Project A / B 继续只作为预设样例工作区和流程演示容器，不代表真实机构 protocol 或真实数据准备完成。
 
 当前主链路已经闭环：
 
@@ -299,12 +301,13 @@ Mentor 当前完成标准：
    - 2026-06-26 已使用预备引用、预备 DATA、模拟 decision letter 和 Reviewer 映射路径跑完整链路。
    - 已确认 Data Lin 高级模型、Writer Methods / Results 交接、Reviewer mapped response / checklist 和关键 Markdown 导出来源可用。
    - 2026-06-26 Reviewer / Writer 返修链路增强已完成：后端单测 7 项通过，`compileall app`、`npm.cmd run build` 和 UI 目视复核通过。
-   - 下一步重点是提交/同步前复核 diff，并继续保留更多真实审稿信样例下的语气自然度和段落级定位观察。
+   - 2026-06-27 已完成本地领先 5 个提交的同步前 diff 复核：文件范围集中，`git diff --check origin/main..HEAD` 通过，Project A/B 样例边界文案未越界。
+   - 下一步由用户决定是否推送 GitHub；未收到明确“推送”前继续保持本地提交状态。
    - 2026-06-24 已完成导出/复制兜底修复验收：高级模型验证计划在剪贴板不可用时会显示只读文本框，关键 Markdown 导出会显示文件名提示。
 2. Data Lin 下一阶段：
    - 在已完成 statsmodels PHReg / MixedLM 诊断交接基础上，下一步优先考虑独立统计环境复核、校准/交叉验证和真实数据前统计定稿清单。
 3. Mentor / Vera 下一阶段：
-   - 把用户与 Mentor 的研究方向讨论转成更完整的 Vera Protocol 草案，包括研究问题、假设、PICO/PECO、终点、实验流程、统计路线和首轮验证计划。
+   - Vera 剂量学方向 synthesis 已修复否定边界中的 adaptive / 自适应关键词误触发；后续继续观察更多真实候选输入下的 PICO/PECO、终点和 Rhea 里程碑稳定性。
    - 保持 Project A / B 作为工作区样例，不再要求预设项目自带真实 IRB、数据授权、TPS/DICOM/QA 或字段字典。
 4. Writer 下一阶段：
    - 写作风格学习与目标期刊英文表达偏好。
@@ -323,13 +326,14 @@ Mentor 当前完成标准：
 - 2026-06-26 已完成 Reviewer / Writer 返修链路增强与 UI 目视复核：Project B 临时导入样例可生成具体英文 concern、主题化修改建议、自动章节归属和 Writer 修改提醒；临时记录已清理。
 - 本轮未发现阻塞性问题；后续只修复真实样例中暴露的小问题。
 - 已完成导出/复制兜底小修复：验证计划复制失败时提供页面内手动复制文本框，Data Lin / Writer / Reviewer 关键导出路径统一下载 helper。
-- 当前本地开发节奏保持为先完成一个完整功能模块再考虑上传；Reviewer / Writer 返修链路增强模块已完成第一轮实现、自动化验证和 UI 目视复核。
+- 当前本地开发节奏保持为先完成一个完整功能模块再考虑上传；Reviewer / Writer 返修链路增强模块已完成第一轮实现、自动化验证和 UI 目视复核；2026-06-27 本地 5 个提交已完成同步前复核，是否推送 GitHub 等待用户明确确认。
 - 确认页面中文、论文正文/投稿材料英文的规则在所有导出中稳定执行。
 - 收集真实审稿意见样例，评估 Response to Reviewers 默认回复的自然度和具体性。
 
 ### 阶段 B：Mentor/Vera 自主方案生成
 
 - 从 Mentor 讨论内容自动形成 protocol 草案和实验方案草案，而不是依赖 Project A 的预设字段。
+- 当前已修复剂量学计划质量方向被 MR/adaptive 否定边界误触发的问题；继续保持 Project A/B 样例来源隔离。
 - 将研究方向、候选引用、最小字段、统计路线、实验流程和 Rhea 里程碑串成一条可编辑链路。
 
 ### 阶段 C：真实数据接入前确认
