@@ -334,6 +334,15 @@ Reviewer / Writer 返修链路增强模块完成标准：
 - 泄漏复核通过：Data Lin、Writer、Reviewer 下游页面均未出现正向 `MR-guided adaptive RT`、在线自适应计划、adaptive workflow 暴露或 adaptive workflow 可执行性。
 - 控制台复核：本轮下游联动验收期间未见新的应用 console error/warn；Statsig 网络超时仍为外部噪声，浏览器日志仍保留旧 `ReferenceError: allLines is not defined` 记录，时间戳为 `2026-06-26T18:58:25.949Z`。
 
+2026-06-27 Rhea Plan v2 应用验收补充：
+
+- Rhea 计划草案生成通过：基于当前新 Vera Protocol 点击 `计划草案` 后生成 `Plan v2`，显示 `7` 个阶段、`10` 项任务，初始状态为 `未应用`。
+- Rhea 任务覆盖通过：展开 `Plan v2` 后 10 项任务包含锁定研究问题/PICO/PECO、文献矩阵与目标期刊、伦理/数据审批、字段字典与导出路径、首批 10 例数据导出与质量核查、全量数据收集与清洗、统计分析和论文图表、Methods/Results、全文初稿、模拟审稿与投稿文件包。
+- Rhea Plan v2 应用通过：点击 `应用该草案` 并确认后，Project A 任务列表替换为新计划任务，首批任务截止日期更新为 `07/04`、`07/11`、`07/21`，旧 `06/23` / `06/30` 逾期节点不再出现。
+- Rhea 监控重算通过：应用后 Rhea 监控中心显示 `正常`、`0 条提醒`、`0 个逾期`、`0 个受阻`，提示当前没有需要处理的提醒。
+- 方案边界仍保留：任务说明中继续包含新研究问题、RTDose/RTStruct/RTPlan、PTV/OAR、真实数据阶段脱敏和字段字典确认、Project A/B 样例流程边界。
+- 泄漏复核通过：Plan v2 和 Rhea 监控未出现正向 `MR-guided adaptive RT`、在线自适应计划、adaptive workflow 暴露或 adaptive workflow 可执行性。
+
 ```powershell
 cd "J:\Radiation Therapy SCI assitant\frontend"
 .\node_modules\.bin\tsc.cmd --noEmit
