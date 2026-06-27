@@ -620,6 +620,13 @@ interface ProjectCardDisplay {
   nextMilestone: string;
 }
 
+interface ProjectMonitorRow {
+  label: string;
+  value: string;
+  detail: string;
+  riskLevel: RiskLevel;
+}
+
 function cleanProjectCardLine(value: string): string {
   return value
     .replace(/^#+\s*/, "")
@@ -701,6 +708,59 @@ function buildProjectCardDisplay(
   };
 }
 
+function daysUntilDate(value: string): number {
+  const [year, month, day] = value.split("-").map(Number);
+  const dueDate = new Date(year, (month || 1) - 1, day || 1);
+  const today = new Date();
+  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  return Math.ceil((dueDate.getTime() - todayStart.getTime()) / 86400000);
+}
+
+function buildProjectMonitorRows(project: Project): ProjectMonitorRow[] {
+  const blockedCount = project.tasks.filter((task) => task.status === "blocked").length;
+  const overdueCount = project.tasks.filter(
+    (task) => task.status !== "done" && daysUntilDate(task.due_date) < 0,
+  ).length;
+  const openTasks = project.tasks.filter((task) => task.status !== "done");
+  const nextOpenTask = openTasks
+    .slice()
+    .sort((first, second) => daysUntilDate(first.due_date) - daysUntilDate(second.due_date))[0];
+  const nextDays = nextOpenTask ? daysUntilDate(nextOpenTask.due_date) : null;
+
+  let workflowRisk: RiskLevel = "green";
+  let workflowValue = "正常";
+  let workflowDetail = nextOpenTask
+    ? `${formatDate(nextOpenTask.due_date)} · ${shortenProjectCardText(nextOpenTask.title, 34)}`
+    : "当前预设任务均已完成。";
+
+  if (blockedCount > 0) {
+    workflowRisk = "red";
+    workflowValue = `${blockedCount} 个受阻`;
+    workflowDetail = "先解除受阻任务，再推进下一里程碑。";
+  } else if (overdueCount > 0) {
+    workflowRisk = "red";
+    workflowValue = `${overdueCount} 个逾期`;
+    workflowDetail = "需要重新确认截止日期和任务责任。";
+  } else if (nextDays !== null && nextDays <= 2) {
+    workflowRisk = "orange";
+    workflowValue = `${Math.max(nextDays, 0)} 天内`;
+  }
+
+  return [
+    {
+      label: "流程监控",
+      value: workflowValue,
+      detail: workflowDetail,
+      riskLevel: workflowRisk,
+    },
+    {
+      label: "质量/边界监控",
+      value: riskLabels[project.risk_level],
+      detail: "样例工作区；真实 IRB、数据、脱敏和统计边界仍需人工确认。",
+      riskLevel: project.risk_level,
+    },
+  ];
+}
 function containsCjkText(value: string | null | undefined): boolean {
   return /[\u3400-\u9fff]/.test(value ?? "");
 }
@@ -10397,6 +10457,7 @@ function App() {
             <div className="project-list">
               {projects.map((project) => {
                 const projectCardDisplay = buildProjectCardDisplay(project, protocol, selectedProjectId);
+                const projectMonitorRows = buildProjectMonitorRows(project);
                 return (
                   <button
                     className={`project-card ${selectedProjectId === project.id ? "selected" : ""}`}
@@ -10418,6 +10479,18 @@ function App() {
                         />
                       </div>
                       <strong>{project.progress_percent}%</strong>
+                    </div>
+                    <div className="project-monitor-grid" aria-label={`${project.name} 双监控`}>
+                      {projectMonitorRows.map((monitor) => (
+                        <div className="project-monitor-row" key={monitor.label}>
+                          <div>
+                            <span>{monitor.label}</span>
+                            <strong>{monitor.value}</strong>
+                          </div>
+                          <p>{monitor.detail}</p>
+                          <em className={`risk-dot risk-${monitor.riskLevel}`}>{riskLabels[monitor.riskLevel]}</em>
+                        </div>
+                      ))}
                     </div>
                     <dl className="project-facts">
                       <div>
