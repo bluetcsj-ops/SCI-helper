@@ -1100,8 +1100,16 @@ function cardSearchText(card: MentorRecommendationCard): string {
     .toLowerCase();
 }
 
+function isDosimetricPlanQualityCard(card: MentorRecommendationCard): boolean {
+  const text = cardSearchText(card);
+  return /rtdose|rtstruct|rtplan|dicom|ptv|oar|d95|v95|dmax|dmean|剂量学|剂量指标|靶区|约束|计划质量/.test(text);
+}
+
 function inferVeraPrimaryEndpoint(card: MentorRecommendationCard): string {
   const text = cardSearchText(card);
+  if (isDosimetricPlanQualityCard(card)) {
+    return "最能回答研究问题的剂量学计划质量指标，例如 PTV D95% / V95%、OAR Dmax/Dmean、剂量梯度、适形指数或计划复杂度。";
+  }
   if (/qa|gamma|质控|quality assurance/.test(text)) {
     return "计划级 QA 结果、gamma pass rate 或异常质控标签，作为能直接回答质量预测/质控风险问题的主要终点。";
   }
@@ -1125,6 +1133,9 @@ function inferVeraPrimaryEndpoint(card: MentorRecommendationCard): string {
 
 function inferVeraPopulation(card: MentorRecommendationCard): string {
   const text = cardSearchText(card);
+  if (isDosimetricPlanQualityCard(card)) {
+    return "已完成外照射计划并可追踪 RTDose、RTStruct、RTPlan、治疗部位、处方剂量、PTV 和 OAR 指标的计划级或病例级记录。";
+  }
   if (/sbrt|srs/.test(text)) {
     return "接受 SRS/SBRT 或相近高剂量分割流程的病例、靶区或计划记录。";
   }
@@ -1142,6 +1153,9 @@ function inferVeraPopulation(card: MentorRecommendationCard): string {
 
 function inferVeraExposure(card: MentorRecommendationCard): string {
   const text = cardSearchText(card);
+  if (isDosimetricPlanQualityCard(card)) {
+    return "治疗部位、设备平台、计划技术、处方剂量、分割次数、计划复杂度和可导出的 DICOM 剂量/结构/计划参数。";
+  }
   if (/adaptive|自适应|mr-linac|mr guided|online/.test(text)) {
     return "在线自适应计划、分次调整幅度、累积剂量或 adaptive workflow 暴露。";
   }
@@ -1159,6 +1173,9 @@ function inferVeraExposure(card: MentorRecommendationCard): string {
 
 function inferVeraComparator(card: MentorRecommendationCard): string {
   const text = cardSearchText(card);
+  if (isDosimetricPlanQualityCard(card)) {
+    return "按治疗部位、设备平台、计划技术、计划策略或预定义风险层级形成的剂量学分组。";
+  }
   if (/配对|前后|adaptive|自适应|automation|自动化/.test(text)) {
     return "同一病例或计划的常规流程、原计划、人工计划或策略前后对照。";
   }
@@ -1170,6 +1187,7 @@ function inferVeraComparator(card: MentorRecommendationCard): string {
 
 function buildVeraSecondaryEndpoints(card: MentorRecommendationCard, primaryEndpoint: string): string {
   const text = cardSearchText(card);
+  const isDosimetricPlanQuality = isDosimetricPlanQualityCard(card);
   const endpoints = new Set<string>();
   endpoints.add("靶区覆盖、OAR 保护、剂量梯度、适形指数、均匀性指数或计划复杂度。");
   endpoints.add("流程耗时、返工率、人工复核结论、亚组稳定性和敏感性分析。");
@@ -1179,7 +1197,7 @@ function buildVeraSecondaryEndpoints(card: MentorRecommendationCard, primaryEndp
   if (/model|predict|ai|模型|预测/.test(text)) {
     endpoints.add("交叉验证、校准、决策阈值稳定性、误分类案例复核和外部验证可行性。");
   }
-  if (/adaptive|自适应|mr-linac|online/.test(text)) {
+  if (!isDosimetricPlanQuality && /adaptive|自适应|mr-linac|online/.test(text)) {
     endpoints.add("在线调整幅度、分次间剂量变化、治疗时长和 adaptive workflow 可执行性。");
   }
   if (primaryEndpoint) {

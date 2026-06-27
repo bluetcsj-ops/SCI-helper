@@ -282,6 +282,58 @@ Reviewer / Writer 返修链路增强模块完成标准：
 - 本轮没有确认生成或覆盖真实 protocol；真实 IRB、数据授权、脱敏、字段字典、TPS/DICOM/QA、统计复核仍必须由研究者人工确认。
 - 下一轮建议：优先进入 Data Lin / Rhea 流程验收，确认 Vera 草案中的最小字段、数据字典、正式研究前确认项能稳定传递到字段需求、Rhea 里程碑和 Writer handoff；或继续细化 Mentor/Vera 预览文案，把“讨论依据”标签改为更准确的“当前候选依据”。
 
+2026-06-27 Data Lin / Rhea / Writer / Reviewer 样例链路验收补充：
+
+- Data Lin / Rhea 验收通过：Vera 当前方案质量检查 `100%`；方案-数据一致性检查能从 Protocol 读取 `29` 个必需字段并命中 `8` 类落地信号；正式研究前确认项包含候选字段字典、伦理/授权/脱敏、计划系统/DICOM/QA 和统计复核边界。
+- Data Lin 字段需求承接通过：当前显示 `38` 个字段需求，来自研究方案，并按最小字段 `12`、伦理/脱敏 `6`、数据字典 `1`、TPS/DICOM `8`、终点/统计 `11` 分类展示。
+- Rhea 任务链路验收通过：展开后 10 项任务覆盖研究问题锁定、伦理/数据审批、字段字典/导出路径、首批 10 例数据质控、全量清洗、统计图表、Methods/Results、全文初稿和投稿文件包。
+- Data Lin → Writer handoff 验收通过：加载预备 DATA `radiotherapy_plan_quality_sample.csv` 后，流程总览“数据与统计”变为“已有质控报告 / 进行中”；Writer 出现“数据与方案交接摘要”，包含 Protocol 正式研究前确认、Data Lin 字段分类、CSV 覆盖与隐私、Methods / Results 写作边界。
+- Writer Methods / Results 样例草稿保留边界：当前输出是 exploratory statistical draft，未执行 formal hypothesis testing，不报告 P 值或显著性结论；advanced regression 尚未完成，不报告回归估计。
+- Reviewer / 投稿前风险联动验收通过：重新加载预备 DATA 并联调 Writer 后，Reviewer 清单显示高风险 `5`、需复核 `8`、已通过 `2`；Reviewer 能读取数据源 `radiotherapy_plan_quality_sample.csv`、`20 行 / 18 列`、原始 CSV 未持久化保存、Results 不得写 P 值或显著性结论、字段覆盖和隐私风险等边界。
+- Reviewer 放疗专科风险识别通过：PTV/OAR 剂量指标定义、gamma criteria、TPS version、dose calculation algorithm、machine/MLC model 和计划审批流程进入检查；Ethics / IRB、Data availability、Generative AI assistance disclosure 等投稿声明占位被识别。
+- Reviewer 导出按钮验收：`导出清单`、`导出深度意见`、`导出回复` 均可点击且无新应用 console error/warn；当前浏览器仍未显示导出文件名提示，需按既有下载事件限制处理。
+- 当前仍需人工处理：预备 DATA 仅用于流程验收，字段覆盖显示 `Matched required fields: 5`、`Missing required fields: 24`；正式研究仍需补齐真实字段、正式统计检验、引用全文核验、投稿声明、Rhea 逾期任务和目标期刊 Author Guidelines 人工核对。
+
+2026-06-27 高级模型计划 / 验证边界验收补充：
+
+- Data Lin 高级模型计划验收通过：加载 `radiotherapy_plan_quality_sample.csv` 后先生成描述性统计草案，再生成高级模型计划；候选模型包含 `Binary logistic regression`、`Multivariable linear regression`、`Cox proportional hazards model` 和 `Linear mixed-effects model`。
+- 推荐模型与缺口边界正确：当前推荐 `Binary logistic regression`，结局为 `qa_result`；Cox 显示缺少 `follow-up time` 与 `event indicator`；mixed-effects 显示需要 `repeated-measures design confirmation`。
+- 外部验证计划验收通过：高级模型面板显示 `pending external validation`、外部软件清单、模型核验清单，并解锁 `导出验证计划` / `复制验证计划`；计划文本明确不得在外部验证前定稿 OR、CI、P 值、calibration、AUC 或预测模型结论。
+- 推荐模型运行验收通过：`运行推荐模型` 生成 `advanced-logistic-v1` exploratory logistic 输出，`20` 个完整病例、`13` 个事件，OR/CI/P 值均被标注为人工统计复核前的草稿素材；警告包含未完成正式检验确认、样本量小、可能分离/稀疏单元、收敛复核和统计计划一致性复核。
+- Writer 联动验收通过：Data Lin → Writer 后，Methods / Results 中新增高级模型来源与人工核验内容，保留 `exploratory`、`External validation status: pending`、P values / confidence intervals / manual review 边界，未把 OR 输出写成最终推断或已验证预测结论。
+- Reviewer 联动验收通过：切到 Reviewer 后清单显示高风险 `5`、需复核 `10`、已通过 `2`；新增“高级模型 OR 报告边界”和“高级模型外部验证缺口”，要求核对 event coding、events per variable、separation、calibration、ROC/AUC、validation design、CI、P 值和样本量限制。
+- 控制台复核：本轮高级模型验收期间未见新的应用 console error/warn；浏览器中仍有一组早于本轮的旧 `ReferenceError: allLines is not defined` 记录，时间戳为 `2026-06-26T18:58:25.949Z`，需后续另行排查 Mentor discussion brief 旧错误来源。
+
+2026-06-27 Mentor / Vera 自主方案生成预览验收补充：
+
+- Mentor 候选生成验收通过：点击 `生成研究方向候选` 后生成 `3` 个研究方向候选，首选为 `TOMO / TrueBeam 计划剂量学质量与 OAR 约束达成度评估`，不是历史 MR 自适应方向。
+- 资源匹配边界正确：候选说明基于设备/计划系统待补充、可用数据 `DICOM RTDose, RTStruct, RTPlan` 和辅助参考标签生成；页面明确 `不依赖 Project A/B 预设 protocol`，并写明 Project A/B 只作为样例工作区，不作为真实 protocol 来源。
+- Vera 预览验收通过：点击首个候选 `预览方案` 后出现 Vera Protocol 草案预览和 `确认生成` 按钮；本轮未点击 `确认生成`，未覆盖当前 Vera 方案。
+- 草案边界完整：预览内容包含真实数据前人工确认项，包括 IRB、数据授权、脱敏规则、原始数据保存边界、字段字典/数据字典、TPS/DICOM/QA 追踪、统计复核和 Rhea 里程碑。
+- 历史泄漏复核通过：预览中历史 Mentor 对话只作为追踪记录，不作为资源证据；未把 Project A/B 或旧 MR 自适应样例写成真实方案来源。
+- 控制台复核：Mentor/Vera 预览验收期间未见新的应用 console error/warn；浏览器日志仍只保留同一组旧 `ReferenceError: allLines is not defined` 记录，时间戳为 `2026-06-26T18:58:25.949Z`。
+
+2026-06-27 Vera synthesis 剂量学方向修复与 Data Lin 验收补充：
+
+- 修复原因：首个 Mentor 候选为计划剂量学/OAR/RTDose 方向，但 Vera synthesis 的 population、exposure、comparator、secondary endpoints 会被候选卡中“不是沿用 Project A 的 MR 自适应题目”等否定边界里的 `adaptive / 自适应` 关键词误触发。
+- 代码修复：在 `frontend/src/App.tsx` 中新增 `isDosimetricPlanQualityCard`，并让剂量学计划质量方向优先生成 PICO/PECO、主要终点、暴露、比较组和二级终点；Project A/B 样例边界、真实 IRB/授权/脱敏/字段字典边界保持不变。
+- 构建验证：`npm run build` 通过，包含 `tsc && vite build`。
+- UI 复验通过：重新从 Mentor 生成 `3` 个候选，点击首个候选 `预览方案` 并执行 `确认生成` 后，Vera PICO/PECO 显示 Population 为已完成外照射计划并可追踪 `RTDose / RTStruct / RTPlan`、PTV/OAR 指标；Exposure 为治疗部位、设备平台、计划技术、处方剂量、分割次数、计划复杂度和 DICOM 剂量/结构/计划参数；Comparator 为治疗部位、设备平台、计划技术、计划策略或预定义风险层级形成的剂量学分组；Outcome 为 `PTV D95% / V95%`、`OAR Dmax/Dmean`、剂量梯度、适形指数或计划复杂度。
+- 泄漏复核通过：最终 Vera 表单未再出现正向 `MR-guided adaptive RT`、在线自适应计划、adaptive workflow 暴露或 adaptive workflow 可执行性；仅保留 Project A/B 样例边界和“不是沿用 Project A 的 MR 自适应题目”这类否定来源说明。
+- Data Lin 字段读取验收通过：切到 Data Lin 后显示 `52` 个字段需求，分类为最小字段 `27`、伦理/脱敏 `5`、数据字典 `1`、TPS/DICOM `11`、终点/统计 `8`。
+- 展开字段后确认包含：匿名病例或计划 ID、治疗部位、计划系统和版本、处方剂量与分割次数、主要终点字段、设备平台、`RTDose / RTStruct / RTPlan` 导出标识、PTV 覆盖指标、关键 OAR 约束指标、数据字典草案、真实数据边界、Project A/B 样例工作区边界、伦理/授权/脱敏、TPS/DICOM/QA 追踪和统计复核责任人。
+- 控制台复核：本轮修复复验期间未见新的应用 console error/warn；Statsig 网络超时仍为外部噪声，浏览器日志仍保留旧 `ReferenceError: allLines is not defined` 记录，时间戳为 `2026-06-26T18:58:25.949Z`。
+
+2026-06-27 新 Vera 方案下游 Writer / Reviewer 联动验收补充：
+
+- Data Lin 预备 DATA 复验通过：在新 Vera 方案下加载 `radiotherapy_plan_quality_sample.csv` 后生成质控报告，仍显示 `52` 个字段需求；预备 DATA 为 `20 行 / 18 列`，字段覆盖更严格，Writer 侧显示 `Matched required fields: 5`、`Missing required fields: 42`。
+- Data Lin 字段展开复核通过：确认字段需求包含匿名病例或计划 ID、治疗部位、计划系统和版本、处方剂量与分割次数、主要终点字段、设备平台、`RTDose / RTStruct / RTPlan` 导出标识、PTV 覆盖指标、关键 OAR 约束指标、数据字典草案、真实数据边界、Project A/B 样例工作区边界、伦理/授权/脱敏、TPS/DICOM/QA 追踪和统计复核责任人。
+- Writer handoff 验收通过：`一键联调到 Writer` 后出现“数据与方案交接摘要”，字段分类显示最小字段 `27`、伦理/脱敏 `5`、数据字典 `1`、TPS/DICOM `11`；Methods / Results 继续保持 descriptive / exploratory 边界，不报告 P 值、显著性、CI 或高级模型估计。
+- Writer 内容边界通过：Writer 可见 `RTDose / RTStruct / RTPlan`、PTV/OAR 和缺失字段提示；当前预备 DATA 只作为流程样例，正式研究仍需补齐真实字段、伦理/授权/脱敏、TPS/DICOM/QA 和统计复核材料。
+- Reviewer 联动验收通过：切到 Reviewer 后清单为高风险 `5`、需复核 `8`、已通过 `2`；深度意见继续包含 PTV/OAR 剂量学指标定义、gamma criteria、TPS version、dose calculation algorithm、machine/MLC model、计划审批流程、字段覆盖和 P 值/显著性边界。
+- 泄漏复核通过：Data Lin、Writer、Reviewer 下游页面均未出现正向 `MR-guided adaptive RT`、在线自适应计划、adaptive workflow 暴露或 adaptive workflow 可执行性。
+- 控制台复核：本轮下游联动验收期间未见新的应用 console error/warn；Statsig 网络超时仍为外部噪声，浏览器日志仍保留旧 `ReferenceError: allLines is not defined` 记录，时间戳为 `2026-06-26T18:58:25.949Z`。
+
 ```powershell
 cd "J:\Radiation Therapy SCI assitant\frontend"
 .\node_modules\.bin\tsc.cmd --noEmit
