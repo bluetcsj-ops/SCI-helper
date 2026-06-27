@@ -637,3 +637,9 @@ npm.cmd run dev -- --host 127.0.0.1 --port 3000
 - 流程监控基于当前项目任务计算受阻、逾期和最近未完成任务；质量/边界监控基于项目风险级别，并明确提示 Project A / B 仍是样例工作区，真实 IRB、数据、脱敏和统计边界仍需人工确认。
 - Project A / Project B 都走同一套显示逻辑，符合“全程管理”要求；该改动不改变后端数据模型、不引入真实 protocol 来源，也不把 A/B 预设内容当作真实研究方案。
 - 验证：前端 npm run build 通过。
+
+2026-06-27 Project B 样例计划重排补充：
+
+- 新增本地维护脚本 `backend/scripts/reschedule_project_b_sample_plan.py`，用于将 Project B 预设样例任务从历史逾期节点重排到当前日期之后；该脚本只处理 Project B 样例工作区，不改变 Rhea 逾期判断规则。
+- 已运行脚本并更新本地 SQLite：Project B `b-task-1` 截止日改为 `2026-07-04`、`b-task-2` 截止日改为 `2026-07-11`，Project B 风险状态变为 `green`，下一节点为 `2026-07-04`。
+- Rhea 提醒复核通过：Project B `active_count=0`、`overdue_count=0`、`blocked_count=0`；这只是样例计划重排，不代表真实病例来源、TPS 版本、数据授权、IRB、脱敏或统计复核已经完成。
