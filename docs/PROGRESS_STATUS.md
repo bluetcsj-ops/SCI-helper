@@ -1,6 +1,6 @@
 # 当前模块进度表
 
-更新日期：2026-06-27
+更新日期：2026-06-28
 
 ## 总体判断
 
@@ -13,6 +13,8 @@
 2026-06-26 Reviewer / Writer 返修链路增强补充：已完成英文回复草稿 concern 抽取、主题化 manuscript change、章节自动识别关键词扩展和 Project B 临时 UI 目视复核；临时 Reviewer 记录已清理，未留下测试数据。
 
 2026-06-28 GitHub 同步收口补充：`main` 分支已推送到 `origin/main` 并完成同步；本批覆盖 Vera 剂量学方向 synthesis 边界修复、Rhea Plan v2 应用记录、Project A/B 卡片双监控、Project B 样例计划重排、Project B 卡片 Protocol 覆盖边界修复和同步前进度文档收口。验证通过：`npm run build`、浏览器 Project B 选中态 UI 复核、控制台 error/warn 复核、`git diff --check origin/main..HEAD`。本轮仍不改变总体完成度百分比，Project A / B 继续只作为预设样例工作区和流程演示容器，不代表真实机构 protocol 或真实数据准备完成。
+
+2026-06-28 Data Lin 真实数据前统计定稿清单补充：新增 `docs/real-data-statistical-finalization-checklist.md`，把 logistic regression、Cox proportional hazards model 和 mixed-effects model 的正式研究前人工复核项拆成可勾选清单；覆盖事件编码、样本量、缺失值、separation、校准/ROC/交叉验证、PH assumption、Schoenfeld residuals、random-effects structure、convergence、residual diagnostics、ICC 和正式报告边界。该清单只用于真实数据接入或投稿前统计定稿，不代表 Project A / B 样例已经完成真实统计复核。
 
 当前主链路已经闭环：
 
@@ -305,7 +307,7 @@ Mentor 当前完成标准：
    - 下一步进入新一轮本地小功能推进；后续仍按“小功能本地提交、阶段复盘后再推送 GitHub”的节奏执行。
    - 2026-06-24 已完成导出/复制兜底修复验收：高级模型验证计划在剪贴板不可用时会显示只读文本框，关键 Markdown 导出会显示文件名提示。
 2. Data Lin 下一阶段：
-   - 在已完成 statsmodels PHReg / MixedLM 诊断交接基础上，下一步优先考虑独立统计环境复核、校准/交叉验证和真实数据前统计定稿清单。
+   - 已新增真实数据前统计定稿清单；下一步可继续把清单与 Data Lin 导出的 advanced model validation plan / Writer handoff / Reviewer 检查清单做更细粒度联动。
 3. Mentor / Vera 下一阶段：
    - Vera 剂量学方向 synthesis 已修复否定边界中的 adaptive / 自适应关键词误触发；后续继续观察更多真实候选输入下的 PICO/PECO、终点和 Rhea 里程碑稳定性。
    - 保持 Project A / B 作为工作区样例，不再要求预设项目自带真实 IRB、数据授权、TPS/DICOM/QA 或字段字典。
@@ -340,6 +342,7 @@ Mentor 当前完成标准：
 
 - 从模拟放疗计划质量 DATA 过渡到可授权的真实脱敏样例。
 - 完成字段字典、缺失值策略、隐私筛查、审计记录和数据许可核对。
+- 使用 `docs/real-data-statistical-finalization-checklist.md` 完成 logistic / Cox / mixed-effects 的模型级人工统计复核后，才能把 exploratory fit 转为正式统计报告。
 
 ### 阶段 D：高级统计扩展
 

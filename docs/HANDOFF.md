@@ -616,6 +616,7 @@ npm.cmd run dev -- --host 127.0.0.1 --port 3000
    - Reviewer / Writer 返修链路增强、UI 目视复核和 2026-06-28 GitHub 同步已完成；下一步进入新一轮本地小功能推进。
    - 保留高级模型外部验证、人工作业边界和真实数据接入前确认清单。
 2. 下一阶段优先级：
+   - Data Lin 真实数据前统计定稿清单：已新增 `docs/real-data-statistical-finalization-checklist.md`，后续可与 advanced model validation plan / Writer handoff / Reviewer 检查清单联动
    - Mentor/Vera 自主方案生成：从研究方向讨论形成 protocol 草案和实验方案草案
    - Mentor 确认生成 Protocol 草案后，逐项测试 Data Lin 是否读取最小字段、数据字典草案和真实数据边界
    - 真实数据接入前，再核对真实字段字典、数据许可、伦理/脱敏和计划系统追踪
@@ -630,6 +631,12 @@ npm.cmd run dev -- --host 127.0.0.1 --port 3000
    - 小功能本地阶段性提交
    - 一组完整大功能或阶段复盘后再推送 GitHub
    - 2026-06-28 本批 `main -> origin/main` 同步已完成，当前本地与 GitHub 保持一致。
+
+2026-06-28 Data Lin 真实数据前统计定稿清单补充：
+
+- 新增 `docs/real-data-statistical-finalization-checklist.md`，作为真实数据接入或投稿前使用的模型级人工统计复核附件。
+- 清单覆盖 logistic regression、Cox proportional hazards model 和 mixed-effects model，重点核对事件编码、样本量、缺失值、separation、校准/ROC/交叉验证、PH assumption、Schoenfeld residuals、random-effects structure、convergence、residual diagnostics、ICC 和正式报告边界。
+- 该清单不改变 Project A / B 样例边界，不代表真实 IRB、数据授权、脱敏、字段字典、TPS/DICOM/QA 或统计复核已经完成。
 
 
 2026-06-27 Project A/B 双监控推进补充：

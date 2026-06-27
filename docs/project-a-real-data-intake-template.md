@@ -168,6 +168,8 @@
 
 这些字段完成后，才能把 exploratory workflow 输出转为正式统计报告。
 
+详细模型级复核请使用 `docs/real-data-statistical-finalization-checklist.md`。该清单覆盖 logistic regression、Cox proportional hazards model 和 mixed-effects model 的事件编码、样本量、模型诊断、校准/交叉验证、PH assumption、Schoenfeld residuals、随机效应结构和正式报告边界。
+
 ### 4.1 Statistical Finalization
 
 | 字段 | 填写内容 |
@@ -190,6 +192,7 @@
 
 - Data Lin 可在人工确认后重新运行质控、描述统计和正式检验。
 - Cox / mixed-effects 如被使用，需完成 PH assumption、Schoenfeld residuals、random-effects 结构、收敛、残差诊断和样本量限制复核。
+- Logistic / Cox / mixed-effects 的正式报告前模型级复核已按 `docs/real-data-statistical-finalization-checklist.md` 留痕。
 - Writer Results 不再把探索性输出写成最终推断。
 - Reviewer 不再提示统计边界和样本量解释缺失。
 
