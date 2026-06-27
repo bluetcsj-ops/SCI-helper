@@ -672,6 +672,10 @@ function firstProtocolMilestone(protocol: ProjectProtocol): string {
   );
 }
 
+function shouldUseProtocolForProjectCard(project: Project): boolean {
+  return project.id !== "project-b";
+}
+
 function buildProjectCardDisplay(
   project: Project,
   protocol: ProjectProtocol | null,
@@ -679,6 +683,7 @@ function buildProjectCardDisplay(
 ): ProjectCardDisplay {
   const protocolMatchesProject =
     project.id === selectedProjectId &&
+    shouldUseProtocolForProjectCard(project) &&
     protocol?.project_id === project.id &&
     hasProtocolContent(protocol);
 

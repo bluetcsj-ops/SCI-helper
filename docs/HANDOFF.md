@@ -643,3 +643,9 @@ npm.cmd run dev -- --host 127.0.0.1 --port 3000
 - 新增本地维护脚本 `backend/scripts/reschedule_project_b_sample_plan.py`，用于将 Project B 预设样例任务从历史逾期节点重排到当前日期之后；该脚本只处理 Project B 样例工作区，不改变 Rhea 逾期判断规则。
 - 已运行脚本并更新本地 SQLite：Project B `b-task-1` 截止日改为 `2026-07-04`、`b-task-2` 截止日改为 `2026-07-11`，Project B 风险状态变为 `green`，下一节点为 `2026-07-04`。
 - Rhea 提醒复核通过：Project B `active_count=0`、`overdue_count=0`、`blocked_count=0`；这只是样例计划重排，不代表真实病例来源、TPS 版本、数据授权、IRB、脱敏或统计复核已经完成。
+
+2026-06-27 Project B 卡片 Protocol 覆盖边界修复：
+
+- 修复 Project B 被选中后，项目卡片标题、主题和下一节点优先读取旧 Vera Protocol 草案的问题。
+- Project B 仍按当前预设样例计划展示 `project.current_phase`、`project.next_milestone` 和 `project.next_due_date`，避免把旧草案里程碑误当成当前执行方案。
+- 该修复只收紧前端卡片展示边界，不删除旧 Protocol、不改变后端数据模型、不代表真实 IRB、数据授权、脱敏、TPS/DICOM/QA 或统计复核已经完成。
