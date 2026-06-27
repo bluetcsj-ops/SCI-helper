@@ -12,7 +12,7 @@
 
 2026-06-26 Reviewer / Writer 返修链路增强补充：已完成英文回复草稿 concern 抽取、主题化 manuscript change、章节自动识别关键词扩展和 Project B 临时 UI 目视复核；临时 Reviewer 记录已清理，未留下测试数据。
 
-2026-06-27 同步前本地收口补充：当前 `main` 分支相对 `origin/main` 本地领先 5 个提交，尚未推送 GitHub；已完成 Vera 剂量学方向 synthesis 边界修复、Rhea Plan v2 应用记录、Project A/B 卡片双监控、Project B 样例计划重排和 Project B 卡片 Protocol 覆盖边界修复。验证通过：`npm run build`、浏览器 Project B 选中态 UI 复核、控制台 error/warn 复核、`git diff --check origin/main..HEAD`。本轮仍不改变总体完成度百分比，Project A / B 继续只作为预设样例工作区和流程演示容器，不代表真实机构 protocol 或真实数据准备完成。
+2026-06-28 GitHub 同步收口补充：`main` 分支已推送到 `origin/main` 并完成同步；本批覆盖 Vera 剂量学方向 synthesis 边界修复、Rhea Plan v2 应用记录、Project A/B 卡片双监控、Project B 样例计划重排、Project B 卡片 Protocol 覆盖边界修复和同步前进度文档收口。验证通过：`npm run build`、浏览器 Project B 选中态 UI 复核、控制台 error/warn 复核、`git diff --check origin/main..HEAD`。本轮仍不改变总体完成度百分比，Project A / B 继续只作为预设样例工作区和流程演示容器，不代表真实机构 protocol 或真实数据准备完成。
 
 当前主链路已经闭环：
 
@@ -301,8 +301,8 @@ Mentor 当前完成标准：
    - 2026-06-26 已使用预备引用、预备 DATA、模拟 decision letter 和 Reviewer 映射路径跑完整链路。
    - 已确认 Data Lin 高级模型、Writer Methods / Results 交接、Reviewer mapped response / checklist 和关键 Markdown 导出来源可用。
    - 2026-06-26 Reviewer / Writer 返修链路增强已完成：后端单测 7 项通过，`compileall app`、`npm.cmd run build` 和 UI 目视复核通过。
-   - 2026-06-27 已完成本地领先 5 个提交的同步前 diff 复核：文件范围集中，`git diff --check origin/main..HEAD` 通过，Project A/B 样例边界文案未越界。
-   - 下一步由用户决定是否推送 GitHub；未收到明确“推送”前继续保持本地提交状态。
+   - 2026-06-28 已完成 GitHub 同步收口：本批本地提交已推送到 `origin/main`，文件范围集中，Project A/B 样例边界文案未越界。
+   - 下一步进入新一轮本地小功能推进；后续仍按“小功能本地提交、阶段复盘后再推送 GitHub”的节奏执行。
    - 2026-06-24 已完成导出/复制兜底修复验收：高级模型验证计划在剪贴板不可用时会显示只读文本框，关键 Markdown 导出会显示文件名提示。
 2. Data Lin 下一阶段：
    - 在已完成 statsmodels PHReg / MixedLM 诊断交接基础上，下一步优先考虑独立统计环境复核、校准/交叉验证和真实数据前统计定稿清单。
@@ -326,7 +326,7 @@ Mentor 当前完成标准：
 - 2026-06-26 已完成 Reviewer / Writer 返修链路增强与 UI 目视复核：Project B 临时导入样例可生成具体英文 concern、主题化修改建议、自动章节归属和 Writer 修改提醒；临时记录已清理。
 - 本轮未发现阻塞性问题；后续只修复真实样例中暴露的小问题。
 - 已完成导出/复制兜底小修复：验证计划复制失败时提供页面内手动复制文本框，Data Lin / Writer / Reviewer 关键导出路径统一下载 helper。
-- 当前本地开发节奏保持为先完成一个完整功能模块再考虑上传；Reviewer / Writer 返修链路增强模块已完成第一轮实现、自动化验证和 UI 目视复核；2026-06-27 本地 5 个提交已完成同步前复核，是否推送 GitHub 等待用户明确确认。
+- 当前本地开发节奏保持为先完成一个完整功能模块再考虑上传；Reviewer / Writer 返修链路增强模块已完成第一轮实现、自动化验证和 UI 目视复核；2026-06-28 本批提交已推送到 `origin/main`，后续进入下一轮本地小功能推进。
 - 确认页面中文、论文正文/投稿材料英文的规则在所有导出中稳定执行。
 - 收集真实审稿意见样例，评估 Response to Reviewers 默认回复的自然度和具体性。
 

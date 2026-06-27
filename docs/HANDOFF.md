@@ -613,7 +613,7 @@ npm.cmd run dev -- --host 127.0.0.1 --port 3000
 
 1. Stage A 验收后收口：
    - 2026-06-26 已完成预备引用、预备 DATA、Data Lin 高级模型、Writer handoff、Reviewer 映射和关键导出来源的一轮完整验收。
-   - Reviewer / Writer 返修链路增强和 UI 目视复核已完成；下一步优先做提交/同步前 diff 复核。
+   - Reviewer / Writer 返修链路增强、UI 目视复核和 2026-06-28 GitHub 同步已完成；下一步进入新一轮本地小功能推进。
    - 保留高级模型外部验证、人工作业边界和真实数据接入前确认清单。
 2. 下一阶段优先级：
    - Mentor/Vera 自主方案生成：从研究方向讨论形成 protocol 草案和实验方案草案
@@ -629,6 +629,7 @@ npm.cmd run dev -- --host 127.0.0.1 --port 3000
 4. Git 节奏：
    - 小功能本地阶段性提交
    - 一组完整大功能或阶段复盘后再推送 GitHub
+   - 2026-06-28 本批 `main -> origin/main` 同步已完成，当前本地与 GitHub 保持一致。
 
 
 2026-06-27 Project A/B 双监控推进补充：
